@@ -215,11 +215,12 @@ function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>,
  * wall-clock read budgets. Streaming consumption prevents a chunked request from bypassing
  * Content-Length checks, while the fixed deadline prevents a slow sender from retaining a
  * pre-rate-limit Worker invocation indefinitely by continuously withholding body completion.
- * Every acquired request-body reader is released on terminal consumption when possible; a
- * timed-out pending read releases after cancellation settles without extending response latency.
- * The security-relevant top-level `target_repository` member must appear at most once after
- * JSON escape decoding, and no unreviewed top-level members are accepted, so downstream
- * parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
+ * Reader acquisition failures are normalized to the same unreadable input decision before
+ * credential egress. Every acquired request-body reader is released on terminal consumption
+ * when possible; a timed-out pending read releases after cancellation settles without extending
+ * response latency. The security-relevant top-level `target_repository` member must appear at
+ * most once after JSON escape decoding, and no unreviewed top-level members are accepted, so
+ * downstream parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
  * @param request Incoming request whose optional JSON body must be bounded before delegation.
  * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
  * bounded request, or a typed failure describing the fail-closed response.
@@ -251,7 +252,15 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     };
   }
 
-  const reader = request.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = request.body.getReader();
+  } catch {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
+  }
   const boundedStorage = new Uint8Array(MAX_EXCHANGE_JSON_BODY_BYTES);
   let totalBytes = 0;
   let deadlineTimer!: ReturnType<typeof setTimeout>;
