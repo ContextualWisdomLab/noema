@@ -36,7 +36,7 @@ export async function readBoundedCloudflareJsonResponse(
       }
       if (totalBytes + value.byteLength > maxResponseBytes) {
         try {
-          await reader.cancel("Cloudflare response byte ceiling exceeded");
+          void reader.cancel("Cloudflare response byte ceiling exceeded").catch(() => undefined);
         } catch {
           // Cancellation is cleanup only; the byte-ceiling failure remains authoritative.
         }
