@@ -38,7 +38,7 @@ Exact-admission provenance RED `0a32ee0a88378931a07b7e3b61cc31e3b494a7ab`는 sou
 
 Protected source는 durable append-only lifecycle evidence의 prerequisite일 뿐이며 mutable `context-graph-contracts` branch/PR/package를 production authority로 소비하지 않는다. 외부 marketplace metadata만으로 live plugin installation 또는 buyer completion을 주장하지 않는다. Release/deployment/legal evidence도 별도다.
 
-## Integrated external-extension lifecycle persistence and operability — issue #561 / merged PRs #574–#582
+## Protected external-extension lifecycle persistence and operability — issue #561 / merged PRs #574–#582
 
 Protected source는 append-only external-extension lifecycle ledger, CAS/idempotent replay, restart/current projection, complete audit path, SQLite-backed Worker Durable Object binding과 exact stream-scoped `read_operability`를 보유한다. Lifecycle `read_operability`는 `{ database_size_bytes }`만 반환하며 foreign-owner truth나 lifecycle payload를 metrics authority로 복제하지 않는다.
 
