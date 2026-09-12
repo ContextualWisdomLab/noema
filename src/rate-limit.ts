@@ -310,6 +310,8 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
       "Noema rate-limit request body could not be read",
     ));
     return { ok: false, status: 400, error: "malformed_json" };
+  } finally {
+    reader.releaseLock();
   }
 
   const bytes = requestStorage.subarray(0, totalBytes);
@@ -380,6 +382,8 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     throw new DistributedRateLimitUnavailable(
       "rate-limit Durable Object decision body could not be read",
     );
+  } finally {
+    reader.releaseLock();
   }
 
   const bytes = decisionStorage.subarray(0, totalBytes);

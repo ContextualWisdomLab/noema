@@ -128,11 +128,13 @@ describe("distributed rate-limit internal request bounds", () => {
     const limiter = new NoemaRateLimiter(stateWithoutStorageAuthority(transaction));
     const request = checkRequest('{"limit":60}');
     const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
     vi.spyOn(request.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic limiter request read failure");
       }),
       cancel,
+      releaseLock,
     } as unknown as ReadableStreamDefaultReader<Uint8Array>);
 
     const response = await limiter.fetch(request);
@@ -143,6 +145,7 @@ describe("distributed rate-limit internal request bounds", () => {
       error: "malformed_json",
     });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
     expect(transaction).not.toHaveBeenCalled();
   });
 
