@@ -125,16 +125,23 @@ function currentWorkflowEvidence(
  * Reads one private Workflow / Task Execution response into fixed retained storage before JSON admission.
  * The byte ceiling is deliberately much larger than the bounded workflow snapshot schema but prevents a
  * corrupt internal response from making Agent Runtime retain an unbounded body before fail-closed validation.
- * Oversize streams request cancellation before any over-limit chunk is copied, but cancellation completion is
- * cleanup rather than decision authority: it cannot delay or replace the stable fail-closed diagnostic. The
- * reader lock is released on the terminal path independently of cancellation success.
+ * Reader acquisition is itself part of the untrusted response boundary: a locked body is normalized to the
+ * same stable invalid-response diagnostic instead of leaking a raw stream exception. Oversize streams request
+ * cancellation before any over-limit chunk is copied, but cancellation completion is cleanup rather than decision authority;
+ * it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released on the terminal path
+ * independently of cancellation success.
  */
 async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
   if (response.body === null) {
     return rejectCurrentLifecycle("invalid_workflow_state_response");
   }
 
-  const reader = response.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  }
   const storage = new Uint8Array(MAX_CURRENT_WORKFLOW_RESPONSE_BYTES);
   let totalBytes = 0;
   try {
