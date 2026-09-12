@@ -448,7 +448,7 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
       const result = await reader.read();
       if (result.done) break;
       if (result.value.byteLength > maxExternalJsonResponseBytes - totalBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(() => undefined);
         throw new SyntaxError("JSON response exceeded byte limit");
       }
       bytes.set(result.value, totalBytes);
