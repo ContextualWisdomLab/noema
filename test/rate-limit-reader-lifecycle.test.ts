@@ -23,6 +23,7 @@ function durableObjectState(): DurableObjectState {
         async setAlarm(): Promise<void> {},
       });
     },
+    async setAlarm(): Promise<void> {},
     async deleteAll(): Promise<void> {
       records.clear();
     },
