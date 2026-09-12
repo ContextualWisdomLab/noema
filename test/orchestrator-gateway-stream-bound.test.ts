@@ -96,6 +96,34 @@ describe("contextual-orchestrator streamed health response", () => {
     expect(released).toBe(true);
   });
 
+  it("keeps the oversize failure and releases the reader when cancellation throws synchronously", async () => {
+    let released = false;
+    const reader = {
+      async read() {
+        return { done: false, value: new Uint8Array(65_537) };
+      },
+      cancel() {
+        throw new Error("cleanup transport failed");
+      },
+      releaseLock() {
+        released = true;
+      },
+    };
+    const response = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: { getReader: () => reader },
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(/health response is too large/);
+    expect(released).toBe(true);
+  });
+
   it("does not let stalled response-body cancellation delay content-length rejection", async () => {
     let cancellationStarted = false;
     const response = {
@@ -123,6 +151,25 @@ describe("contextual-orchestrator streamed health response", () => {
     expect(outcome).toBeInstanceOf(Error);
     expect((outcome as Error).message).toMatch(/health response is too large/);
     expect(cancellationStarted).toBe(true);
+  });
+
+  it("keeps the content-length oversize failure when response cancellation throws synchronously", async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      headers: { get: () => "65537" },
+      body: {
+        cancel() {
+          throw new Error("cleanup transport failed");
+        },
+      },
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(/health response is too large/);
   });
 
   it("does not retain fragmented chunks for a second concatenation allocation", async () => {
