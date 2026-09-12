@@ -161,4 +161,26 @@ describe("protected retention-hardening documentation authority", () => {
     );
     expect(baseline).not.toContain("#663 proves production performance");
   });
+
+  it("records protected #668 external JSON cancellation liveness without promoting foreign or production authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #668 exact `efaaebae161a71b1274f5aa0f26e27376a3edb3a`",
+    );
+    expect(baseline).toContain("65,536-byte");
+    expect(baseline).toContain("10-second absolute deadline");
+    expect(baseline).toContain("cancellation completion is best-effort cleanup");
+    expect(baseline).toContain("reader lock");
+    expect(changelog).toContain("PR #668");
+    expect(changelog).toContain("65,536-byte");
+    expect(changelog).toContain("best-effort cleanup");
+    expect(baseline).toContain(
+      "#668 does not transfer provider/model routing, destination/outbound authority, credential authority, quarantine/security authority, or foreign domain truth to Noema.",
+    );
+    expect(baseline).not.toMatch(
+      /#668\s+(?:proves?|provides?|establishes?|demonstrates?)\b[\s\S]{0,120}\b(?:immutable release|production deployment|production p95|deployed p95|deployed heap|controlled production recovery|production outcome)\b/i,
+    );
+  });
 });
