@@ -7,7 +7,9 @@ set -euo pipefail
 readonly TRUSTED_REPOSITORY="gcr.io/distroless/java-base-debian13"
 readonly FIXED_GLIBC_VERSION="2.41-12+deb13u4"
 readonly VULNERABLE_GLIBC_VERSION="2.41-12+deb13u3"
-readonly DEBIAN_PROPOSED_SUITE="trixie-proposed-updates"
+readonly DEBIAN_ARCHIVE_BASE="https://deb.debian.org/debian"
+readonly DEBIAN_GLIBC_POOL="pool/main/g/glibc"
+readonly DEBIAN_BUILD_MANIFEST="glibc_${FIXED_GLIBC_VERSION}_amd64-buildd.changes"
 
 work_dir="$(mktemp -d)"
 cleanup() {
@@ -44,6 +46,52 @@ read_status_version() {
   awk '$1 == "Version:" { print $2; exit }' "$destination"
 }
 
+download_reviewed_debian_package() {
+  local package="$1"
+  local filename="${package}_${FIXED_GLIBC_VERSION}_amd64.deb"
+  local manifest="$work_dir/$DEBIAN_BUILD_MANIFEST"
+  local destination="$work_dir/$filename"
+  local expected_sha256
+
+  if [ ! -f "$manifest" ]; then
+    curl --fail --location --silent --show-error \
+      --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+      --output "$manifest" \
+      "$DEBIAN_ARCHIVE_BASE/dists/proposed-updates/$DEBIAN_BUILD_MANIFEST"
+    grep -Fxq "Version: $FIXED_GLIBC_VERSION" "$manifest"
+    grep -Eq '^Architecture: .*amd64' "$manifest"
+  fi
+
+  expected_sha256="$(
+    awk -v filename="$filename" '
+      /^Checksums-Sha256:$/ { in_sha256 = 1; next }
+      in_sha256 && /^[^ ]/ { in_sha256 = 0 }
+      in_sha256 && $3 == filename { print $1; exit }
+    ' "$manifest"
+  )"
+  case "$expected_sha256" in
+    ????????????????????????????????????????????????????????????????) ;;
+    *)
+      printf '::error::Debian build manifest omitted SHA-256 for %s.\n' "$filename"
+      exit 1
+      ;;
+  esac
+  if ! [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf '::error::Debian build manifest exposed an invalid SHA-256 for %s.\n' "$filename"
+    exit 1
+  fi
+
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+    --output "$destination" \
+    "$DEBIAN_ARCHIVE_BASE/$DEBIAN_GLIBC_POOL/$filename"
+  printf '%s  %s\n' "$expected_sha256" "$destination" | sha256sum --check --status
+
+  test "$(dpkg-deb -f "$destination" Version)" = "$FIXED_GLIBC_VERSION"
+  test "$(dpkg-deb -f "$destination" Architecture)" = "amd64"
+  printf '%s\n' "$destination"
+}
+
 libc6_version="$(read_status_version "$resolved" libc6)"
 libc_bin_version="$(read_status_version "$resolved" libc-bin)"
 
@@ -66,35 +114,8 @@ else
     exit 1
   fi
 
-  sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends debian-archive-keyring >/dev/null
-  proposed_list="$work_dir/debian-proposed.list"
-  printf 'deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian %s main\n' \
-    "$DEBIAN_PROPOSED_SUITE" >"$proposed_list"
-  apt_options=(
-    -o "Dir::Etc::sourcelist=$proposed_list"
-    -o "Dir::Etc::sourceparts=-"
-    -o "APT::Get::List-Cleanup=0"
-  )
-  sudo apt-get "${apt_options[@]}" update -qq
-  (
-    cd "$work_dir"
-    apt-get "${apt_options[@]}" download \
-      "libc6=$FIXED_GLIBC_VERSION" \
-      "libc-bin=$FIXED_GLIBC_VERSION" >/dev/null
-  )
-
-  libc6_deb="$(find "$work_dir" -maxdepth 1 -type f -name "libc6_${FIXED_GLIBC_VERSION}_amd64.deb" -print -quit)"
-  libc_bin_deb="$(find "$work_dir" -maxdepth 1 -type f -name "libc-bin_${FIXED_GLIBC_VERSION}_amd64.deb" -print -quit)"
-  if [ -z "$libc6_deb" ] || [ -z "$libc_bin_deb" ]; then
-    echo '::error::Authenticated Debian glibc packages were not downloaded at the reviewed version.'
-    exit 1
-  fi
-
-  for package_file in "$libc6_deb" "$libc_bin_deb"; do
-    test "$(dpkg-deb -f "$package_file" Version)" = "$FIXED_GLIBC_VERSION"
-    test "$(dpkg-deb -f "$package_file" Architecture)" = "amd64"
-  done
+  libc6_deb="$(download_reviewed_debian_package libc6)"
+  libc_bin_deb="$(download_reviewed_debian_package libc-bin)"
 
   overlay="$work_dir/overlay"
   mkdir -p "$overlay/var/lib/dpkg/status.d"
@@ -130,7 +151,7 @@ DOCKERFILE
   patched_libc_bin="$(read_status_version "$final_image" libc-bin)"
   test "$patched_libc6" = "$FIXED_GLIBC_VERSION"
   test "$patched_libc_bin" = "$FIXED_GLIBC_VERSION"
-  printf 'Derived local CodeGraph sandbox %s with Debian-authenticated glibc %s.\n' \
+  printf 'Derived local CodeGraph sandbox %s with Debian-manifest-verified glibc %s.\n' \
     "$final_image" "$FIXED_GLIBC_VERSION"
 fi
 
