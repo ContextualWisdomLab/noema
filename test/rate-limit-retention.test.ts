@@ -31,7 +31,7 @@ describe("distributed rate-limit retained-heap bounds", () => {
     expect(requestReader).toContain("reader.releaseLock()");
     expect(decisionReader).toContain("finally");
     expect(decisionReader).toContain("reader.releaseLock()");
-    expect(source).toContain("after `getReader()` succeeds");
+    expect(source).toMatch(/after `getReader\(\)` succeeds/i);
     expect(source).toContain("before reader acquisition and therefore hold no reader lock");
   });
 });
