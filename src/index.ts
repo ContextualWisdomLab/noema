@@ -121,6 +121,15 @@ class ApiError extends Error {
   }
 }
 
+/** Distinguishes response-stream acquisition failure from malformed JSON content. */
+class ExternalJsonResponseReadError extends Error {
+  constructor() {
+    super("External JSON response body could not be read");
+    this.name = "ExternalJsonResponseReadError";
+    Object.setPrototypeOf(this, ExternalJsonResponseReadError.prototype);
+  }
+}
+
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
@@ -433,7 +442,12 @@ function hasDuplicateJsonObjectKeys(text: string): boolean {
 
 async function readBoundedExternalJsonResponse(response: Response): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.body) return new Uint8Array();
-  const reader = response.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    throw new ExternalJsonResponseReadError();
+  }
   const bytes = new Uint8Array(maxExternalJsonResponseBytes);
   let totalBytes = 0;
   let timeoutHandle!: ReturnType<typeof setTimeout>;
@@ -504,7 +518,10 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   let discoveryDocument: { jwks_uri?: unknown };
   try {
     discoveryDocument = (await parseExactUtf8JsonResponse(discovery)) as { jwks_uri?: unknown };
-  } catch {
+  } catch (error) {
+    if (error instanceof ExternalJsonResponseReadError) {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery response body could not be read");
+    }
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
   }
   const jwksUri = discoveryDocument.jwks_uri;
@@ -531,7 +548,10 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   let value: JsonWebKeySet;
   try {
     value = (await parseExactUtf8JsonResponse(keys)) as JsonWebKeySet;
-  } catch {
+  } catch (error) {
+    if (error instanceof ExternalJsonResponseReadError) {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS response body could not be read");
+    }
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
   }
   if (!Array.isArray(value?.keys)) {
@@ -795,7 +815,10 @@ async function githubJson(
   let value: unknown;
   try {
     value = await parseExactUtf8JsonResponse(response);
-  } catch {
+  } catch (error) {
+    if (error instanceof ExternalJsonResponseReadError) {
+      throw new ApiError("ERR_GITHUB_API", 502, "GitHub API response body could not be read");
+    }
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
