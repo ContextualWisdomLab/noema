@@ -37,4 +37,22 @@ describe("protected retention-hardening documentation authority", () => {
     expect(baseline).toContain("deployed heap/p95 evidence remains separate");
     expect(baseline).not.toContain("#650 proves production performance");
   });
+
+  it("records protected #655 replay-reader lifecycle hardening without promoting deployment evidence", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #655 exact `dc851fc9ea67e38799e8c30cf4916a31c9e9661e`",
+    );
+    expect(baseline).toContain("reader lock");
+    expect(baseline).toContain("4,096-byte");
+    expect(baseline).toContain("512-byte");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #655");
+    expect(changelog).toContain("reader lock");
+    expect(changelog).toContain("4,096");
+    expect(changelog).toContain("512");
+    expect(baseline).not.toContain("#655 proves production performance");
+  });
 });
