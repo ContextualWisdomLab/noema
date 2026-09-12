@@ -111,6 +111,21 @@ describe("OIDC replay guard response bounds", () => {
     postDecisionReader.releaseLock();
   });
 
+  it("normalizes a locked replay decision body as an unavailable decision", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const response = acceptedDecision();
+    const heldReader = response.body!.getReader();
+
+    try {
+      await expectUnavailable(
+        () => response,
+        "OIDC replay guard decision body could not be read",
+      );
+    } finally {
+      heldReader.releaseLock();
+    }
+  });
+
   it("rejects replay decisions with unreviewed top-level members", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     await expectUnavailable(

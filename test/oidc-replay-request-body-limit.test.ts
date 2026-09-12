@@ -86,6 +86,32 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects a locked internal claim body as malformed before storage authority", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for a locked replay claim body");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: claimBody(),
+    });
+    const heldReader = request.body!.getReader();
+
+    try {
+      const response = await guard.fetch(request);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        ok: false,
+        error: "malformed_json",
+      });
+    } finally {
+      heldReader.releaseLock();
+    }
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid UTF-8 claim bytes before storage authority", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const transaction = vi.fn(async () => {

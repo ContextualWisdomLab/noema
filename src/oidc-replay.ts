@@ -239,7 +239,12 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     throw new OidcReplayUnavailable("OIDC replay guard returned an empty decision body");
   }
 
-  const reader = response.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
+  }
   const decisionStorage = new Uint8Array(MAX_REPLAY_GUARD_DECISION_BYTES);
   let totalBytes = 0;
   try {
@@ -307,7 +312,12 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
-  const reader = request.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = request.body.getReader();
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
   const requestStorage = new Uint8Array(MAX_REPLAY_GUARD_REQUEST_BYTES);
   let totalBytes = 0;
   try {
