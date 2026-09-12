@@ -60,4 +60,29 @@ describe("protected #681/#678 documentation authority", () => {
     );
     expect(baseline).not.toContain("#683 transfers Cloudflare/provider authority to Noema");
   });
+
+  it("records locked OIDC replay reader acquisition without importing identity or provider authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/oidc-replay.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #685 exact `93dcf4c50018ce051e3ca917a4e1d63cbca3102d`",
+    );
+    expect(baseline).toContain("OIDC replay guard");
+    expect(baseline).toContain("4,096-byte decision response");
+    expect(baseline).toContain("512-byte internal claim request");
+    expect(baseline).toContain("locked");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #685");
+    expect(changelog).toContain("OIDC replay guard");
+    expect(changelog).toContain("decision body could not be read");
+    expect(source).toMatch(
+      /try \{\s*reader = response\.body\.getReader\(\);\s*\} catch \{\s*throw new OidcReplayUnavailable\("OIDC replay guard decision body could not be read"\);/,
+    );
+    expect(source).toMatch(
+      /try \{\s*reader = request\.body\.getReader\(\);\s*\} catch \{\s*return \{ ok: false, status: 400, error: "malformed_json" \};/,
+    );
+    expect(baseline).not.toContain("#685 transfers OIDC/GitHub identity or provider authority to Noema");
+  });
 });
