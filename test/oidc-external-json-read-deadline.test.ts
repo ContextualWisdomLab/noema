@@ -156,6 +156,45 @@ describe("GitHub OIDC external JSON response deadline", () => {
     postFailureReader.releaseLock();
   });
 
+  it("rejects an oversized discovery response without awaiting stalled cancellation cleanup", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(65_537));
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    mockDiscoveryResponse(body);
+
+    const exchange = startExchange(worker);
+    const outcome = Promise.race([
+      exchange.then((response) => ({ kind: "response" as const, response })),
+      new Promise<{ kind: "failsafe" }>((resolve) => {
+        setTimeout(() => resolve({ kind: "failsafe" }), 100);
+      }),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(100);
+    const result = await outcome;
+
+    expect(result.kind).toBe("response");
+    if (result.kind !== "response") return;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(result.response.status).toBe(502);
+    await expect(result.response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC discovery document was not valid JSON",
+    });
+
+    const postFailureReader = body.getReader();
+    postFailureReader.releaseLock();
+  });
+
   it("keeps one absolute deadline while a peer trickles bytes", async () => {
     vi.useFakeTimers();
     vi.resetModules();
