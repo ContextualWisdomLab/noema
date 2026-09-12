@@ -16,7 +16,7 @@ describe("distributed rate-limit retained-heap bounds", () => {
     expect(source).toContain("const bytes = decisionStorage.subarray(0, totalBytes)");
   });
 
-  it("releases both request and decision stream reader locks on every terminal path", () => {
+  it("releases both request and decision stream reader locks on every terminal path after reader acquisition", () => {
     const source = readFileSync("src/rate-limit.ts", "utf8");
     const requestReader = source.slice(
       source.indexOf("async function readBoundedRateLimitRequest"),
@@ -31,5 +31,7 @@ describe("distributed rate-limit retained-heap bounds", () => {
     expect(requestReader).toContain("reader.releaseLock()");
     expect(decisionReader).toContain("finally");
     expect(decisionReader).toContain("reader.releaseLock()");
+    expect(source).toContain("after `getReader()` succeeds");
+    expect(source).toContain("before reader acquisition and therefore hold no reader lock");
   });
 });
