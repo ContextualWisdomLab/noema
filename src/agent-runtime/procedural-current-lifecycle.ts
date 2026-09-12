@@ -127,9 +127,9 @@ function currentWorkflowEvidence(
  * corrupt internal response from making Agent Runtime retain an unbounded body before fail-closed validation.
  * Reader acquisition is itself part of the untrusted response boundary: a locked body is normalized to the
  * same stable invalid-response diagnostic instead of leaking a raw stream exception. Oversize streams request
- * cancellation before any over-limit chunk is copied, but cancellation completion is cleanup rather than
- * decision authority: it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released
- * on the terminal path independently of cancellation success.
+ * cancellation before any over-limit chunk is copied, but cancellation completion is cleanup rather than decision authority;
+ * it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released on the terminal path
+ * independently of cancellation success.
  */
 async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
   if (response.body === null) {
