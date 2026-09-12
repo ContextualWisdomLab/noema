@@ -15,4 +15,21 @@ describe("distributed rate-limit retained-heap bounds", () => {
     expect(source).toContain("decisionStorage.set(value, totalBytes)");
     expect(source).toContain("const bytes = decisionStorage.subarray(0, totalBytes)");
   });
+
+  it("releases both request and decision stream reader locks on every terminal path", () => {
+    const source = readFileSync("src/rate-limit.ts", "utf8");
+    const requestReader = source.slice(
+      source.indexOf("async function readBoundedRateLimitRequest"),
+      source.indexOf("async function readBoundedRateLimitDecision"),
+    );
+    const decisionReader = source.slice(
+      source.indexOf("async function readBoundedRateLimitDecision"),
+      source.indexOf("export async function checkDistributedRateLimit"),
+    );
+
+    expect(requestReader).toContain("finally");
+    expect(requestReader).toContain("reader.releaseLock()");
+    expect(decisionReader).toContain("finally");
+    expect(decisionReader).toContain("reader.releaseLock()");
+  });
 });
