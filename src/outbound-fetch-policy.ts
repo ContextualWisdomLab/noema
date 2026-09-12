@@ -272,6 +272,12 @@ async function readOutboundChunk(
   }
 }
 
+/**
+ * Consumes an already-authorized bounded outbound response into a fixed retained-byte buffer.
+ * After reader acquisition every terminal read path returns the reader lock; pre-reader length and
+ * body validation keep their existing fail-closed behavior. This is response-resource lifecycle
+ * hygiene only and does not create destination-policy or outbound-authorization authority.
+ */
 async function boundedOutboundResponse(
   response: Response,
   signal: AbortSignal,
