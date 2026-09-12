@@ -10,9 +10,11 @@ readonly VULNERABLE_GLIBC_VERSION="2.41-12+deb13u3"
 readonly DEBIAN_SNAPSHOT_BASE="https://snapshot.debian.org/archive/debian/20260711T202405Z"
 readonly DEBIAN_SNAPSHOT_SUITE="trixie-proposed-updates"
 readonly DEBIAN_PACKAGES_INDEX="main/binary-amd64/Packages.xz"
-readonly DEBIAN_ARCHIVE_KEY_URL="https://ftp-master.debian.org/keys/archive-key-13.asc"
-readonly DEBIAN_ARCHIVE_KEY_SHA256="6f1d277429dd7ffedcc6f8688a7ad9a458859b1139ffa026d1eeaadcbffb0da7"
-readonly DEBIAN_ARCHIVE_KEY_FINGERPRINT="04B54C3CDCA79751B16BC6B5225629DF75B188BD"
+readonly DEBIAN_ARCHIVE_KEY_12_URL="https://ftp-master.debian.org/keys/archive-key-12.asc"
+readonly DEBIAN_ARCHIVE_KEY_12_FINGERPRINT="B8B80B5B623EAB6AD8775C45B7C5D7D6350947F8"
+readonly DEBIAN_ARCHIVE_KEY_13_URL="https://ftp-master.debian.org/keys/archive-key-13.asc"
+readonly DEBIAN_ARCHIVE_KEY_13_SHA256="6f1d277429dd7ffedcc6f8688a7ad9a458859b1139ffa026d1eeaadcbffb0da7"
+readonly DEBIAN_ARCHIVE_KEY_13_FINGERPRINT="04B54C3CDCA79751B16BC6B5225629DF75B188BD"
 
 work_dir="$(mktemp -d)"
 cleanup() {
@@ -49,37 +51,65 @@ read_status_version() {
   awk '$1 == "Version:" { print $2; exit }' "$destination"
 }
 
-ensure_debian_archive_key() {
-  local archive_key="$work_dir/archive-key-13.asc"
-  local archive_keyring="$work_dir/archive-key-13.gpg"
+verify_debian_archive_key() {
+  local release="$1"
+  local url="$2"
+  local expected_fingerprint="$3"
+  local expected_sha256="${4:-}"
+  local archive_key="$work_dir/archive-key-${release}.asc"
+  local archive_keyring="$work_dir/archive-key-${release}.gpg"
   local fingerprint
-
-  if [ -f "$archive_keyring" ]; then
-    printf '%s\n' "$archive_keyring"
-    return
-  fi
 
   curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
     --output "$archive_key" \
-    "$DEBIAN_ARCHIVE_KEY_URL"
-  if ! printf '%s  %s\n' "$DEBIAN_ARCHIVE_KEY_SHA256" "$archive_key" | sha256sum --check --status; then
-    printf '::error::Debian 13 archive key digest mismatch.\n' >&2
+    "$url"
+  if [ -n "$expected_sha256" ] && \
+     ! printf '%s  %s\n' "$expected_sha256" "$archive_key" | sha256sum --check --status; then
+    printf '::error::Debian %s archive key digest mismatch.\n' "$release" >&2
     exit 1
   fi
   fingerprint="$(
     gpg --batch --show-keys --with-colons --fingerprint "$archive_key" 2>/dev/null \
       | awk -F: '$1 == "fpr" { print $10; exit }'
   )"
-  if [ "$fingerprint" != "$DEBIAN_ARCHIVE_KEY_FINGERPRINT" ]; then
-    printf '::error::Debian 13 archive key fingerprint mismatch: %s.\n' \
-      "${fingerprint:-missing}" >&2
+  if [ "$fingerprint" != "$expected_fingerprint" ]; then
+    printf '::error::Debian %s archive key fingerprint mismatch: %s.\n' \
+      "$release" "${fingerprint:-missing}" >&2
     exit 1
   fi
   gpg --batch --yes --dearmor --output "$archive_keyring" "$archive_key"
-  printf 'Verified Debian 13 archive key %s (%s).\n' \
-    "$DEBIAN_ARCHIVE_KEY_FINGERPRINT" "$DEBIAN_ARCHIVE_KEY_SHA256" >&2
+  if [ -n "$expected_sha256" ]; then
+    printf 'Verified Debian %s archive key %s (%s).\n' \
+      "$release" "$expected_fingerprint" "$expected_sha256" >&2
+  else
+    printf 'Verified Debian %s archive key %s.\n' \
+      "$release" "$expected_fingerprint" >&2
+  fi
   printf '%s\n' "$archive_keyring"
+}
+
+ensure_debian_archive_keyring() {
+  local combined_keyring="$work_dir/debian-archive-transition.gpg"
+  local keyring_12
+  local keyring_13
+
+  if [ -f "$combined_keyring" ]; then
+    printf '%s\n' "$combined_keyring"
+    return
+  fi
+
+  keyring_12="$(verify_debian_archive_key \
+    12 \
+    "$DEBIAN_ARCHIVE_KEY_12_URL" \
+    "$DEBIAN_ARCHIVE_KEY_12_FINGERPRINT")"
+  keyring_13="$(verify_debian_archive_key \
+    13 \
+    "$DEBIAN_ARCHIVE_KEY_13_URL" \
+    "$DEBIAN_ARCHIVE_KEY_13_FINGERPRINT" \
+    "$DEBIAN_ARCHIVE_KEY_13_SHA256")"
+  cat "$keyring_12" "$keyring_13" >"$combined_keyring"
+  printf '%s\n' "$combined_keyring"
 }
 
 ensure_authenticated_snapshot_metadata() {
@@ -92,7 +122,7 @@ ensure_authenticated_snapshot_metadata() {
   if [ -f "$packages" ]; then
     return
   fi
-  archive_keyring="$(ensure_debian_archive_key)"
+  archive_keyring="$(ensure_debian_archive_keyring)"
 
   curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
