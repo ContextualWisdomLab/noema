@@ -85,4 +85,28 @@ describe("protected #681/#678 documentation authority", () => {
     );
     expect(baseline).not.toContain("#685 transfers OIDC/GitHub identity or provider authority to Noema");
   });
+
+  it("records locked distributed rate-limit reader acquisition without importing foreign authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/rate-limit.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #687 exact `98ec07552f4081bd4ff6b25f1f3ed691c0f3f2b9`",
+    );
+    expect(baseline).toContain("256-byte request");
+    expect(baseline).toContain("4,096-byte decision");
+    expect(baseline).toContain("locked");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #687");
+    expect(changelog).toContain("rate-limit");
+    expect(changelog).toContain("decision body could not be read");
+    expect(source).toMatch(
+      /try \{\s*reader = request\.body\.getReader\(\);\s*\} catch \{\s*return \{ ok: false, status: 400, error: "malformed_json" \};/,
+    );
+    expect(source).toMatch(
+      /try \{\s*reader = response\.body\.getReader\(\);\s*\} catch \{\s*throw new DistributedRateLimitUnavailable\(\s*"rate-limit Durable Object decision body could not be read"/,
+    );
+    expect(baseline).not.toContain("#687 transfers provider routing, outbound, credential, or quarantine/security authority to Noema");
+  });
 });
