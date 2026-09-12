@@ -137,4 +137,28 @@ describe("protected retention-hardening documentation authority", () => {
     );
     expect(baseline).not.toContain("#661 proves production performance");
   });
+
+  it("records protected #663 current-state cancellation liveness without importing lifecycle or publication authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/agent-runtime/procedural-current-lifecycle.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #663 exact `29dfa79692ec55cdc23ed892081425630ac916b5`",
+    );
+    expect(baseline).toContain("cancellation completion is best-effort cleanup");
+    expect(baseline).toContain("1 MiB");
+    expect(baseline).toContain("reader lock");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #663");
+    expect(changelog).toContain("cancellation completion");
+    expect(changelog).toContain("best-effort cleanup");
+    expect(source).toMatch(
+      /\/\*\*[\s\S]*?cancellation completion is[\s\S]*?cleanup rather than decision authority[\s\S]*?reader lock is released[\s\S]*?\*\/\nasync function boundedCurrentWorkflowResponse/,
+    );
+    expect(baseline).toContain(
+      "#663 does not transfer Workflow / Task lifecycle truth, procedural graph publication/activation, provider routing, destination/outbound authority, credential authority, quarantine/security verdicts, or foreign domain truth into Agent Runtime.",
+    );
+    expect(baseline).not.toContain("#663 proves production performance");
+  });
 });
