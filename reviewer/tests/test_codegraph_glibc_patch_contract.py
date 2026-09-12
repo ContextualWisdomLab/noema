@@ -15,7 +15,7 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
     """Both reviewer paths must share the reviewed glibc preparation contract."""
     helper = PREPARE_SCRIPT.read_text(encoding="utf-8")
     assert 'readonly FIXED_GLIBC_VERSION="2.41-12+deb13u4"' in helper
-    assert 'readonly DEBIAN_ARCHIVE_BASE="https://deb.debian.org/debian"' in helper
+    assert 'readonly DEBIAN_ARCHIVE_BASE="https://ftp.debian.org/debian"' in helper
     assert 'readonly DEBIAN_GLIBC_POOL="pool/main/g/glibc"' in helper
     assert 'amd64-buildd.changes' in helper
     assert 'Checksums-Sha256:' in helper
