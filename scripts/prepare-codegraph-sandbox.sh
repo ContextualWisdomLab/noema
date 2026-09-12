@@ -10,7 +10,9 @@ readonly VULNERABLE_GLIBC_VERSION="2.41-12+deb13u3"
 readonly DEBIAN_SNAPSHOT_BASE="https://snapshot.debian.org/archive/debian/20260711T202405Z"
 readonly DEBIAN_SNAPSHOT_SUITE="trixie-proposed-updates"
 readonly DEBIAN_PACKAGES_INDEX="main/binary-amd64/Packages.xz"
-readonly DEBIAN_ARCHIVE_KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"
+readonly DEBIAN_ARCHIVE_KEY_URL="https://ftp-master.debian.org/keys/archive-key-13.asc"
+readonly DEBIAN_ARCHIVE_KEY_SHA256="6f1d277429dd7ffedcc6f8688a7ad9a458859b1139ffa026d1eeaadcbffb0da7"
+readonly DEBIAN_ARCHIVE_KEY_FINGERPRINT="04B54C3CDCA79751B16BC6B5225629DF75B188BD"
 
 work_dir="$(mktemp -d)"
 cleanup() {
@@ -47,25 +49,56 @@ read_status_version() {
   awk '$1 == "Version:" { print $2; exit }' "$destination"
 }
 
+ensure_debian_archive_key() {
+  local archive_key="$work_dir/archive-key-13.asc"
+  local archive_keyring="$work_dir/archive-key-13.gpg"
+  local fingerprint
+
+  if [ -f "$archive_keyring" ]; then
+    printf '%s\n' "$archive_keyring"
+    return
+  fi
+
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+    --output "$archive_key" \
+    "$DEBIAN_ARCHIVE_KEY_URL"
+  if ! printf '%s  %s\n' "$DEBIAN_ARCHIVE_KEY_SHA256" "$archive_key" | sha256sum --check --status; then
+    printf '::error::Debian 13 archive key digest mismatch.\n' >&2
+    exit 1
+  fi
+  fingerprint="$(
+    gpg --batch --show-keys --with-colons --fingerprint "$archive_key" 2>/dev/null \
+      | awk -F: '$1 == "fpr" { print $10; exit }'
+  )"
+  if [ "$fingerprint" != "$DEBIAN_ARCHIVE_KEY_FINGERPRINT" ]; then
+    printf '::error::Debian 13 archive key fingerprint mismatch: %s.\n' \
+      "${fingerprint:-missing}" >&2
+    exit 1
+  fi
+  gpg --batch --yes --dearmor --output "$archive_keyring" "$archive_key"
+  printf 'Verified Debian 13 archive key %s (%s).\n' \
+    "$DEBIAN_ARCHIVE_KEY_FINGERPRINT" "$DEBIAN_ARCHIVE_KEY_SHA256" >&2
+  printf '%s\n' "$archive_keyring"
+}
+
 ensure_authenticated_snapshot_metadata() {
   local inrelease="$work_dir/InRelease"
   local packages_xz="$work_dir/Packages.xz"
   local packages="$work_dir/Packages"
+  local archive_keyring
   local expected_packages_sha256
 
   if [ -f "$packages" ]; then
     return
   fi
-  if [ ! -r "$DEBIAN_ARCHIVE_KEYRING" ]; then
-    printf '::error::Debian archive keyring is unavailable at %s.\n' "$DEBIAN_ARCHIVE_KEYRING" >&2
-    exit 1
-  fi
+  archive_keyring="$(ensure_debian_archive_key)"
 
   curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
     --output "$inrelease" \
     "$DEBIAN_SNAPSHOT_BASE/dists/$DEBIAN_SNAPSHOT_SUITE/InRelease"
-  if ! gpgv --keyring "$DEBIAN_ARCHIVE_KEYRING" "$inrelease" >/dev/null 2>&1; then
+  if ! gpgv --keyring "$archive_keyring" "$inrelease" >/dev/null 2>&1; then
     printf '::error::Debian snapshot InRelease signature verification failed.\n' >&2
     exit 1
   fi
