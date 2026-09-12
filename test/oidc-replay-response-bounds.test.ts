@@ -94,6 +94,23 @@ describe("OIDC replay guard response bounds", () => {
     });
   });
 
+  it("releases the replay decision reader lock after a successful decision", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const response = acceptedDecision();
+
+    await expect(claimOidcTokenUsage(
+      "reader-lock-success",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(() => response) },
+    )).resolves.toEqual({
+      accepted: true,
+      expires_at_epoch_seconds: 2_600,
+    });
+
+    const postDecisionReader = response.body!.getReader();
+    postDecisionReader.releaseLock();
+  });
+
   it("rejects replay decisions with unreviewed top-level members", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     await expectUnavailable(
@@ -150,6 +167,7 @@ describe("OIDC replay guard response bounds", () => {
   it("fails closed and cleans up when the replay decision stream cannot be read", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     let cancelCalls = 0;
+    const releaseLock = vi.fn();
     const response = {
       status: 201,
       headers: new Headers({ "content-type": "application/json" }),
@@ -162,6 +180,7 @@ describe("OIDC replay guard response bounds", () => {
             cancel: async () => {
               cancelCalls += 1;
             },
+            releaseLock,
           };
         },
       },
@@ -172,5 +191,6 @@ describe("OIDC replay guard response bounds", () => {
       "OIDC replay guard decision body could not be read",
     );
     expect(cancelCalls).toBe(1);
+    expect(releaseLock).toHaveBeenCalledOnce();
   });
 });

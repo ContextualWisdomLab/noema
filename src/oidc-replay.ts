@@ -263,6 +263,8 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
       "Noema replay decision body could not be read",
     ));
     throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
+  } finally {
+    reader.releaseLock();
   }
 
   const bytes = decisionStorage.subarray(0, totalBytes);
@@ -326,6 +328,8 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
       "Noema replay claim body could not be read",
     ));
     return { ok: false, status: 400, error: "malformed_json" };
+  } finally {
+    reader.releaseLock();
   }
 
   const bytes = requestStorage.subarray(0, totalBytes);

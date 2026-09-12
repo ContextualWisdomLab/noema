@@ -108,6 +108,30 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("releases the claim request reader lock after malformed JSON rejection", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for malformed JSON");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "malformed_json",
+    });
+    const postReadReader = request.body!.getReader();
+    postReadReader.releaseLock();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a streamed internal claim body that exceeds the byte limit before storage authority", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const transaction = vi.fn(async () => {
@@ -142,11 +166,13 @@ describe("OIDC replay guard request-body bounds", () => {
       body: claimBody(),
     });
     const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
     vi.spyOn(request.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic replay claim read failure");
       }),
       cancel,
+      releaseLock,
     } as unknown as ReadableStreamDefaultReader<Uint8Array>);
 
     const response = await guard.fetch(request);
@@ -157,6 +183,7 @@ describe("OIDC replay guard request-body bounds", () => {
       error: "malformed_json",
     });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
     expect(transaction).not.toHaveBeenCalled();
   });
 
