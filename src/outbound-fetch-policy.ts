@@ -322,6 +322,8 @@ async function boundedOutboundResponse(
     ));
     if (signal.aborted) throw error;
     return blockedResponse("response-read");
+  } finally {
+    reader.releaseLock();
   }
 
   const headers = new Headers(response.headers);
