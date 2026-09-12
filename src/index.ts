@@ -437,9 +437,10 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
   const bytes = new Uint8Array(maxExternalJsonResponseBytes);
   let totalBytes = 0;
   let timeoutHandle!: ReturnType<typeof setTimeout>;
+  const ignoreCancellationFailure = () => undefined;
   const deadline = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
-      void reader.cancel().catch(() => undefined);
+      void reader.cancel().catch(ignoreCancellationFailure);
       reject(new SyntaxError("JSON response read timed out"));
     }, externalJsonResponseReadDeadlineMs);
   });
@@ -448,7 +449,7 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
       const result = await reader.read();
       if (result.done) break;
       if (result.value.byteLength > maxExternalJsonResponseBytes - totalBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(ignoreCancellationFailure);
         throw new SyntaxError("JSON response exceeded byte limit");
       }
       bytes.set(result.value, totalBytes);
