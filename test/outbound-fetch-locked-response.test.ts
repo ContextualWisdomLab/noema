@@ -22,4 +22,26 @@ describe("outbound response read authority", () => {
       heldReader.releaseLock();
     }
   });
+
+  it("releases the trusted response body reader lock after a successful bounded read", async () => {
+    const payload = new TextEncoder().encode('{"ok":true}');
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(payload);
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => response);
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const result = await wrapped("https://api.github.com/meta");
+
+    expect(result.status).toBe(200);
+    await expect(result.text()).resolves.toBe('{"ok":true}');
+    const postReadReader = response.body!.getReader();
+    postReadReader.releaseLock();
+  });
 });
