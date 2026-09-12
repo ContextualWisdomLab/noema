@@ -340,7 +340,11 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
       /^\d+$/u.test(advertisedLength.trim()) &&
       Number(advertisedLength) > HEALTH_BODY_LIMIT_BYTES
     ) {
-      await response.body?.cancel?.().catch(() => undefined);
+      try {
+        void response.body?.cancel?.().catch(() => undefined);
+      } catch {
+        // Cancellation is cleanup only after the size decision is final.
+      }
       throw new Error("contextual-orchestrator health response is too large");
     }
 
@@ -367,9 +371,9 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
       } finally {
         if (!completed) {
           try {
-            await reader.cancel();
+            void reader.cancel().catch(() => undefined);
           } catch {
-            // Cancellation is cleanup only; the primary bounded-read failure wins.
+            // Cleanup must not replace the primary bounded-read failure.
           }
         }
         reader.releaseLock();
