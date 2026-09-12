@@ -65,7 +65,9 @@ describe("exchange JSON body cleanup liveness", () => {
   it("cleans up a request stream that fails while being read without replacing the unreadable rejection", async () => {
     const request = streamedJsonRequest(new ReadableStream<Uint8Array>());
     const cancel = vi.fn(async () => undefined);
-    const releaseLock = vi.fn();
+    const releaseLock = vi.fn(() => {
+      throw new TypeError("synthetic pending-read lock");
+    });
     vi.spyOn(request.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic exchange request read failure");
