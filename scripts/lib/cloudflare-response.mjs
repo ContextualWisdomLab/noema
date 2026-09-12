@@ -24,7 +24,12 @@ export async function readBoundedCloudflareJsonResponse(
     throw new Error(`${operation} response body is not stream-readable`);
   }
 
-  const reader = body.getReader();
+  let reader;
+  try {
+    reader = body.getReader();
+  } catch {
+    throw new Error(`${operation} response body is not stream-readable`);
+  }
   const bytes = new Uint8Array(maxResponseBytes);
   let totalBytes = 0;
   try {
