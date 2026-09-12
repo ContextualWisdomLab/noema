@@ -12,11 +12,16 @@ CENTRAL_WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "central-review.y
 
 
 def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
-    """Both reviewer paths must share the vendor-fixed glibc preparation contract."""
+    """Both reviewer paths must share the reviewed glibc preparation contract."""
     helper = PREPARE_SCRIPT.read_text(encoding="utf-8")
-    assert "2.41-12+deb13u4" in helper
-    assert "trixie-proposed-updates" in helper
-    assert "debian-archive-keyring" in helper
+    assert 'readonly FIXED_GLIBC_VERSION="2.41-12+deb13u4"' in helper
+    assert 'readonly DEBIAN_ARCHIVE_BASE="https://deb.debian.org/debian"' in helper
+    assert 'readonly DEBIAN_GLIBC_POOL="pool/main/g/glibc"' in helper
+    assert 'amd64-buildd.changes' in helper
+    assert 'Checksums-Sha256:' in helper
+    assert 'sha256sum --check --status' in helper
+    assert "--proto '=https'" in helper
+    assert "dpkg-deb -f" in helper
     assert "cosign verify" in helper
     assert "--certificate-identity=keyless@distroless.iam.gserviceaccount.com" in helper
     assert "--exit-code 1" in helper
