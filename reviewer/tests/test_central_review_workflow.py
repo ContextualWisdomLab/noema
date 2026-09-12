@@ -119,27 +119,33 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
 
 
 def test_untrusted_codegraph_analysis_uses_an_authenticated_quarantine_image() -> None:
-    """Target parsing must use a signed, scanned, immutable no-network image."""
+    """Target parsing must use one authenticated, scanned, immutable no-network substrate."""
     workflow = _workflow()
+    repo_root = Path(__file__).resolve().parents[2]
+    helper = (repo_root / "scripts" / "prepare-codegraph-sandbox.sh").read_text(
+        encoding="utf-8"
+    )
     source_image = "gcr.io/distroless/java-base-debian13:nonroot"
 
     assert f"NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: {source_image}" in workflow
-    resolve_index = workflow.index("Resolve, authenticate, and scan CodeGraph sandbox image")
+    prepare_index = workflow.index("Prepare authenticated and scanned CodeGraph sandbox image")
     collect_index = workflow.index("Collect bounded current-head review manifest")
-    assert resolve_index < collect_index
-    assert 'docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"' in workflow
-    assert "gcr.io/distroless/java-base-debian13@sha256:" in workflow
+    assert prepare_index < collect_index
+    prepare_step = workflow[prepare_index:collect_index]
+    assert "bash scripts/prepare-codegraph-sandbox.sh" in prepare_step
     assert "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" in workflow
     assert "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567" in workflow
-    assert "--certificate-oidc-issuer=https://accounts.google.com" in workflow
-    assert "--certificate-identity=keyless@distroless.iam.gserviceaccount.com" in workflow
-    assert "trivy image" in workflow
-    assert "--severity MEDIUM,HIGH,CRITICAL" in workflow
-    assert 'printf \'NOEMA_CODEGRAPH_SANDBOX_IMAGE=%s\\n\' "$resolved" >>"$GITHUB_ENV"' in workflow
+    assert 'docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"' in helper
+    assert "gcr.io/distroless/java-base-debian13" in helper
+    assert "--certificate-oidc-issuer=https://accounts.google.com" in helper
+    assert "--certificate-identity=keyless@distroless.iam.gserviceaccount.com" in helper
+    assert "trivy image" in helper
+    assert "--severity MEDIUM,HIGH,CRITICAL" in helper
+    assert 'printf \'NOEMA_CODEGRAPH_SANDBOX_IMAGE=%s\\n\' "$final_image" >>"$GITHUB_ENV"' in helper
     assert "from noema_reviewer.sandbox import DockerCodeGraphRunner" in workflow
     assert "codegraph_runner=DockerCodeGraphRunner()" in workflow
     assert "source_root=source_root" in workflow
-    assert "NOEMA_LLM_API_KEY" not in workflow[resolve_index:collect_index]
+    assert "NOEMA_LLM_API_KEY" not in workflow[prepare_index:collect_index]
 
 
 def test_review_manifest_requires_attested_provenance_before_publication() -> None:
