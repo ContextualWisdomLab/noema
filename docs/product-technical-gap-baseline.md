@@ -128,3 +128,9 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 ## Release boundary
 
 Dated release observation for this repair (2026-09-13 KST)는 GitHub Releases 0건이다. GitHub release collection에 immutable Noema release가 실제 존재하기 전 version/tag/package/SBOM/provenance/reproducibility/rollback completion을 주장하지 않는다. Release-ready exact protected head에서만 publication하고 consumer는 released/versioned contract만 bump한다.
+
+## Protected contextual-orchestrator health reader acquisition — merged PR #695
+
+Protected history includes merged PR #695 exact `c9d526093e543167645383e937096fd089b337f8`. Protected #695 closes the contextual-orchestrator health response reader-acquisition gap: if a locked or otherwise non-stream-readable `/healthz` response body makes `response.body.getReader()` throw synchronously, Noema fails closed with `contextual-orchestrator health response body is not stream-readable` instead of leaking a runtime stream exception. The existing 65,536-byte ceiling, optional caller-supplied deadline with no invented default timeout, fixed retained buffer, best-effort cancellation, fatal UTF-8, duplicate-key/JSON admission, and reader-lock lifecycle after successful acquisition remain unchanged.
+
+#695 remains protected source evidence; immutable release and deployed availability/p95/recovery evidence remain separate. #695 does not transfer contextual-orchestrator service, provider/model routing, credential, outbound, quarantine/security, release/deployment, or foreign domain authority to Noema.
