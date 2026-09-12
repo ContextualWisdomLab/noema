@@ -6,6 +6,8 @@ describe("protected Cloudflare response cancellation-liveness documentation auth
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
+    const evidencePromotionPattern =
+      /#665[\s\S]{0,240}\b(?:provides?|proves?|establishes?|constitutes?|supplies?|demonstrates?|qualifies\s+as|serves\s+as)\b[\s\S]{0,120}\b(?:immutable release|controlled production recovery rehearsal|deployed (?:p95|heap)(?: evidence)?|production outcome(?: evidence)?)\b/i;
 
     expect(baseline).toContain(
       "merged PR #665 exact `592ae00f090f642e8cb71ffb132d4a8b7bfe993a`",
@@ -25,6 +27,7 @@ describe("protected Cloudflare response cancellation-liveness documentation auth
     expect(baseline).toContain(
       "#665 does not transfer Cloudflare/provider authority, destination/outbound policy, credential authority, quarantine/security authority, or foreign domain truth to Noema.",
     );
-    expect(baseline).not.toContain("#665 proves production performance");
+    expect(baseline).not.toMatch(evidencePromotionPattern);
+    expect(changelog).not.toMatch(evidencePromotionPattern);
   });
 });
