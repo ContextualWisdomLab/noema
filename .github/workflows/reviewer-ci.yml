@@ -160,27 +160,8 @@ jobs:
           version: v0.74.0
           cache: true
 
-      - name: resolve, authenticate, and scan the distroless sandbox image
-        run: |
-          set -euo pipefail
-          docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"
-          resolved="$(docker image inspect "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE" --format '{{index .RepoDigests 0}}')"
-          case "$resolved" in
-            gcr.io/distroless/java-base-debian13@sha256:????????????????????????????????????????????????????????????????) ;;
-            *) printf '::error::Unexpected CodeGraph sandbox image identity: %s\n' "${resolved:-missing}"; exit 1 ;;
-          esac
-          cosign verify "$resolved" \
-            --certificate-oidc-issuer=https://accounts.google.com \
-            --certificate-identity=keyless@distroless.iam.gserviceaccount.com >/dev/null
-          trivy image \
-            --exit-code 1 \
-            --ignore-unfixed \
-            --severity MEDIUM,HIGH,CRITICAL \
-            --scanners vuln \
-            --no-progress \
-            "$resolved"
-          printf 'NOEMA_CODEGRAPH_SANDBOX_IMAGE=%s\n' "$resolved" >>"$GITHUB_ENV"
-          printf 'Verified and scanned CodeGraph sandbox image %s.\n' "$resolved"
+      - name: prepare authenticated and scanned CodeGraph sandbox image
+        run: bash ../scripts/prepare-codegraph-sandbox.sh
 
       - name: smoke-test the real no-network CodeGraph sandbox
         run: |

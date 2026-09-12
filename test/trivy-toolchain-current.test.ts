@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const REVIEWER_WORKFLOW = ".github/workflows/reviewer-ci.yml";
 const CENTRAL_REVIEW_WORKFLOW = ".github/workflows/central-review.yml";
 const PATCH_VALIDATOR_WORKFLOW = ".github/workflows/patch-validator-image.yml";
+const CODEGRAPH_SANDBOX_PREPARER = "scripts/prepare-codegraph-sandbox.sh";
 const SETUP_TRIVY_PIN =
   "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567";
 
@@ -24,10 +25,12 @@ describe("Trivy toolchain currency", () => {
     },
   );
 
-  it("keeps reviewer-ci fail-closed vulnerability admission", () => {
+  it("keeps reviewer-ci fail-closed vulnerability admission in the shared sandbox preparer", () => {
     const workflow = readFileSync(REVIEWER_WORKFLOW, "utf8");
-    expect(workflow).toContain("--exit-code 1");
-    expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
-    expect(workflow).toContain("--scanners vuln");
+    const preparer = readFileSync(CODEGRAPH_SANDBOX_PREPARER, "utf8");
+    expect(workflow).toContain("bash ../scripts/prepare-codegraph-sandbox.sh");
+    expect(preparer).toContain("--exit-code 1");
+    expect(preparer).toContain("--severity MEDIUM,HIGH,CRITICAL");
+    expect(preparer).toContain("--scanners vuln");
   });
 });
