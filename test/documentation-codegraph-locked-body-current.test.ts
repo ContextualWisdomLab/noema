@@ -98,6 +98,9 @@ describe("protected #681/#678 documentation authority", () => {
     expect(baseline).toContain("4,096-byte decision");
     expect(baseline).toContain("locked");
     expect(baseline).toContain("immutable release");
+    expect(baseline).toContain(
+      "#687 retains provider/model routing, destination/outbound policy, credential, quarantine/security, release/deployment, and foreign-domain authority with their existing owners",
+    );
     expect(changelog).toContain("PR #687");
     expect(changelog).toContain("rate-limit");
     expect(changelog).toContain("decision body could not be read");
@@ -107,6 +110,6 @@ describe("protected #681/#678 documentation authority", () => {
     expect(source).toMatch(
       /try \{\s*reader = response\.body\.getReader\(\);\s*\} catch \{\s*throw new DistributedRateLimitUnavailable\(\s*"rate-limit Durable Object decision body could not be read"/,
     );
-    expect(baseline).not.toContain("#687 transfers provider routing, outbound, credential, or quarantine/security authority to Noema");
+    expect(baseline).not.toContain("#687 transfers provider/model routing authority to Noema");
   });
 });
