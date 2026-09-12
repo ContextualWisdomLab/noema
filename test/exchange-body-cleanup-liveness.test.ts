@@ -65,11 +65,13 @@ describe("exchange JSON body cleanup liveness", () => {
   it("cleans up a request stream that fails while being read without replacing the unreadable rejection", async () => {
     const request = streamedJsonRequest(new ReadableStream<Uint8Array>());
     const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
     vi.spyOn(request.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic exchange request read failure");
       }),
       cancel,
+      releaseLock,
     } as unknown as ReadableStreamDefaultReader<Uint8Array>);
 
     await expect(boundExchangeJsonBody(request)).resolves.toEqual({
@@ -77,5 +79,6 @@ describe("exchange JSON body cleanup liveness", () => {
       failure: { reason: "unreadable", status: 400 },
     });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalled();
   });
 });
