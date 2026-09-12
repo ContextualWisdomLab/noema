@@ -55,4 +55,33 @@ describe("protected retention-hardening documentation authority", () => {
     expect(changelog).toContain("512");
     expect(baseline).not.toContain("#655 proves production performance");
   });
+
+  it("records protected #657 distributed rate-limit reader lifecycle and distinguishes pre-reader validation", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/rate-limit.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #657 exact `fa4a2ab25231fa4c8b9a8451a4da6f29e04abaf7`",
+    );
+    expect(baseline).toContain("256-byte");
+    expect(baseline).toContain("4,096-byte");
+    expect(baseline).toContain("reader lock");
+    expect(baseline).toContain("after reader acquisition");
+    expect(baseline).toContain("before reader acquisition");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #657");
+    expect(changelog).toContain("256-byte");
+    expect(changelog).toContain("4,096-byte");
+    expect(changelog).toContain("reader lock");
+    expect(changelog).toContain("after reader acquisition");
+    expect(changelog).toContain("before reader acquisition");
+    expect(source).toMatch(
+      /\/\*\*[\s\S]*?256-byte[\s\S]*?reader lock[\s\S]*?\*\/\nasync function readBoundedRateLimitRequest/,
+    );
+    expect(source).toMatch(
+      /\/\*\*[\s\S]*?4,096-byte[\s\S]*?reader lock[\s\S]*?\*\/\nasync function readBoundedRateLimitDecision/,
+    );
+    expect(baseline).not.toContain("#657 proves production performance");
+  });
 });
