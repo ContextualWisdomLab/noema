@@ -11,12 +11,6 @@ readonly DEBIAN_PROPOSED_SUITE="trixie-proposed-updates"
 
 work_dir="$(mktemp -d)"
 cleanup() {
-  if [ -n "${source_container:-}" ]; then
-    docker rm -f "$source_container" >/dev/null 2>&1 || true
-  fi
-  if [ -n "${final_container:-}" ]; then
-    docker rm -f "$final_container" >/dev/null 2>&1 || true
-  fi
   rm -rf "$work_dir"
 }
 trap cleanup EXIT
@@ -38,23 +32,20 @@ cosign verify "$resolved" \
 read_status_version() {
   local image="$1"
   local package="$2"
-  local container_var="$3"
-  local destination="$work_dir/${package}-${container_var}.status"
+  local destination="$work_dir/${package}-$(printf '%s' "$image" | sha256sum | cut -d ' ' -f1).status"
   local container
 
   container="$(docker create "$image" /noema-inspection-only)"
-  printf -v "$container_var" '%s' "$container"
-  docker cp "$container:/var/lib/dpkg/status.d/$package" "$destination" >/dev/null
+  if ! docker cp "$container:/var/lib/dpkg/status.d/$package" "$destination" >/dev/null; then
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    return 1
+  fi
+  docker rm -f "$container" >/dev/null
   awk '$1 == "Version:" { print $2; exit }' "$destination"
 }
 
-source_container=""
-libc6_version="$(read_status_version "$resolved" libc6 source_container)"
-docker rm -f "$source_container" >/dev/null
-source_container=""
-libc_bin_version="$(read_status_version "$resolved" libc-bin source_container)"
-docker rm -f "$source_container" >/dev/null
-source_container=""
+libc6_version="$(read_status_version "$resolved" libc6)"
+libc_bin_version="$(read_status_version "$resolved" libc-bin)"
 
 if [ -z "$libc6_version" ] || [ -z "$libc_bin_version" ]; then
   echo '::error::CodeGraph sandbox source omitted glibc package provenance.'
@@ -135,13 +126,8 @@ DOCKERFILE
       ;;
   esac
 
-  final_container=""
-  patched_libc6="$(read_status_version "$final_image" libc6 final_container)"
-  docker rm -f "$final_container" >/dev/null
-  final_container=""
-  patched_libc_bin="$(read_status_version "$final_image" libc-bin final_container)"
-  docker rm -f "$final_container" >/dev/null
-  final_container=""
+  patched_libc6="$(read_status_version "$final_image" libc6)"
+  patched_libc_bin="$(read_status_version "$final_image" libc-bin)"
   test "$patched_libc6" = "$FIXED_GLIBC_VERSION"
   test "$patched_libc_bin" = "$FIXED_GLIBC_VERSION"
   printf 'Derived local CodeGraph sandbox %s with Debian-authenticated glibc %s.\n' \
