@@ -24,8 +24,19 @@ describe("protected orchestrator health reader-acquisition documentation authori
     );
     expect(changelog).toContain("PR #695.");
 
+    // Documentation convergence must not rewrite unrelated protected history.
+    expect(changelog).toContain(
+      "Distributed `/exchange` rate-limit의 private Durable Object request(256 bytes)와 decision response(4,096 bytes) bounded stream reader",
+    );
+    expect(baseline).toContain(
+      "Cross-service SQL과 mutable sibling PR dependency는 금지한다.\n\nProtected #681 exact",
+    );
+    expect(baseline).toContain(
+      "historical Git lineage에 남아 있다.\n\nProtected source는 durable append-only lifecycle evidence의 prerequisite",
+    );
+
     expect(source).toContain(
-      '"contextual-orchestrator health response body is not stream-readable"',
+      '\"contextual-orchestrator health response body is not stream-readable\"',
     );
     expect(source).toContain("HEALTH_BODY_LIMIT_BYTES = 65_536");
     expect(source).toContain("void reader.cancel().catch(() => undefined);");
