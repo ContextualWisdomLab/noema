@@ -91,10 +91,10 @@ describe("authoritative Noema documentation graph", () => {
       expect(productGap).toContain(`\`${authorityDocument}\``);
     }
     expect(productGap).toContain("issues #29 / #227");
-    for (const staleOwner of ["PR #407", "PR #67", "Active PR #426"]) {
-      expect(gapAudit).not.toContain(staleOwner);
-      expect(traceability).not.toContain(staleOwner);
-      expect(productGap).not.toContain(staleOwner);
+    for (const staleOwner of [/\bPR #407\b/u, /\bPR #67\b/u, /\bActive PR #426\b/u]) {
+      expect(gapAudit).not.toMatch(staleOwner);
+      expect(traceability).not.toMatch(staleOwner);
+      expect(productGap).not.toMatch(staleOwner);
     }
     const currentStatusDocuments = [
       "docs/TRD.md",
