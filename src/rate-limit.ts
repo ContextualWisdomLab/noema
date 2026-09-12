@@ -272,7 +272,8 @@ function cancelDecisionBodyBestEffort(response: Response, reason: string): void 
 }
 
 /**
- * Reads the private Durable Object rate-limit request through a fixed 256-byte buffer and returns the reader lock on every terminal path.
+ * Reads the private Durable Object rate-limit request through a fixed 256-byte buffer.
+ * After `getReader()` succeeds, every terminal path releases the reader lock in `finally`; declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
  * The byte ceiling, fatal UTF-8/JSON admission, and fail-closed cancellation semantics remain authoritative.
  */
 async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitRequestReadResult> {
@@ -339,7 +340,8 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
 }
 
 /**
- * Reads the private Durable Object rate-limit decision through a fixed 4,096-byte buffer and returns the reader lock on every terminal path.
+ * Reads the private Durable Object rate-limit decision through a fixed 4,096-byte buffer.
+ * After `getReader()` succeeds, every terminal path releases the reader lock in `finally`; declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
  * The byte ceiling, fatal UTF-8/JSON admission, and fail-closed cancellation semantics remain authoritative.
  */
 async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
