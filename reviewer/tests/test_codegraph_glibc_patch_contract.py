@@ -48,7 +48,7 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
     assert "dpkg --compare-versions" in helper
     assert "NOEMA_CODEGRAPH_SANDBOX_IMAGE" in helper
     assert 'Verified Debian %s archive key exact primary-key set %s.' in helper
-    assert 'Verified Debian 13 archive key' in helper
+    assert 'Verified Debian %s archive key %s (%s).' in helper
     assert 'Verified Debian snapshot metadata' in helper
     assert '>&2' in helper
 
