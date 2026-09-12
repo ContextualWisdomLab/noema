@@ -20,9 +20,14 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
         in helper
     )
     assert 'readonly DEBIAN_SNAPSHOT_SUITE="trixie-proposed-updates"' in helper
-    assert 'readonly DEBIAN_ARCHIVE_KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"' in helper
+    assert 'readonly DEBIAN_ARCHIVE_KEY_URL="https://ftp-master.debian.org/keys/archive-key-13.asc"' in helper
+    assert 'readonly DEBIAN_ARCHIVE_KEY_SHA256="6f1d277429dd7ffedcc6f8688a7ad9a458859b1139ffa026d1eeaadcbffb0da7"' in helper
+    assert 'readonly DEBIAN_ARCHIVE_KEY_FINGERPRINT="04B54C3CDCA79751B16BC6B5225629DF75B188BD"' in helper
+    assert '/usr/share/keyrings/debian-archive-keyring.gpg' not in helper
     assert 'main/binary-amd64/Packages.xz' in helper
-    assert 'gpgv --keyring "$DEBIAN_ARCHIVE_KEYRING" "$inrelease"' in helper
+    assert 'gpg --batch --yes --dearmor' in helper
+    assert 'gpg --batch --show-keys --with-colons --fingerprint' in helper
+    assert 'gpgv --keyring "$archive_keyring" "$inrelease"' in helper
     assert 'Checksums-Sha256:' not in helper
     assert 'amd64-buildd.changes' not in helper
     assert "SHA256:" in helper
@@ -37,6 +42,7 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
     assert "--severity MEDIUM,HIGH,CRITICAL" in helper
     assert "dpkg --compare-versions" in helper
     assert "NOEMA_CODEGRAPH_SANDBOX_IMAGE" in helper
+    assert 'Verified Debian 13 archive key' in helper
     assert 'Verified Debian snapshot metadata' in helper
     assert '>&2' in helper
 
