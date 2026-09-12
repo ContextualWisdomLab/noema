@@ -62,9 +62,11 @@ describe("exchange JSON body cleanup liveness", () => {
     });
   });
 
-  it("cleans up a request stream that fails while being read without replacing the unreadable rejection", async () => {
+  it("cleans up a request stream when cancellation itself throws without replacing the unreadable rejection", async () => {
     const request = streamedJsonRequest(new ReadableStream<Uint8Array>());
-    const cancel = vi.fn(async () => undefined);
+    const cancel = vi.fn(() => {
+      throw new Error("synthetic synchronous cancellation failure");
+    });
     const releaseLock = vi.fn(() => {
       throw new TypeError("synthetic pending-read lock");
     });
