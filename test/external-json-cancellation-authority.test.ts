@@ -19,7 +19,9 @@ describe("protected external JSON cancellation-liveness documentation authority"
     expect(changelog).toContain("PR #668.");
 
     expect(source).toContain("const ignoreCancellationFailure = () => undefined;");
-    expect(source.match(/reader\.cancel\(\)\.catch\(ignoreCancellationFailure\)/g)).toHaveLength(2);
+    expect(source).toContain("const cancelReaderBestEffort = () => {");
+    expect(source.match(/reader\.cancel\(\)\.catch\(ignoreCancellationFailure\)/g)).toHaveLength(1);
+    expect(source.match(/cancelReaderBestEffort\(\);/g)).toHaveLength(2);
     expect(source).not.toContain("await reader.cancel();");
   });
 });
