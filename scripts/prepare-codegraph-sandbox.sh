@@ -7,7 +7,7 @@ set -euo pipefail
 readonly TRUSTED_REPOSITORY="gcr.io/distroless/java-base-debian13"
 readonly FIXED_GLIBC_VERSION="2.41-12+deb13u4"
 readonly VULNERABLE_GLIBC_VERSION="2.41-12+deb13u3"
-readonly DEBIAN_ARCHIVE_BASE="https://deb.debian.org/debian"
+readonly DEBIAN_ARCHIVE_BASE="https://ftp.debian.org/debian"
 readonly DEBIAN_GLIBC_POOL="pool/main/g/glibc"
 readonly DEBIAN_BUILD_MANIFEST="glibc_${FIXED_GLIBC_VERSION}_amd64-buildd.changes"
 
@@ -54,12 +54,17 @@ download_reviewed_debian_package() {
   local expected_sha256
 
   if [ ! -f "$manifest" ]; then
-    curl --fail --location --silent --show-error \
+    if ! curl --fail --location --silent --show-error \
       --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
       --output "$manifest" \
-      "$DEBIAN_ARCHIVE_BASE/dists/proposed-updates/$DEBIAN_BUILD_MANIFEST"
+      "$DEBIAN_ARCHIVE_BASE/dists/proposed-updates/$DEBIAN_BUILD_MANIFEST"; then
+      printf '::error::Unable to retrieve retained Debian build manifest %s.\n' "$DEBIAN_BUILD_MANIFEST"
+      exit 1
+    fi
     grep -Fxq "Version: $FIXED_GLIBC_VERSION" "$manifest"
     grep -Eq '^Architecture: .*amd64' "$manifest"
+    printf 'Verified retained Debian build manifest %s (%s).\n' \
+      "$DEBIAN_BUILD_MANIFEST" "$(sha256sum "$manifest" | cut -d ' ' -f1)"
   fi
 
   expected_sha256="$(
@@ -81,11 +86,17 @@ download_reviewed_debian_package() {
     exit 1
   fi
 
-  curl --fail --location --silent --show-error \
+  if ! curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
     --output "$destination" \
-    "$DEBIAN_ARCHIVE_BASE/$DEBIAN_GLIBC_POOL/$filename"
-  printf '%s  %s\n' "$expected_sha256" "$destination" | sha256sum --check --status
+    "$DEBIAN_ARCHIVE_BASE/$DEBIAN_GLIBC_POOL/$filename"; then
+    printf '::error::Unable to retrieve reviewed Debian package %s.\n' "$filename"
+    exit 1
+  fi
+  if ! printf '%s  %s\n' "$expected_sha256" "$destination" | sha256sum --check --status; then
+    printf '::error::Debian package digest mismatch for %s.\n' "$filename"
+    exit 1
+  fi
 
   test "$(dpkg-deb -f "$destination" Version)" = "$FIXED_GLIBC_VERSION"
   test "$(dpkg-deb -f "$destination" Architecture)" = "amd64"
