@@ -118,8 +118,9 @@ async function cloudflareJson(url, token, operation, init = {}) {
   const response = await fetch(url, {
     ...init,
     headers: {
-      authorization: `Bearer ${token}`,
       ...(init.headers ?? {}),
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
     },
     signal: AbortSignal.timeout(120_000),
   });

@@ -40,7 +40,10 @@ async function main() {
   const response = await fetch(
     `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/deployments`,
     {
-      headers: { authorization: `Bearer ${apiToken}` },
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${apiToken}`,
+      },
       signal: AbortSignal.timeout(120_000),
     },
   );
