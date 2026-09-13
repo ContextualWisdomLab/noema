@@ -99,6 +99,9 @@ describe("immutable-release policy authorization", () => {
       "private Durable Object request(256 bytes)와 decision response(4,096 bytes) bounded stream reader",
     );
     expect(changelog).toContain(
+      "quarantine/security authority, release/deployment authority, and foreign-domain truth remain with their existing owners; this protected source is not an immutable release or deployed recovery/p95/heap evidence. PR #687.",
+    );
+    expect(changelog).toContain(
       "patched `7.29.0`으로 override하고 lockfile을 재생성했다. `npm audit --audit-level=high`가 0건으로 복구하고 release gate가 취약 버전에서 실패-폐쇄하도록 유지한다.",
     );
   });
