@@ -8,6 +8,7 @@ import type { WorkflowStateDurableObjectEnv } from "../src/workflow-task-executi
 import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 
 const executionId = "run-current-lifecycle-response-bound";
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
 function plan(): WorkflowTaskPlan {
   return {
@@ -94,7 +95,7 @@ describe("procedural current-lifecycle response bounds", () => {
 
     await expectInvalid(new Response(stream, {
       status: 200,
-      headers: { "content-type": "application/json; charset=utf-8" },
+      headers: JSON_HEADERS,
     }));
 
     expect(cancelled).toBe(true);
@@ -123,7 +124,7 @@ describe("procedural current-lifecycle response bounds", () => {
     const outcome = guideProceduralExecutionFromCurrentWorkflowState(
       envFor(new Response(stream, {
         status: 200,
-        headers: { "content-type": "application/json; charset=utf-8" },
+        headers: JSON_HEADERS,
       })),
       plan(),
       await session(),
@@ -154,7 +155,10 @@ describe("procedural current-lifecycle response bounds", () => {
   });
 
   it("normalizes a locked durable-owner response body to the stable fail-closed diagnostic", async () => {
-    const response = new Response(new ReadableStream<Uint8Array>(), { status: 200 });
+    const response = new Response(new ReadableStream<Uint8Array>(), {
+      status: 200,
+      headers: JSON_HEADERS,
+    });
     const heldReader = response.body!.getReader();
     try {
       await expectInvalid(response);
@@ -164,7 +168,7 @@ describe("procedural current-lifecycle response bounds", () => {
   });
 
   it("rejects a successful status with no response body", async () => {
-    await expectInvalid(new Response(null, { status: 200 }));
+    await expectInvalid(new Response(null, { status: 200, headers: JSON_HEADERS }));
   });
 
   it("rejects parseable JSON when the durable owner does not identify it as JSON", async () => {
@@ -190,7 +194,7 @@ describe("procedural current-lifecycle response bounds", () => {
         controller.close();
       },
     });
-    await expectInvalid(new Response(stream, { status: 200 }));
+    await expectInvalid(new Response(stream, { status: 200, headers: JSON_HEADERS }));
   });
 
   it("normalizes a body-stream read failure to the stable fail-closed diagnostic", async () => {
@@ -199,6 +203,6 @@ describe("procedural current-lifecycle response bounds", () => {
         controller.error(new Error("durable stream failed"));
       },
     });
-    await expectInvalid(new Response(stream, { status: 200 }));
+    await expectInvalid(new Response(stream, { status: 200, headers: JSON_HEADERS }));
   });
 });
