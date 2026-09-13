@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { readBoundedCloudflareJsonResponse } from "./lib/cloudflare-response.mjs";
+import { requestCloudflareJson } from "./lib/cloudflare-response.mjs";
 import {
   readNoemaWorkerConfig,
   validateExistingDurableObjectBindings,
@@ -18,7 +18,6 @@ const API_PREFIX = "/client/v4";
 const REPOSITORY_URL = "https://github.com/ContextualWisdomLab/noema";
 const REQUIRED_SECRET_BINDINGS = ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PEM"];
 const OPTIONAL_SECRET_BINDINGS = ["GITHUB_APP_INSTALLATION_ID"];
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/u;
@@ -57,23 +56,6 @@ function repositorySourceSha(repositoryRoot, expectedSourceSha) {
     throw new Error("GITHUB_REPOSITORY does not identify ContextualWisdomLab/noema");
   }
   return head;
-}
-
-async function parseCloudflareResponse(response, operation) {
-  return readBoundedCloudflareJsonResponse(response, operation, MAX_RESPONSE_BYTES);
-}
-
-async function cloudflareJson(url, token, operation, init = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-    },
-    signal: AbortSignal.timeout(120_000),
-  });
-  return parseCloudflareResponse(response, operation);
 }
 
 function verifyExistingRuntimeBindings(config, settings) {
@@ -143,7 +125,7 @@ async function main() {
   const encodedAccount = encodeURIComponent(accountId);
   const encodedScript = encodeURIComponent(scriptName);
   const settingsUrl = `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/settings`;
-  const settings = await cloudflareJson(settingsUrl, apiToken, "Worker settings read");
+  const settings = await requestCloudflareJson(settingsUrl, apiToken, "Worker settings read");
   const currentBindings = verifyExistingRuntimeBindings(config, settings);
 
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "noema-worker-deploy-"));
@@ -177,7 +159,7 @@ async function main() {
     );
 
     const versionsPath = `/accounts/${encodedAccount}/workers/scripts/${encodedScript}/versions`;
-    const version = await cloudflareJson(
+    const version = await requestCloudflareJson(
       `${API_ORIGIN}${API_PREFIX}${versionsPath}?bindings_inherit=strict`,
       apiToken,
       "Worker version upload",
@@ -188,7 +170,7 @@ async function main() {
       throw new Error("Worker version upload returned a non-UUID version id");
     }
 
-    const deployment = await cloudflareJson(
+    const deployment = await requestCloudflareJson(
       `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/deployments`,
       apiToken,
       "Worker deployment",

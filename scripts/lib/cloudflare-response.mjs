@@ -1,4 +1,36 @@
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * Execute one Noema-owned Cloudflare control-plane JSON request with canonical
+ * response negotiation, delegated authorization, and an absolute request bound.
+ * Caller-provided content headers are preserved, but they cannot replace the
+ * control-plane Accept or authorization authority.
+ *
+ * @param {string | URL} url Cloudflare control-plane URL
+ * @param {string} token delegated Cloudflare API token
+ * @param {string} operation operator-facing operation label
+ * @param {RequestInit} [init] optional fetch initialization
+ * @param {number} [maxResponseBytes] maximum accepted response body bytes
+ * @returns {Promise<unknown>} bounded decoded Cloudflare result
+ */
+export async function requestCloudflareJson(
+  url,
+  token,
+  operation,
+  init = {},
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+) {
+  const headers = new Headers(init.headers ?? {});
+  headers.set("accept", "application/json");
+  headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+  });
+  return readBoundedCloudflareJsonResponse(response, operation, maxResponseBytes);
+}
 
 /**
  * Read one Cloudflare control-plane JSON response without buffering beyond the

@@ -24,13 +24,18 @@ function fakeResponse(reader: object, status = 200, ok = true): Response {
 }
 
 describe("Cloudflare control-plane response bounds", () => {
-  it("applies byte and wall-clock bounds while streaming instead of buffering response.text() first", () => {
+  it("routes control-plane clients through one bounded request transport", () => {
     for (const path of cloudflareTransportCallers) {
       const source = readFileSync(path, "utf8");
       expect(source).not.toContain("response.text()");
-      expect(source).toContain("readBoundedCloudflareJsonResponse");
-      expect(source).toContain("AbortSignal.timeout(120_000)");
+      expect(source).toContain("requestCloudflareJson");
+      expect(source).not.toContain("fetch(");
     }
+    const helperSource = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
+    expect(helperSource).not.toContain("response.text()");
+    expect(helperSource).toContain("readBoundedCloudflareJsonResponse");
+    expect(helperSource).toContain("DEFAULT_REQUEST_TIMEOUT_MS = 120_000");
+    expect(helperSource).toContain("AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS)");
   });
 
   it("keeps retained heap bounded by the byte ceiling instead of stream chunk cardinality", async () => {

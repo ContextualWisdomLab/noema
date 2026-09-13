@@ -2,12 +2,11 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { readBoundedCloudflareJsonResponse } from "./lib/cloudflare-response.mjs";
+import { requestCloudflareJson } from "./lib/cloudflare-response.mjs";
 import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
 
 const API_ORIGIN = "https://api.cloudflare.com";
 const API_PREFIX = "/client/v4";
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/u;
 const SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 
@@ -15,14 +14,6 @@ function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
-}
-
-async function parseCloudflareResponse(response) {
-  return readBoundedCloudflareJsonResponse(
-    response,
-    "Worker deployment status",
-    MAX_RESPONSE_BYTES,
-  );
 }
 
 async function main() {
@@ -37,17 +28,11 @@ async function main() {
 
   const encodedAccount = encodeURIComponent(accountId);
   const encodedScript = encodeURIComponent(scriptName);
-  const response = await fetch(
+  const deployments = await requestCloudflareJson(
     `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/deployments`,
-    {
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${apiToken}`,
-      },
-      signal: AbortSignal.timeout(120_000),
-    },
+    apiToken,
+    "Worker deployment status",
   );
-  const deployments = await parseCloudflareResponse(response);
   process.stdout.write(`${JSON.stringify({
     observed_at: new Date().toISOString(),
     deployments,
