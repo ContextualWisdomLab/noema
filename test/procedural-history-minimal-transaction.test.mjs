@@ -165,6 +165,12 @@ async function authenticatedEvaluation(decision, keys, sequence) {
   });
 }
 
+function expireInsideNextTransaction(storage, authenticated) {
+  storage.beforeTransaction = async () => {
+    vi.spyOn(Date, "now").mockReturnValue((authenticated.expiresAtEpochSeconds + 1) * 1000);
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -453,4 +459,63 @@ test("rejects a sparse rejection projection even when an extra property preserve
   assert.equal(malformed.rejectedKeys.length, 1);
   assert.equal(0 in malformed.rejectedKeys, false);
   assert.equal(malformed.rejectedKeys.shadow, rejected.rejectionKey);
+});
+
+test("rechecks authenticated handoff freshness before committing a preverified append", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const second = await authenticatedEvaluation(decision, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+  expireInsideNextTransaction(storage, second);
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    (error) => {
+      assert.equal(error?.name, "ProceduralGraphError");
+      assert.equal(error?.message, "evaluation_handoff_expired");
+      return true;
+    },
+  );
+
+  const [, retained] = storage.records.entries().next().value;
+  assert.equal(retained.version, 1);
+  assert.equal(retained.events[0].handoffDigest, first.handoffDigest);
+});
+
+test("rechecks authenticated handoff freshness before returning an exact replay", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+  expireInsideNextTransaction(storage, first);
+
+  await assert.rejects(
+    repository.append(candidate, first, 1),
+    (error) => {
+      assert.equal(error?.name, "ProceduralGraphError");
+      assert.equal(error?.message, "evaluation_handoff_expired");
+      return true;
+    },
+  );
+
+  const [, retained] = storage.records.entries().next().value;
+  assert.equal(retained.version, 1);
+  assert.equal(retained.events[0].handoffDigest, first.handoffDigest);
 });
