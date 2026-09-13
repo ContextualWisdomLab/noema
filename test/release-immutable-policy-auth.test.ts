@@ -81,4 +81,25 @@ describe("immutable-release policy authorization", () => {
     expect(changelog).toContain("capability file");
     expect(changelog).toContain("PR #706");
   });
+
+  it("documents the App identifier as an Actions variable and the private key as a secret", () => {
+    const guide = readFileSync("docs/immutable-release-publication.md", "utf8");
+    expect(guide).toContain(
+      "repository Actions variable `NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID`",
+    );
+    expect(guide).toContain(
+      "repository Actions secret `NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY`",
+    );
+    expect(guide).not.toContain("Configure these repository Actions values for that App");
+  });
+
+  it("does not rewrite unrelated historical changelog authority", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    expect(changelog).toContain(
+      "private Durable Object request(256 bytes)와 decision response(4,096 bytes) bounded stream reader",
+    );
+    expect(changelog).toContain(
+      "patched `7.29.0`으로 override하고 lockfile을 재생성했다. `npm audit --audit-level=high`가 0건으로 복구하고 release gate가 취약 버전에서 실패-폐쇄하도록 유지한다.",
+    );
+  });
 });
