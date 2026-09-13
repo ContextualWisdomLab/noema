@@ -604,7 +604,7 @@ jobs:
           fi
           printf 'Immutable-release enforcement is active and release %s is absent.\n' "$RELEASE_TAG"
 
-      - name: Publish the complete immutable buyer asset set
+      - name: Stage the complete buyer asset set as a draft
         env:
           BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
           GH_TOKEN: ${{ github.token }}
@@ -621,9 +621,8 @@ jobs:
           release evidence manifest, and GitHub/Sigstore provenance and SBOM bundles.
           This source release does not prove Cloudflare deployment or production operation.
           EOF
-          # --target is deliberately omitted: GitHub ignores target_commitish when the
-          # verified tag already exists. Exact identity is established by dereferencing
-          # the tag immediately before and after publication.
+          # GitHub enforces release immutability only after publication. Stage the bounded
+          # asset set explicitly as a draft so the tag can be revalidated after upload.
           gh release create "$RELEASE_TAG" \
             "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz" \
             "$release_dir/noema.cdx.json" \
@@ -633,8 +632,76 @@ jobs:
             "$release_dir/attestations/cyclonedx-sbom.sigstore.json" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --draft \
             --title "Noema ${RELEASE_TAG}" \
             --notes-file "$notes_file"
+
+      - name: Verify staged draft and publish immutable release
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_dir="$BUNDLE_DIR/release"
+          publication_dir="$RUNNER_TEMP/release-publication"
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isImmutable,tagName,assets,url \
+            >"$publication_dir/release-draft-view.json"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"$publication_dir/release-draft-api.json"
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.isDraft == true and .isImmutable == false and .tagName == $tag' \
+            "$publication_dir/release-draft-view.json" >/dev/null
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.draft == true and .immutable == false and .tag_name == $tag' \
+            "$publication_dir/release-draft-api.json" >/dev/null
+
+          expected_names="$(printf '%s\n' \
+            SHA256SUMS \
+            cyclonedx-sbom.sigstore.json \
+            noema.cdx.json \
+            "noema-${RELEASE_COMMIT_SHA}.tar.gz" \
+            provenance.sigstore.json \
+            release-evidence.json | sort)"
+          observed_names="$(jq -r '.assets[].name' "$publication_dir/release-draft-api.json" | sort)"
+          if [ "$observed_names" != "$expected_names" ]; then
+            printf '::error::Draft release asset set differs from the bounded contract.\nExpected:\n%s\nObserved:\n%s\n' \
+              "$expected_names" "$observed_names"
+            exit 1
+          fi
+
+          assets=(
+            "$release_dir/SHA256SUMS"
+            "$release_dir/attestations/cyclonedx-sbom.sigstore.json"
+            "$release_dir/noema.cdx.json"
+            "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+            "$release_dir/attestations/provenance.sigstore.json"
+            "$release_dir/release-evidence.json"
+          )
+          for asset in "${assets[@]}"; do
+            asset_name="$(basename "$asset")"
+            asset_size="$(stat -c '%s' "$asset")"
+            asset_digest="sha256:$(sha256sum "$asset" | awk '{print $1}')"
+            jq -e \
+              --arg name "$asset_name" \
+              --arg digest "$asset_digest" \
+              --argjson size "$asset_size" \
+              '[.assets[] | select(.name == $name and .size == $size and .digest == $digest)] | length == 1' \
+              "$publication_dir/release-draft-api.json" >/dev/null
+          done
+
+          pre_publish_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$pre_publish_tag_sha" != "$RELEASE_COMMIT_SHA" ]; then
+            echo "::error::Release tag moved after draft asset staging; refusing publication."
+            printf '::error::Tag %s resolves to %s, expected %s.\n' \
+              "$RELEASE_TAG" "${pre_publish_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
+            exit 1
+          fi
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
       - name: Verify immutable release identity and every published asset
         env:
