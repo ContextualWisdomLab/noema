@@ -63,8 +63,13 @@ describe("procedural current-lifecycle read deadline", () => {
     vi.useFakeTimers();
     let cancelled = false;
     let released = false;
+    let signalReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      signalReadStarted = resolve;
+    });
     const reader = {
       read() {
+        signalReadStarted();
         return new Promise<never>(() => undefined);
       },
       cancel() {
@@ -86,22 +91,15 @@ describe("procedural current-lifecycle read deadline", () => {
       await session(),
       { lastProcedure: null, hops: 1, maxEdges: 4 },
     );
-    let settled = false;
-    let observedError: unknown;
-    void pending.catch((error: unknown) => {
-      observedError = error;
-    }).finally(() => {
-      settled = true;
-    });
-
-    await vi.advanceTimersByTimeAsync(10_001);
-    await Promise.resolve();
-
-    expect(settled).toBe(true);
-    expect(observedError).toMatchObject({
+    const rejection = expect(pending).rejects.toMatchObject({
       name: "ProceduralCurrentLifecycleError",
       code: "invalid_workflow_state_response",
     });
+
+    await readStarted;
+    await vi.advanceTimersByTimeAsync(10_001);
+    await rejection;
+
     expect(cancelled).toBe(true);
     expect(released).toBe(true);
   });
