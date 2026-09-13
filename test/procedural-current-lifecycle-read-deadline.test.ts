@@ -82,6 +82,7 @@ describe("procedural current-lifecycle read deadline", () => {
     };
     const response = {
       status: 200,
+      headers: new Headers({ "content-type": "application/json; charset=utf-8" }),
       body: { getReader: () => reader },
     } as unknown as Response;
 
