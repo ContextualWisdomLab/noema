@@ -17,6 +17,29 @@ const DECISION_REASONS = new Set([
   "score_regression",
   "validation_non_regression",
 ]);
+const STREAM_KEYS = ["tenantId", "taskType", "graphId"] as const;
+const HISTORY_KEYS = ["schemaVersion", "stream", "version", "headEventDigest", "rejectedKeys", "events"] as const;
+const EVENT_KEYS = [
+  "schemaVersion",
+  "version",
+  "candidateRevision",
+  "baselineDigest",
+  "candidateDigest",
+  "contextDigest",
+  "baselineReceiptDigest",
+  "candidateReceiptDigest",
+  "rejectionKey",
+  "decisionReason",
+  "envelopeDigest",
+  "signerKeyId",
+  "handoffDigest",
+  "issuedAtEpochSeconds",
+  "expiresAtEpochSeconds",
+  "eligibleForApproval",
+  "activationAuthorized",
+  "priorEventDigest",
+  "eventDigest",
+] as const;
 
 /**
  * Maximum complete evaluation events retained for one procedural graph lineage. The repository never
@@ -104,6 +127,29 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
+function hasExactObjectKeys(value: unknown, expected: readonly string[]): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  const expectedKeys = [...expected].sort();
+  return keys.length === expectedKeys.length
+    && keys.every((key, index) => key === expectedKeys[index]);
+}
+
+function hasDenseArrayKeys(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === value.length
+    && keys.every((key, index) => key === String(index));
+}
+
+function hasCanonicalHistoryShape(history: MutableHistory): boolean {
+  return hasExactObjectKeys(history, HISTORY_KEYS)
+    && hasExactObjectKeys(history.stream, STREAM_KEYS)
+    && hasDenseArrayKeys(history.rejectedKeys)
+    && hasDenseArrayKeys(history.events)
+    && history.events.every((event) => hasExactObjectKeys(event, EVENT_KEYS));
+}
+
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -173,6 +219,7 @@ async function verifyStoredHistory(
   requireHistory(typeof value === "object", "durable procedural history integrity check failed");
   requireHistory(!Array.isArray(value), "durable procedural history integrity check failed");
   const history = value as MutableHistory;
+  requireHistory(hasCanonicalHistoryShape(history), "durable procedural history integrity check failed");
   requireHistory(history.schemaVersion === HISTORY_SCHEMA_VERSION, "durable procedural history integrity check failed");
   requireHistory(JSON.stringify(history.stream) === JSON.stringify(expectedStream), "durable procedural history integrity check failed");
   requireHistory(Number.isSafeInteger(history.version), "durable procedural history integrity check failed");
@@ -287,8 +334,8 @@ function emptyHistory(stream: ProceduralEvaluationHistoryStream): MutableHistory
 
 /**
  * Requires transaction-local retained bytes to equal the complete history that was cryptographically
- * verified before the transaction. This closes the async interleaving window without rehashing inside
- * the atomic section, so corruption or a concurrent append fails closed before the single write.
+ * verified before the transaction. Canonical key/array shape rejects structured-clone fields that JSON
+ * serialization would omit before equality is checked, without rehashing inside the atomic section.
  */
 function requireCurrentHistoryCas(
   current: MutableHistory | undefined,
@@ -299,6 +346,7 @@ function requireCurrentHistoryCas(
     return;
   }
   requireHistory(current !== undefined, "expected history version lost the CAS race");
+  requireHistory(hasCanonicalHistoryShape(current), "expected history version lost the CAS race");
   requireHistory(
     JSON.stringify(current) === JSON.stringify(verified),
     "expected history version lost the CAS race",
