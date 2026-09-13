@@ -27,6 +27,8 @@ const TERMINAL_WORKFLOW_TASK_STATES: ReadonlySet<CurrentWorkflowTaskState> = new
 ]);
 const AUTHORITY_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const MAX_CURRENT_WORKFLOW_RESPONSE_BYTES = 1024 * 1024;
+const CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE_MS = 10_000;
+const CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE = Symbol("current-workflow-response-read-deadline");
 
 type CurrentWorkflowTaskState = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
 
@@ -121,15 +123,26 @@ function currentWorkflowEvidence(
   });
 }
 
+function cancelCurrentWorkflowReaderBestEffort(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: string,
+): void {
+  try {
+    void reader.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cleanup cannot replace a decision already made by the bounded-response admission path.
+  }
+}
+
 /**
  * Reads one private Workflow / Task Execution response into fixed retained storage before JSON admission.
  * The byte ceiling is deliberately much larger than the bounded workflow snapshot schema but prevents a
  * corrupt internal response from making Agent Runtime retain an unbounded body before fail-closed validation.
  * Reader acquisition is itself part of the untrusted response boundary: a locked body is normalized to the
- * same stable invalid-response diagnostic instead of leaking a raw stream exception. Oversize streams request
- * cancellation before any over-limit chunk is copied, but cancellation completion is cleanup rather than decision authority;
- * it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released on the terminal path
- * independently of cancellation success.
+ * same stable invalid-response diagnostic instead of leaking a raw stream exception. An absolute ten-second
+ * read deadline prevents an admitted HTTP 200 response from pinning procedural guidance forever when no chunk
+ * ever arrives. Oversize or timed-out streams request cancellation, but cancellation completion is cleanup rather than decision authority;
+ * it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released on every terminal path independently of cancellation success.
  */
 async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
   if (response.body === null) {
@@ -144,19 +157,26 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
   }
   const storage = new Uint8Array(MAX_CURRENT_WORKFLOW_RESPONSE_BYTES);
   let totalBytes = 0;
+  let rejectReadDeadline!: (reason?: unknown) => void;
+  const readDeadline = new Promise<never>((_resolve, reject) => {
+    rejectReadDeadline = reject;
+  });
+  const deadlineHandle = setTimeout(
+    () => rejectReadDeadline(CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE),
+    CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE_MS,
+  );
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), readDeadline]);
       if (done) break;
       if (!(value instanceof Uint8Array)) {
         return rejectCurrentLifecycle("invalid_workflow_state_response");
       }
       if (value.byteLength > MAX_CURRENT_WORKFLOW_RESPONSE_BYTES - totalBytes) {
-        try {
-          void reader.cancel("Noema current workflow-state response exceeded byte ceiling").catch(() => undefined);
-        } catch {
-          // The byte-ceiling decision does not depend on cleanup transport behavior.
-        }
+        cancelCurrentWorkflowReaderBestEffort(
+          reader,
+          "Noema current workflow-state response exceeded byte ceiling",
+        );
         return rejectCurrentLifecycle("invalid_workflow_state_response");
       }
       storage.set(value, totalBytes);
@@ -164,8 +184,15 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
     }
   } catch (error) {
     if (error instanceof ProceduralCurrentLifecycleError) throw error;
+    if (error === CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE) {
+      cancelCurrentWorkflowReaderBestEffort(
+        reader,
+        "Noema current workflow-state response exceeded read deadline",
+      );
+    }
     return rejectCurrentLifecycle("invalid_workflow_state_response");
   } finally {
+    clearTimeout(deadlineHandle);
     reader.releaseLock();
   }
 
