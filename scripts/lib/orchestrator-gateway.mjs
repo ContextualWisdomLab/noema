@@ -115,6 +115,7 @@ export function orchestratorGatewayConsumerContract() {
     }),
     healthz: Object.freeze({
       unauthenticated: true,
+      media_type: "application/json",
       identity: Object.freeze({
         status: "ok",
         service: "contextual-orchestrator",

@@ -12,6 +12,7 @@
   },
   "healthz": {
     "unauthenticated": true,
+    "media_type": "application/json",
     "identity": {
       "status": "ok",
       "service": "contextual-orchestrator"
