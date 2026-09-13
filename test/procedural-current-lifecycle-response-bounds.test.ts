@@ -167,6 +167,22 @@ describe("procedural current-lifecycle response bounds", () => {
     await expectInvalid(new Response(null, { status: 200 }));
   });
 
+  it("rejects parseable JSON when the durable owner does not identify it as JSON", async () => {
+    await expectInvalid(new Response(JSON.stringify({
+      ok: true,
+      data: {
+        executionId,
+        planId: "plan-current-lifecycle-response-bound",
+        transitionSequence: 1,
+        cancellation: { requested: false, cancellationId: null },
+        tasks: [{ taskId: "review", state: "pending" }],
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    }));
+  });
+
   it("fails closed on a malformed non-byte response chunk", async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
