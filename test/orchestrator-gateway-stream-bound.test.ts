@@ -18,6 +18,16 @@ async function settleWithin<T>(promise: Promise<T>, timeoutMs = 100): Promise<T 
   ]);
 }
 
+function jsonHeaders(contentLength: string | null = null) {
+  return {
+    get(name: string) {
+      if (name.toLowerCase() === "content-type") return "application/json";
+      if (name.toLowerCase() === "content-length") return contentLength;
+      return null;
+    },
+  };
+}
+
 describe("contextual-orchestrator streamed health response", () => {
   it("stops a chunked response at the byte ceiling without arrayBuffer materialization", async () => {
     let readCount = 0;
@@ -45,7 +55,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: { getReader: () => reader },
       async arrayBuffer() {
         arrayBufferCalled = true;
@@ -83,7 +93,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: { getReader: () => reader },
     } as unknown as Response;
 
@@ -119,7 +129,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: { getReader: () => reader },
     } as unknown as Response;
 
@@ -156,7 +166,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => "65537" },
+      headers: jsonHeaders("65537"),
       body: {
         cancel() {
           cancellationStarted = true;
@@ -184,7 +194,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => "65537" },
+      headers: jsonHeaders("65537"),
       body: {
         cancel() {
           throw new Error("cleanup transport failed");
@@ -220,7 +230,7 @@ describe("contextual-orchestrator streamed health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: { getReader: () => reader },
       async arrayBuffer() {
         throw new Error("streaming response must not fall back to arrayBuffer");
