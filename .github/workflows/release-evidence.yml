@@ -583,28 +583,33 @@ jobs:
               "$RELEASE_TAG" "${remote_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
             exit 1
           fi
-          set +e
-          gh api --include \
+          existing_release_inventory="$publication_dir/existing-release-inventory.json"
+          if ! timeout 20s gh api --paginate --slurp \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            >"$publication_dir/existing-release.http" 2>&1
-          existing_status=$?
-          set -e
-          http_status="$(awk 'toupper($1) ~ /^HTTP\// { code=$2 } END { print code }' \
-            "$publication_dir/existing-release.http")"
-          if [ "$existing_status" -eq 0 ]; then
-            echo "::error::Release ${RELEASE_TAG} already exists; immutable publication never overwrites a release."
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            >"$existing_release_inventory"; then
+            echo "::error::Could not read the authenticated release inventory."
             exit 1
           fi
-          if [ "$http_status" != "404" ]; then
-            cat "$publication_dir/existing-release.http"
-            printf '::error::Could not prove release absence; observed HTTP status %s.\n' "${http_status:-missing}"
+          inventory_bytes="$(stat -c '%s' "$existing_release_inventory")"
+          if [ "$inventory_bytes" -gt 4194304 ]; then
+            printf '::error::Release inventory exceeded the 4 MiB admission ceiling: %s bytes.\n' "$inventory_bytes"
             exit 1
           fi
-          printf 'Immutable-release enforcement is active and release %s is absent.\n' "$RELEASE_TAG"
+          jq -e 'type == "array" and all(.[]; type == "array")' \
+            "$existing_release_inventory" >/dev/null
+          existing_match_count="$(jq -r --arg tag "$RELEASE_TAG" \
+            '[.[][] | select(.tag_name == $tag)] | length' \
+            "$existing_release_inventory")"
+          if [ "$existing_match_count" != "0" ]; then
+            printf '::error::Release or draft for %s already exists (%s matches); publication never overwrites it.\n' \
+              "$RELEASE_TAG" "$existing_match_count"
+            exit 1
+          fi
+          printf 'Immutable-release enforcement is active, tag %s is exact, and no release or draft exists.\n' "$RELEASE_TAG"
 
-      - name: Publish the complete immutable buyer asset set
+      - name: Stage the complete buyer asset set as a draft
         env:
           BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
           GH_TOKEN: ${{ github.token }}
@@ -621,9 +626,8 @@ jobs:
           release evidence manifest, and GitHub/Sigstore provenance and SBOM bundles.
           This source release does not prove Cloudflare deployment or production operation.
           EOF
-          # --target is deliberately omitted: GitHub ignores target_commitish when the
-          # verified tag already exists. Exact identity is established by dereferencing
-          # the tag immediately before and after publication.
+          # GitHub enforces release immutability only after publication. Stage the bounded
+          # asset set explicitly as a draft so the tag can be revalidated after upload.
           gh release create "$RELEASE_TAG" \
             "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz" \
             "$release_dir/noema.cdx.json" \
@@ -633,8 +637,103 @@ jobs:
             "$release_dir/attestations/cyclonedx-sbom.sigstore.json" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --draft \
             --title "Noema ${RELEASE_TAG}" \
             --notes-file "$notes_file"
+
+      - name: Verify staged draft and publish immutable release
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_dir="$BUNDLE_DIR/release"
+          publication_dir="$RUNNER_TEMP/release-publication"
+          draft_inventory="$publication_dir/release-draft-inventory.json"
+          if ! timeout 20s gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            >"$draft_inventory"; then
+            echo "::error::Could not read the authenticated release inventory after draft staging."
+            exit 1
+          fi
+          inventory_bytes="$(stat -c '%s' "$draft_inventory")"
+          if [ "$inventory_bytes" -gt 4194304 ]; then
+            printf '::error::Release inventory exceeded the 4 MiB admission ceiling after draft staging: %s bytes.\n' "$inventory_bytes"
+            exit 1
+          fi
+          jq -e 'type == "array" and all(.[]; type == "array")' "$draft_inventory" >/dev/null
+          same_tag_match_count="$(jq -r --arg tag "$RELEASE_TAG" \
+            '[.[][] | select(.tag_name == $tag)] | length' \
+            "$draft_inventory")"
+          if [ "$same_tag_match_count" != "1" ]; then
+            printf '::error::Expected exactly one staged release identity for %s; observed %s same-tag records.\n' \
+              "$RELEASE_TAG" "$same_tag_match_count"
+            exit 1
+          fi
+          jq -e --arg tag "$RELEASE_TAG" \
+            'first(.[][] | select(.tag_name == $tag))' \
+            "$draft_inventory" >"$publication_dir/release-draft-api.json"
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.draft == true and .immutable == false and .tag_name == $tag and (.id | type == "number")' \
+            "$publication_dir/release-draft-api.json" >/dev/null
+          release_id="$(jq -r '.id' "$publication_dir/release-draft-api.json")"
+          if ! [[ "$release_id" =~ ^[1-9][0-9]*$ ]]; then
+            printf '::error::Staged draft release id is invalid: %s.\n' "${release_id:-missing}"
+            exit 1
+          fi
+
+          expected_names="$(printf '%s\n' \
+            SHA256SUMS \
+            cyclonedx-sbom.sigstore.json \
+            noema.cdx.json \
+            "noema-${RELEASE_COMMIT_SHA}.tar.gz" \
+            provenance.sigstore.json \
+            release-evidence.json | sort)"
+          observed_names="$(jq -r '.assets[].name' "$publication_dir/release-draft-api.json" | sort)"
+          if [ "$observed_names" != "$expected_names" ]; then
+            printf '::error::Draft release asset set differs from the bounded contract.\nExpected:\n%s\nObserved:\n%s\n' \
+              "$expected_names" "$observed_names"
+            exit 1
+          fi
+
+          assets=(
+            "$release_dir/SHA256SUMS"
+            "$release_dir/attestations/cyclonedx-sbom.sigstore.json"
+            "$release_dir/noema.cdx.json"
+            "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+            "$release_dir/attestations/provenance.sigstore.json"
+            "$release_dir/release-evidence.json"
+          )
+          for asset in "${assets[@]}"; do
+            asset_name="$(basename "$asset")"
+            asset_size="$(stat -c '%s' "$asset")"
+            asset_digest="sha256:$(sha256sum "$asset" | awk '{print $1}')"
+            jq -e \
+              --arg name "$asset_name" \
+              --arg digest "$asset_digest" \
+              --argjson size "$asset_size" \
+              '[.assets[] | select(.name == $name and .size == $size and .digest == $digest)] | length == 1' \
+              "$publication_dir/release-draft-api.json" >/dev/null
+          done
+
+          pre_publish_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$pre_publish_tag_sha" != "$RELEASE_COMMIT_SHA" ]; then
+            echo "::error::Release tag moved after draft asset staging; refusing publication."
+            printf '::error::Tag %s resolves to %s, expected %s.\n' \
+              "$RELEASE_TAG" "${pre_publish_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
+            exit 1
+          fi
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -F draft=false \
+            >"$publication_dir/release-publish-api.json"
+          jq -e --arg tag "$RELEASE_TAG" --argjson releaseId "$release_id" \
+            '.id == $releaseId and .draft == false and .tag_name == $tag' \
+            "$publication_dir/release-publish-api.json" >/dev/null
 
       - name: Verify immutable release identity and every published asset
         env:
@@ -711,7 +810,6 @@ jobs:
             '{releaseVerified: true, resolvedTagCommitSha: $resolvedTagCommitSha, verifiedAssets: [inputs], verifiedAt: $verifiedAt, workflowRunUrl: $workflowRunUrl}' \
             <"$verified_names" \
             >"$publication_dir/release-verification.json"
-
       - name: Write acquisition-ready publication receipt
         env:
           BUNDLE_DIR: ${{ runner.temp }}/release-publication-input

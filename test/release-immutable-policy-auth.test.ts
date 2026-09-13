@@ -22,7 +22,8 @@ describe("immutable-release policy authorization", () => {
     const mint = stepBlock(workflow, "Mint immutable-release policy auditor token");
     const policy = stepBlock(workflow, "Require immutable-release enforcement");
     const releaseAbsence = stepBlock(workflow, "Require exact tag and absent prior release");
-    const publication = stepBlock(workflow, "Publish the complete immutable buyer asset set");
+    const staging = stepBlock(workflow, "Stage the complete buyer asset set as a draft");
+    const publication = stepBlock(workflow, "Verify staged draft and publish immutable release");
 
     expect(mint).toContain(
       "uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0",
@@ -66,11 +67,21 @@ describe("immutable-release policy authorization", () => {
 
     expect(releaseAbsence).toContain("GH_TOKEN: ${{ github.token }}");
     expect(releaseAbsence).toContain("repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}");
-    expect(releaseAbsence).toContain("repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}");
+    expect(releaseAbsence).toContain("repos/${GITHUB_REPOSITORY}/releases?per_page=100");
+    expect(releaseAbsence).toContain("--paginate --slurp");
+    expect(releaseAbsence).not.toContain("releases/tags/${RELEASE_TAG}");
     expect(releaseAbsence).not.toContain("release_policy_auditor");
     expect(releaseAbsence).not.toContain("immutable-releases");
 
+    expect(staging).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(staging).toContain("--draft");
+    expect(staging).not.toContain("steps.release_policy_auditor.outputs.token");
     expect(publication).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(publication).toContain("repos/${GITHUB_REPOSITORY}/releases?per_page=100");
+    expect(publication).toContain('"repos/${GITHUB_REPOSITORY}/releases/${release_id}"');
+    expect(publication).toContain("--method PATCH");
+    expect(publication).toContain("-F draft=false");
+    expect(publication).not.toContain('gh release edit "$RELEASE_TAG"');
     expect(publication).not.toContain("steps.release_policy_auditor.outputs.token");
   });
 
