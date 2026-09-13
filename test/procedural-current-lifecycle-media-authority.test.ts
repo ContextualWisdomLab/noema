@@ -2,7 +2,29 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+const REQUIRED_704_CHANGELOG_FRAGMENTS = [
+  "Protected #704",
+  "42b15e865bdf88fde622c3bba2c0b123770d18be",
+  "e8c2002e5af8fa5611880091dab81916bb716c35",
+  "application/json with optional `charset=utf-8` parameter",
+  "invalid_workflow_state_response",
+  "best-effort cleanup",
+] as const;
+
+function hasProtected704ChangelogAuthority(changelog: string): boolean {
+  return REQUIRED_704_CHANGELOG_FRAGMENTS.every((fragment) => changelog.includes(fragment));
+}
+
 describe("protected procedural current-lifecycle media documentation authority", () => {
+  it("rejects authority fragments that are only present in a neighboring changelog entry", () => {
+    const relocatedAuthority = [
+      "- Protected #704 exact `42b15e865bdf88fde622c3bba2c0b123770d18be`.",
+      "- Protected #702 exact `2b31805eb2b81b6078fefe1ebcce8007b6ca5169`, integrated by GitHub-verified normal merge `e8c2002e5af8fa5611880091dab81916bb716c35`, requires application/json with optional `charset=utf-8` parameter and preserves invalid_workflow_state_response with best-effort cleanup.",
+    ].join("\n");
+
+    expect(hasProtected704ChangelogAuthority(relocatedAuthority)).toBe(false);
+  });
+
   it("records protected #704 without promoting Workflow / Task or production authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
