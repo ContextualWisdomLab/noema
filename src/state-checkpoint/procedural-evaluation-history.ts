@@ -417,8 +417,9 @@ export class DurableProceduralEvaluationHistoryRepository {
   /**
    * Retains one still-current authenticated evaluator handoff for the exact candidate graph. Bounded
    * history integrity verification and event hashing finish before the Durable Object transaction; the
-   * atomic section then rechecks complete verified-history CAS authority before replay return or write.
-   * Exact replay is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
+   * atomic section rechecks complete verified-history CAS authority and handoff freshness before replay
+   * return or write. Exact replay is idempotent; stale CAS, stale rejection context, full history, or
+   * lineage drift fails closed.
    * @param candidate Locally admitted direct-child graph bound by the authenticated evaluation evidence.
    * @param authenticated Still-current process-local signed evaluator authority produced by Agent Runtime.
    * @param expectedVersion Exact durable history version observed by the caller before this append attempt.
@@ -452,6 +453,7 @@ export class DurableProceduralEvaluationHistoryRepository {
         return this.storage.transaction(async (transaction: HistoryTransaction) => {
           const current = await transaction.get<unknown>(key);
           requireCurrentHistoryCas(current, history);
+          assertAuthenticatedProceduralEvaluationEvidence(authenticated);
           return {
             kind: "replay" as const,
             event: Object.freeze({ ...replay }),
@@ -507,6 +509,7 @@ export class DurableProceduralEvaluationHistoryRepository {
     return this.storage.transaction(async (transaction: HistoryTransaction) => {
       const current = await transaction.get<unknown>(key);
       requireCurrentHistoryCas(current, history);
+      assertAuthenticatedProceduralEvaluationEvidence(authenticated);
       await transaction.put(key, next);
       return { kind: "accepted" as const, event, snapshot: frozenSnapshot(next) };
     });
