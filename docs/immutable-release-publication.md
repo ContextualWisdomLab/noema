@@ -31,9 +31,10 @@ The workflow has two jobs with different authorities.
 - never reuses the Release Policy Auditor token for tag lookup, release-existence checks, release creation, release verification, Actions, pull requests, deployment, LLM, Cloudflare, or organization administration;
 - fails closed unless GitHub's repository immutable-release API reports `enabled=true`;
 - refuses to overwrite an existing release or continue when release absence cannot be proved as HTTP 404;
-- dereferences the remote tag to the exact attested commit immediately before and after publication;
-- publishes the complete asset set in one `gh release create ... --verify-tag` transaction;
-- verifies the immutable release and every asset before emitting a publication receipt.
+- dereferences the remote tag to the exact attested commit before staging;
+- creates a draft containing the complete bounded asset set, verifies the draft state plus every staged asset name, size, and GitHub SHA-256 digest, then re-checks the release tag after asset staging and immediately before publication;
+- publishes only the verified draft, leaving a drifted-tag draft unpublished rather than creating an irreversible mismatched immutable release;
+- verifies the immutable release and every asset after publication before emitting a publication receipt.
 
 The existing Noema Maintainer App is intentionally not broadened for this purpose. Repository-settings inspection and release publication are separate authorities.
 
@@ -104,11 +105,15 @@ gh workflow run release-evidence.yml \
   -f tag=v0.1.0
 ```
 
-A rerun after successful publication is expected to fail because an immutable release already exists. This is the required idempotency behavior: the workflow never mutates or silently replaces buyer assets.
+GitHub documents that immutable-release protection starts only after publication. `gh release create` with attached assets otherwise performs separate draft-creation, asset-upload, and publication API calls. Noema therefore makes those phases explicit: it creates the release with `--draft`, verifies the staged six-asset set and its digests, re-dereferences `v0.1.0`, and only then runs `gh release edit v0.1.0 --draft=false`. If the tag moved while assets were being staged, publication stops and the draft remains non-authoritative.
+
+A rerun after successful publication is expected to fail because an immutable release already exists. A failed run that already created a draft is also intentionally fail-closed rather than silently replacing that draft; an authorized operator must inspect the retained evidence and resolve the draft before retrying. The workflow never mutates or silently replaces buyer assets.
 
 ### Why `--target` is not an identity control
 
-The release tag must exist before `gh release create` runs because the workflow uses `--verify-tag`. GitHub documents `target_commitish` as unused when the tag already exists. Therefore the workflow does not rely on `--target` or the release object's reported `targetCommitish` field to prove source identity. It dereferences the tag through the commits API immediately before and after publication and records the resulting `resolvedTagCommitSha` in the publication receipt.
+The release tag must exist before draft creation because the workflow uses `--verify-tag`. GitHub documents `target_commitish` as unused when the tag already exists. Therefore the workflow does not rely on `--target` or the release object's reported `targetCommitish` field to prove source identity. It dereferences the tag before staging, re-checks it after asset staging and immediately before publication, then dereferences it again after publication. The final authoritative result is recorded as `resolvedTagCommitSha` in the publication receipt.
+
+The tag remains mutable until the draft is published unless live repository or organization tag governance independently forbids update/deletion. The post-staging check sharply narrows the mutable interval and prevents publication after drift observed during asset upload; it does not manufacture a live tag-protection rule. Buyer-ready release acceptance therefore still requires fresh control-plane evidence for the approved tag-governance policy when that policy is relied on as an independent control.
 
 ## Buyer verification
 
@@ -194,11 +199,15 @@ Publication stops without a release receipt when any of these conditions occurs:
 
 - the Release Policy Auditor App credentials are absent, invalid, not installed for `ContextualWisdomLab/noema`, or lack the required Administration read permission;
 - immutable releases are not enabled or the policy API cannot be read;
-- the tag does not resolve to the exact attested commit before or after publication;
+- the tag does not resolve to the exact attested commit before staging, after draft asset staging, or after publication;
 - a release with the tag already exists;
 - release absence cannot be proven as HTTP 404;
 - the downloaded handoff checksum or exact file set differs;
-- `gh release create` fails;
+- draft creation or asset upload fails;
+- the staged release is not a mutable draft before publication;
+- the staged draft contains a missing, extra, size-mismatched, or digest-mismatched asset;
+- the tag moves while the draft assets are being staged;
+- draft publication fails;
 - the published release is not immutable;
 - the release tag differs from the attested identity;
 - `gh release verify` fails after bounded retries;
