@@ -70,6 +70,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Accept only the exact JSON media-type forms emitted by the private workflow-state owner. */
 function isJsonMediaType(value: string | null): boolean {
   return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu.test(value ?? "");
 }
