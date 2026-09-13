@@ -79,7 +79,11 @@ async function fixtureGraphs() {
   return { baseline, candidate };
 }
 
-async function screenedDecision(baseline, candidate) {
+async function screenedDecision(
+  baseline,
+  candidate,
+  { rejectedKeys = [], safetyViolations = 0 } = {},
+) {
   const contextDigest = digest("c");
   return assessProceduralCandidate({
     baseline,
@@ -102,11 +106,11 @@ async function screenedDecision(baseline, candidate) {
       graphDigest: candidate.digest,
       contextDigest,
       observations: [
-        { caseId: "case-1", score: 0.8, safetyViolations: 0 },
-        { caseId: "case-2", score: 0.8, safetyViolations: 0 },
+        { caseId: "case-1", score: 0.8, safetyViolations },
+        { caseId: "case-2", score: 0.8, safetyViolations },
       ],
     },
-    rejectedKeys: [],
+    rejectedKeys,
   });
 }
 
@@ -413,4 +417,40 @@ test("normalizes transaction-local BigInt drift instead of leaking JSON serializ
 
   const [, malformed] = storage.records.entries().next().value;
   assert.equal(malformed.events[0].candidateRevision, 2n);
+});
+
+test("rejects a sparse rejection projection even when an extra property preserves the key count", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const rejected = await screenedDecision(baseline, candidate, { safetyViolations: 1 });
+  const followup = await screenedDecision(baseline, candidate, { rejectedKeys: [rejected.rejectionKey] });
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(rejected, keys, 0);
+  const second = await authenticatedEvaluation(followup, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  storage.beforeTransaction = async () => {
+    const [key, retained] = storage.records.entries().next().value;
+    const sparse = [];
+    sparse.length = retained.rejectedKeys.length;
+    sparse.shadow = retained.rejectedKeys[0];
+    retained.rejectedKeys = sparse;
+    storage.records.set(key, retained);
+  };
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    /expected history version lost the CAS race/,
+  );
+
+  const [, malformed] = storage.records.entries().next().value;
+  assert.equal(malformed.rejectedKeys.length, 1);
+  assert.equal(0 in malformed.rejectedKeys, false);
+  assert.equal(malformed.rejectedKeys.shadow, rejected.rejectionKey);
 });
