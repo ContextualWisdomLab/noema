@@ -241,3 +241,38 @@ test("rejects a stale preverified append when another writer wins before the CAS
   assert.equal(recovered?.version, 2);
   assert.equal(recovered?.events.at(-1)?.handoffDigest, winner.handoffDigest);
 });
+
+test("fails closed when retained event bytes change after verification but before CAS", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const second = await authenticatedEvaluation(decision, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  storage.beforeTransaction = async () => {
+    const [key, retained] = storage.records.entries().next().value;
+    retained.events[0].candidateReceiptDigest = digest("e");
+    storage.records.set(key, retained);
+  };
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    /expected history version lost the CAS race/,
+  );
+
+  const [, corrupted] = storage.records.entries().next().value;
+  assert.equal(corrupted.version, 1);
+  assert.equal(corrupted.events[0].candidateReceiptDigest, digest("e"));
+  await assert.rejects(
+    repository.read(candidate),
+    /durable procedural history integrity check failed/,
+  );
+});
