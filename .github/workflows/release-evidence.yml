@@ -205,7 +205,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f scripts/release-publication-receipt.mjs
+          test -f scripts/lib/delegated-github-token.mjs
           install -m 0644 scripts/release-publication-receipt.mjs release-publication-receipt.mjs
+          install -m 0644 scripts/lib/delegated-github-token.mjs delegated-github-token.mjs
           if find release -type l -print -quit | grep -q .; then
             echo "::error::Release materialization handoff must not contain symbolic links."
             exit 1
@@ -234,6 +236,7 @@ jobs:
             release/noema-${RELEASE_COMMIT_SHA}.tar.gz \
             release/release-evidence.json \
             release-publication-receipt.mjs \
+            delegated-github-token.mjs \
             verification-handoff.json \
             >verification-handoff.sha256
           sha256sum --check verification-handoff.sha256
@@ -246,6 +249,7 @@ jobs:
           path: |
             release/
             release-publication-receipt.mjs
+            delegated-github-token.mjs
             verification-handoff.json
             verification-handoff.sha256
           if-no-files-found: error
@@ -394,6 +398,7 @@ jobs:
           set -euo pipefail
           cd "$BUNDLE_DIR"
           test -f release-publication-receipt.mjs
+          test -f delegated-github-token.mjs
           if find release -type l -print -quit | grep -q .; then
             echo "::error::Release publication bundle must not contain symbolic links."
             exit 1
@@ -406,6 +411,7 @@ jobs:
             release/noema-${RELEASE_COMMIT_SHA}.tar.gz \
             release/release-evidence.json \
             release-publication-receipt.mjs \
+            delegated-github-token.mjs \
             >release-bundle.sha256
 
       - name: Upload bounded release publication bundle
@@ -417,6 +423,7 @@ jobs:
             ${{ runner.temp }}/release-materialization-input/release/
             ${{ runner.temp }}/release-materialization-input/release-bundle.sha256
             ${{ runner.temp }}/release-materialization-input/release-publication-receipt.mjs
+            ${{ runner.temp }}/release-materialization-input/delegated-github-token.mjs
           if-no-files-found: error
           retention-days: 90
 
@@ -494,17 +501,73 @@ jobs:
 
       - name: Require immutable-release enforcement
         env:
-          GH_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          DELEGATED_RELEASE_POLICY_AUDITOR_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}
         run: |
           set -euo pipefail
           publication_dir="$RUNNER_TEMP/release-publication"
           rm -rf "$publication_dir"
           mkdir -p "$publication_dir"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GITHUB_REPOSITORY}/immutable-releases" \
-            >"$publication_dir/immutable-release-policy.json"
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-release-policy-token.XXXXXX")"
+          token_path="$token_dir/release-policy-auditor-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_RELEASE_POLICY_AUDITOR_TOKEN" >"$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_RELEASE_POLICY_AUDITOR_TOKEN
+          NOEMA_RELEASE_AUDITOR_TOKEN_PATH="$token_path" \
+          NOEMA_RELEASE_AUDITOR_HELPER_PATH="$BUNDLE_DIR/delegated-github-token.mjs" \
+          NOEMA_RELEASE_POLICY_PATH="$publication_dir/immutable-release-policy.json" \
+          NOEMA_RELEASE_POLICY_ENDPOINT="repos/${GITHUB_REPOSITORY}/immutable-releases" \
+            node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          import { writeFileSync } from "node:fs";
+          import { pathToFileURL } from "node:url";
+
+          const helperPath = process.env.NOEMA_RELEASE_AUDITOR_HELPER_PATH;
+          const tokenPath = process.env.NOEMA_RELEASE_AUDITOR_TOKEN_PATH;
+          const outputPath = process.env.NOEMA_RELEASE_POLICY_PATH;
+          const endpoint = process.env.NOEMA_RELEASE_POLICY_ENDPOINT;
+          if (!helperPath || !tokenPath || !outputPath || !endpoint) {
+            throw new Error("Immutable-release policy audit configuration is incomplete.");
+          }
+          const { readDelegatedGithubToken } = await import(pathToFileURL(helperPath).href);
+          const token = readDelegatedGithubToken(tokenPath);
+          const completed = spawnSync(
+            "gh",
+            [
+              "api",
+              "-H",
+              "Accept: application/vnd.github+json",
+              "-H",
+              "X-GitHub-Api-Version: 2026-03-10",
+              endpoint,
+            ],
+            {
+              shell: false,
+              env: {
+                PATH: process.env.PATH ?? "",
+                GH_HOST: "github.com",
+                NO_COLOR: "1",
+                GH_TOKEN: token,
+              },
+              maxBuffer: 16 * 1024,
+              timeout: 20_000,
+            },
+          );
+          if (completed.error) {
+            throw new Error("Immutable-release policy request could not complete.");
+          }
+          if (completed.status !== 0) {
+            throw new Error(
+              `Immutable-release policy request failed with exit status ${completed.status ?? "unknown"}.`,
+            );
+          }
+          if (!completed.stdout || completed.stdout.length === 0) {
+            throw new Error("Immutable-release policy request returned an empty response.");
+          }
+          writeFileSync(outputPath, completed.stdout, { flag: "wx", mode: 0o600 });
+          NODE
           jq -e '.enabled == true and (.enforced_by_owner | type == "boolean")' \
             "$publication_dir/immutable-release-policy.json" >/dev/null
 
