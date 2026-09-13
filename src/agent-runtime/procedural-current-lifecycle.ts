@@ -70,6 +70,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Accept only the exact JSON media-type forms emitted by the private workflow-state owner. */
+function isJsonMediaType(value: string | null): boolean {
+  return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu.test(value ?? "");
+}
+
 function currentTaskState(value: unknown): CurrentWorkflowTaskState {
   if (typeof value !== "string" || !CURRENT_WORKFLOW_TASK_STATES.has(value as CurrentWorkflowTaskState)) {
     return rejectCurrentLifecycle("invalid_workflow_state_response");
@@ -121,6 +126,19 @@ function currentWorkflowEvidence(
     taskStates: Object.freeze(taskStates),
     transitionSequence: value.transitionSequence as number,
   });
+}
+
+/** Requests response-body cleanup without allowing cleanup completion to become decision authority. */
+function cancelCurrentWorkflowResponseBodyBestEffort(
+  body: ReadableStream<Uint8Array> | null,
+  reason: string,
+): void {
+  if (body === null) return;
+  try {
+    void body.cancel(reason).catch(() => undefined);
+  } catch {
+    // A locked or hostile body must not replace the stable fail-closed admission result.
+  }
 }
 
 function cancelCurrentWorkflowReaderBestEffort(
@@ -218,6 +236,13 @@ async function readCurrentWorkflowEvidence(
   if (response.status === 409) return rejectCurrentLifecycle("workflow_state_conflict");
   if (response.status === 503) return rejectCurrentLifecycle("workflow_state_unavailable");
   if (response.status !== 200) return rejectCurrentLifecycle("invalid_workflow_state_response");
+  if (!isJsonMediaType(response.headers.get("content-type"))) {
+    cancelCurrentWorkflowResponseBodyBestEffort(
+      response.body,
+      "Noema current workflow-state response used an unsupported media type",
+    );
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  }
 
   const body = await boundedCurrentWorkflowResponse(response);
   if (!isRecord(body) || body.ok !== true) {

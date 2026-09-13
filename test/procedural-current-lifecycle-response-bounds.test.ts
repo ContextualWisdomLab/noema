@@ -8,7 +8,9 @@ import type { WorkflowStateDurableObjectEnv } from "../src/workflow-task-executi
 import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 
 const executionId = "run-current-lifecycle-response-bound";
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
+/** Keeps scheduling trivial so failures stay attributable to current-response admission. */
 function plan(): WorkflowTaskPlan {
   return {
     executionId,
@@ -18,6 +20,7 @@ function plan(): WorkflowTaskPlan {
   };
 }
 
+/** Builds the matching Agent Runtime session required to exercise the real procedural ACL. */
 async function session() {
   const graph = await createProceduralGraph({
     schemaVersion: "noema.procedural-graph/v1",
@@ -44,6 +47,7 @@ async function session() {
   });
 }
 
+/** Routes the supplied hostile response through the normal execution-scoped Durable Object port. */
 function envFor(response: Response): WorkflowStateDurableObjectEnv {
   const namespace = {
     idFromName(name: string): DurableObjectId {
@@ -56,6 +60,7 @@ function envFor(response: Response): WorkflowStateDurableObjectEnv {
   return { NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace };
 }
 
+/** Requires every hostile transport fixture to collapse to the stable fail-closed diagnostic. */
 async function expectInvalid(response: Response): Promise<void> {
   await expect(guideProceduralExecutionFromCurrentWorkflowState(
     envFor(response),
@@ -94,7 +99,7 @@ describe("procedural current-lifecycle response bounds", () => {
 
     await expectInvalid(new Response(stream, {
       status: 200,
-      headers: { "content-type": "application/json; charset=utf-8" },
+      headers: JSON_HEADERS,
     }));
 
     expect(cancelled).toBe(true);
@@ -123,7 +128,7 @@ describe("procedural current-lifecycle response bounds", () => {
     const outcome = guideProceduralExecutionFromCurrentWorkflowState(
       envFor(new Response(stream, {
         status: 200,
-        headers: { "content-type": "application/json; charset=utf-8" },
+        headers: JSON_HEADERS,
       })),
       plan(),
       await session(),
@@ -154,7 +159,10 @@ describe("procedural current-lifecycle response bounds", () => {
   });
 
   it("normalizes a locked durable-owner response body to the stable fail-closed diagnostic", async () => {
-    const response = new Response(new ReadableStream<Uint8Array>(), { status: 200 });
+    const response = new Response(new ReadableStream<Uint8Array>(), {
+      status: 200,
+      headers: JSON_HEADERS,
+    });
     const heldReader = response.body!.getReader();
     try {
       await expectInvalid(response);
@@ -164,7 +172,101 @@ describe("procedural current-lifecycle response bounds", () => {
   });
 
   it("rejects a successful status with no response body", async () => {
+    await expectInvalid(new Response(null, { status: 200, headers: JSON_HEADERS }));
+  });
+
+  it("rejects a successful response without a declared JSON media type when no body exists", async () => {
     await expectInvalid(new Response(null, { status: 200 }));
+  });
+
+  it("preserves fail-closed admission when non-JSON body cancellation throws synchronously", async () => {
+    const response = {
+      status: 200,
+      headers: new Headers({ "content-type": "text/plain; charset=utf-8" }),
+      body: {
+        cancel() {
+          throw new Error("cleanup transport failed synchronously");
+        },
+      },
+    } as unknown as Response;
+
+    await expectInvalid(response);
+  });
+
+  it("preserves fail-closed admission when non-JSON body cancellation rejects asynchronously", async () => {
+    let cancelRequested = false;
+    const stream = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelRequested = true;
+        return Promise.reject(new Error("cleanup transport rejected"));
+      },
+    });
+
+    await expectInvalid(new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    }));
+    await Promise.resolve();
+
+    expect(cancelRequested).toBe(true);
+  });
+
+  it("cancels parseable JSON identified as non-JSON without waiting for cleanup", async () => {
+    let markCancelStarted!: () => void;
+    const cancelStarted = new Promise<void>((resolve) => {
+      markCancelStarted = resolve;
+    });
+    let releaseCancellation!: () => void;
+    const cancellationBarrier = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    const payload = JSON.stringify({
+      ok: true,
+      data: {
+        executionId,
+        planId: "plan-current-lifecycle-response-bound",
+        transitionSequence: 1,
+        cancellation: { requested: false, cancellationId: null },
+        tasks: [{ taskId: "review", state: "pending" }],
+      },
+    });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(payload));
+      },
+      cancel() {
+        markCancelStarted();
+        return cancellationBarrier;
+      },
+    }, { highWaterMark: 0 });
+    const outcome = guideProceduralExecutionFromCurrentWorkflowState(
+      envFor(new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      })),
+      plan(),
+      await session(),
+      { lastProcedure: null, hops: 1, maxEdges: 4 },
+    ).then(
+      () => new Error("expected the non-JSON response to fail closed"),
+      (error: unknown) => error,
+    );
+
+    await cancelStarted;
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    const settledBeforeCleanup = settled;
+
+    releaseCancellation();
+    const error = await outcome;
+    expect(error).toMatchObject({
+      name: "ProceduralCurrentLifecycleError",
+      code: "invalid_workflow_state_response",
+    });
+    expect(settledBeforeCleanup).toBe(true);
   });
 
   it("fails closed on a malformed non-byte response chunk", async () => {
@@ -174,7 +276,7 @@ describe("procedural current-lifecycle response bounds", () => {
         controller.close();
       },
     });
-    await expectInvalid(new Response(stream, { status: 200 }));
+    await expectInvalid(new Response(stream, { status: 200, headers: JSON_HEADERS }));
   });
 
   it("normalizes a body-stream read failure to the stable fail-closed diagnostic", async () => {
@@ -183,6 +285,6 @@ describe("procedural current-lifecycle response bounds", () => {
         controller.error(new Error("durable stream failed"));
       },
     });
-    await expectInvalid(new Response(stream, { status: 200 }));
+    await expectInvalid(new Response(stream, { status: 200, headers: JSON_HEADERS }));
   });
 });
