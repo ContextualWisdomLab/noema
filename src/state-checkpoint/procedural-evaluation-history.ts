@@ -329,8 +329,8 @@ export class DurableProceduralEvaluationHistoryRepository {
   /**
    * Retains one still-current authenticated evaluator handoff for the exact candidate graph. Bounded
    * history integrity verification and event hashing finish before the Durable Object transaction; the
-   * atomic section then rechecks complete verified-history CAS authority before the write. Exact replay
-   * is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
+   * atomic section then rechecks complete verified-history CAS authority before replay return or write.
+   * Exact replay is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
    * @param candidate Locally admitted direct-child graph bound by the authenticated evaluation evidence.
    * @param authenticated Still-current process-local signed evaluator authority produced by Agent Runtime.
    * @param expectedVersion Exact durable history version observed by the caller before this append attempt.
@@ -361,11 +361,15 @@ export class DurableProceduralEvaluationHistoryRepository {
       const replay = history.events.find((event) => event.handoffDigest === authenticated.handoffDigest);
       if (replay !== undefined) {
         requireHistory(replayMatches(replay, candidate, authenticated), "authenticated replay names different durable semantics");
-        return {
-          kind: "replay" as const,
-          event: Object.freeze({ ...replay }),
-          snapshot: frozenSnapshot(history),
-        };
+        return this.storage.transaction(async (transaction: HistoryTransaction) => {
+          const current = await transaction.get<MutableHistory>(key);
+          requireCurrentHistoryCas(current, history);
+          return {
+            kind: "replay" as const,
+            event: Object.freeze({ ...replay }),
+            snapshot: frozenSnapshot(history),
+          };
+        });
       }
       requireHistory(history.version === expectedVersion, "expected history version lost the CAS race");
     }
