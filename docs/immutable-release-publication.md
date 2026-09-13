@@ -62,12 +62,7 @@ GitHub's immutable-release settings read requires repository `Administration: re
 - Metadata: read;
 - no Contents, Actions, Pull requests, Deployments, or Administration write authority.
 
-Configure these repository Actions values for that App:
-
-```text
-NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID
-NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY
-```
+Configure repository Actions variable `NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID` with the App Client ID and repository Actions secret `NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY` with the App private key. The workflow reads them through `vars.NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID` and `secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY`, respectively.
 
 The workflow mints the installation token only for the immutable-release policy read. The ordinary job `GITHUB_TOKEN` remains the authority for exact-tag/release-existence reads and immutable release creation. Source configuration of this boundary does **not** prove that the App is installed, that its credentials are provisioned, or that immutable releases are enabled; those remain live control-plane evidence.
 
