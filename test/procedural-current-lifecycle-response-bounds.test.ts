@@ -10,6 +10,7 @@ import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan"
 const executionId = "run-current-lifecycle-response-bound";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
+/** Keeps scheduling trivial so failures stay attributable to current-response admission. */
 function plan(): WorkflowTaskPlan {
   return {
     executionId,
@@ -19,6 +20,7 @@ function plan(): WorkflowTaskPlan {
   };
 }
 
+/** Builds the matching Agent Runtime session required to exercise the real procedural ACL. */
 async function session() {
   const graph = await createProceduralGraph({
     schemaVersion: "noema.procedural-graph/v1",
@@ -45,6 +47,7 @@ async function session() {
   });
 }
 
+/** Routes the supplied hostile response through the normal execution-scoped Durable Object port. */
 function envFor(response: Response): WorkflowStateDurableObjectEnv {
   const namespace = {
     idFromName(name: string): DurableObjectId {
@@ -57,6 +60,7 @@ function envFor(response: Response): WorkflowStateDurableObjectEnv {
   return { NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace };
 }
 
+/** Requires every hostile transport fixture to collapse to the stable fail-closed diagnostic. */
 async function expectInvalid(response: Response): Promise<void> {
   await expect(guideProceduralExecutionFromCurrentWorkflowState(
     envFor(response),
