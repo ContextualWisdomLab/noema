@@ -104,7 +104,7 @@ describe("immutable-release policy authorization", () => {
   it("does not rewrite unrelated historical changelog authority", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     expect(changelog).toContain(
-      "private Durable Object request(256 bytes)와 decision response(4,096 bytes) bounded stream reader",
+      "private Durable Object request(256-byte)와 decision response(4,096-byte) bounded reader",
     );
     expect(changelog).toContain(
       "quarantine/security authority, release/deployment authority, and foreign-domain truth remain with their existing owners; this protected source is not an immutable release or deployed recovery/p95/heap evidence. PR #687.",
