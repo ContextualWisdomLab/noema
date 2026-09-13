@@ -10,14 +10,26 @@ This source release **does not prove deployment** to Cloudflare, production conf
 
 ## Trust separation
 
-The workflow has two jobs with different authorities.
+The workflow has four jobs with different authorities.
+
+### `verify_release`
+
+- has repository `contents: read` only;
+- binds the run to one existing `vMAJOR.MINOR.PATCH` tag and verifies the checked-out commit, dereferenced tag commit, and `package.json` version are identical;
+- runs `npm run release:verify` on the exact tagged source;
+- has no attestation or release-publication permission.
+
+### `materialize_release`
+
+- inherits the verified tag/commit/version identity and retains repository `contents: read` only;
+- checks out the exact tag on a separate GitHub-hosted job and builds the source archive, CycloneDX SBOM, `release-evidence.json`, and `SHA256SUMS`;
+- seals a bounded, checksum-protected materialization handoff and uploads only that handoff;
+- has no OIDC, attestation, or release-publication permission.
 
 ### `attest_release`
 
-- checks out the exact existing `vMAJOR.MINOR.PATCH` tag;
-- verifies that the tag, commit, and `package.json` version agree;
-- runs `npm run release:verify`;
-- produces the source archive, CycloneDX 1.5 SBOM, `release-evidence.json`, and `SHA256SUMS`;
+- receives only the sealed sterile materialization handoff rather than rebuilding release subjects;
+- verifies the Actions artifact identity, digest, workflow run, exact source SHA, and bounded handoff before attestation;
 - generates and independently verifies provenance and SBOM attestations;
 - seals the exact bounded publication handoff with SHA-256;
 - has no release-publication permission.
