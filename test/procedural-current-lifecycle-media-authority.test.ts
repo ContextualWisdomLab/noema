@@ -11,7 +11,7 @@ describe("protected procedural current-lifecycle media documentation authority",
     expect(changelog).toContain("Protected #704");
     expect(changelog).toContain("42b15e865bdf88fde622c3bba2c0b123770d18be");
     expect(changelog).toContain("e8c2002e5af8fa5611880091dab81916bb716c35");
-    expect(changelog).toContain("application/json; charset=utf-8");
+    expect(changelog).toContain("application/json with optional `charset=utf-8` parameter");
     expect(changelog).toContain("invalid_workflow_state_response");
     expect(changelog).toContain("best-effort cleanup");
 
@@ -19,7 +19,7 @@ describe("protected procedural current-lifecycle media documentation authority",
       "merged PR #704 exact `42b15e865bdf88fde622c3bba2c0b123770d18be`",
     );
     expect(baseline).toContain("GitHub-verified normal merge `e8c2002e5af8fa5611880091dab81916bb716c35`");
-    expect(baseline).toContain("application/json; charset=utf-8");
+    expect(baseline).toContain("application/json with optional `charset=utf-8` parameter");
     expect(baseline).toContain("stable `invalid_workflow_state_response`");
     expect(baseline).toContain("best-effort cleanup");
     expect(baseline).toContain("immutable release");
