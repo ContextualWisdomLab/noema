@@ -193,6 +193,24 @@ describe("procedural current-lifecycle response bounds", () => {
     await expectInvalid(response);
   });
 
+  it("preserves fail-closed admission when non-JSON body cancellation rejects asynchronously", async () => {
+    let cancelRequested = false;
+    const stream = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelRequested = true;
+        return Promise.reject(new Error("cleanup transport rejected"));
+      },
+    });
+
+    await expectInvalid(new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    }));
+    await Promise.resolve();
+
+    expect(cancelRequested).toBe(true);
+  });
+
   it("cancels parseable JSON identified as non-JSON without waiting for cleanup", async () => {
     let markCancelStarted!: () => void;
     const cancelStarted = new Promise<void>((resolve) => {
