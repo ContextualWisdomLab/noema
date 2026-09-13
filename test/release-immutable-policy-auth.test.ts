@@ -78,7 +78,10 @@ describe("immutable-release policy authorization", () => {
     expect(staging).not.toContain("steps.release_policy_auditor.outputs.token");
     expect(publication).toContain("GH_TOKEN: ${{ github.token }}");
     expect(publication).toContain("repos/${GITHUB_REPOSITORY}/releases?per_page=100");
-    expect(publication).toContain('gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false');
+    expect(publication).toContain('"repos/${GITHUB_REPOSITORY}/releases/${release_id}"');
+    expect(publication).toContain("--method PATCH");
+    expect(publication).toContain("-F draft=false");
+    expect(publication).not.toContain('gh release edit "$RELEASE_TAG"');
     expect(publication).not.toContain("steps.release_policy_auditor.outputs.token");
   });
 
