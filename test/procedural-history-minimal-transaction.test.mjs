@@ -15,6 +15,7 @@ class TransactionObservedStorage {
   constructor() {
     this.records = new Map();
     this.inTransaction = false;
+    this.beforeTransaction = null;
   }
 
   async get(key) {
@@ -28,6 +29,9 @@ class TransactionObservedStorage {
 
   async transaction(callback) {
     assert.equal(this.inTransaction, false, "nested transaction observation is not supported");
+    const beforeTransaction = this.beforeTransaction;
+    this.beforeTransaction = null;
+    if (beforeTransaction !== null) await beforeTransaction();
     this.inTransaction = true;
     try {
       return await callback(this);
@@ -194,7 +198,7 @@ test("keeps digest verification and event hashing outside the Durable Object tra
   );
 });
 
-test("rejects a stale preverified append when another writer wins during out-of-transaction hashing", async () => {
+test("rejects a stale preverified append when another writer wins before the CAS transaction", async () => {
   const { baseline, candidate } = await fixtureGraphs();
   const decision = await screenedDecision(baseline, candidate);
   const keys = await crypto.subtle.generateKey(
@@ -212,14 +216,19 @@ test("rejects a stale preverified append when another writer wins during out-of-
 
   const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
   let digestCalls = 0;
-  let winnerResult;
   vi.spyOn(crypto.subtle, "digest").mockImplementation(async (...args) => {
     digestCalls += 1;
-    if (!storage.inTransaction && digestCalls === 3) {
-      winnerResult = await repository.append(candidate, winner, 1);
-    }
     return originalDigest(...args);
   });
+
+  let winnerResult;
+  storage.beforeTransaction = async () => {
+    assert.ok(
+      digestCalls >= 3,
+      "storage-key hashing, retained-chain verification, and next-event hashing must finish before CAS starts",
+    );
+    winnerResult = await repository.append(candidate, winner, 1);
+  };
 
   await assert.rejects(
     repository.append(candidate, stale, 1),
