@@ -130,6 +130,14 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
+/** Requires every array slot to be an own indexed property and rejects compensating custom properties. */
+function requireDenseArrayShape(value: readonly unknown[], message: string): void {
+  requireHistory(Object.keys(value).length === value.length, message);
+  for (let index = 0; index < value.length; index += 1) {
+    requireHistory(Object.hasOwn(value, index), message);
+  }
+}
+
 /**
  * Rejects runtime-untrusted retained structured-clone shapes before JSON equality can erase fields or
  * native object operations can leak arbitrary JavaScript exceptions across the State / Checkpoint boundary.
@@ -145,9 +153,9 @@ function requireCanonicalHistoryShape(history: unknown, message: string): assert
   requireHistory(!Array.isArray(retained.stream), message);
   requireHistory(JSON.stringify(Object.keys(retained.stream).sort()) === STREAM_KEY_SET, message);
   requireHistory(Array.isArray(retained.rejectedKeys), message);
-  requireHistory(Object.keys(retained.rejectedKeys).length === retained.rejectedKeys.length, message);
+  requireDenseArrayShape(retained.rejectedKeys, message);
   requireHistory(Array.isArray(retained.events), message);
-  requireHistory(Object.keys(retained.events).length === retained.events.length, message);
+  requireDenseArrayShape(retained.events, message);
   for (const event of retained.events) {
     requireHistory(event !== null, message);
     requireHistory(typeof event === "object", message);
