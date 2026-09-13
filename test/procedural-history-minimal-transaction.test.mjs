@@ -380,3 +380,37 @@ test("normalizes a transaction-local null replacement to the CAS conflict bounda
   const [, malformed] = storage.records.entries().next().value;
   assert.equal(malformed, null);
 });
+
+test("normalizes transaction-local BigInt drift instead of leaking JSON serialization errors", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const second = await authenticatedEvaluation(decision, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  storage.beforeTransaction = async () => {
+    const [key, retained] = storage.records.entries().next().value;
+    retained.events[0].candidateRevision = 2n;
+    storage.records.set(key, retained);
+  };
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    (error) => {
+      assert.equal(error?.name, "ProceduralEvaluationHistoryConflictError");
+      assert.match(error?.message ?? "", /expected history version lost the CAS race/);
+      return true;
+    },
+  );
+
+  const [, malformed] = storage.records.entries().next().value;
+  assert.equal(malformed.events[0].candidateRevision, 2n);
+});
