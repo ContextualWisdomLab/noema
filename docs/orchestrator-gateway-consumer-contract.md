@@ -29,7 +29,8 @@ same module is Noema-only. Do not clone an OpenCode sidecar into naruon.
 | `NOEMA_LLM_MODEL` | One routing alias. Canonical value is `orchestrator/free` (fail-closed zero-cost pool, ZDR-first). |
 | `NOEMA_LLM_API_KEY` | Dedicated gateway inference token. Never an upstream provider key. |
 
-`GET <gateway-root>/healthz` is unauthenticated and must return
+`GET <gateway-root>/healthz` is unauthenticated, must respond with
+`Content-Type: application/json`, and must return
 `{"status":"ok","service":"contextual-orchestrator"}`.
 
 At request time, secrets come from a KV / credential registry (the Worker
