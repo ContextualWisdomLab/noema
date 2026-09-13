@@ -70,6 +70,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isJsonMediaType(value: string | null): boolean {
+  return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu.test(value ?? "");
+}
+
 function currentTaskState(value: unknown): CurrentWorkflowTaskState {
   if (typeof value !== "string" || !CURRENT_WORKFLOW_TASK_STATES.has(value as CurrentWorkflowTaskState)) {
     return rejectCurrentLifecycle("invalid_workflow_state_response");
@@ -218,6 +222,9 @@ async function readCurrentWorkflowEvidence(
   if (response.status === 409) return rejectCurrentLifecycle("workflow_state_conflict");
   if (response.status === 503) return rejectCurrentLifecycle("workflow_state_unavailable");
   if (response.status !== 200) return rejectCurrentLifecycle("invalid_workflow_state_response");
+  if (!isJsonMediaType(response.headers.get("content-type"))) {
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  }
 
   const body = await boundedCurrentWorkflowResponse(response);
   if (!isRecord(body) || body.ok !== true) {
