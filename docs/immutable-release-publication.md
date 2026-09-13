@@ -30,7 +30,7 @@ The workflow has two jobs with different authorities.
 - mints a separate repository-scoped Release Policy Auditor GitHub App token with only `Administration: read` and `Metadata: read` for the immutable-release settings check;
 - never reuses the Release Policy Auditor token for tag lookup, release-existence checks, release creation, release verification, Actions, pull requests, deployment, LLM, Cloudflare, or organization administration;
 - fails closed unless GitHub's repository immutable-release API reports `enabled=true`;
-- refuses to overwrite an existing release or continue when release absence cannot be proved as HTTP 404;
+- refuses to overwrite an existing published release or retained draft by proving absence through the authenticated, paginated release inventory before staging;
 - dereferences the remote tag to the exact attested commit before staging;
 - creates a draft containing the complete bounded asset set, verifies the draft state plus every staged asset name, size, and GitHub SHA-256 digest, then re-checks the release tag after asset staging and immediately before publication;
 - publishes only the verified draft, leaving a drifted-tag draft unpublished rather than creating an irreversible mismatched immutable release;
@@ -51,7 +51,7 @@ Every release contains exactly these assets:
 | `provenance.sigstore.json` | GitHub/Sigstore source provenance bundle. |
 | `cyclonedx-sbom.sigstore.json` | GitHub/Sigstore CycloneDX SBOM attestation bundle. |
 
-The workflow never uses `--clobber`. Any existing release with the same tag blocks publication.
+The workflow never uses `--clobber`. Any existing published release or retained draft with the same tag blocks publication.
 
 ## Immutable-release prerequisite
 
@@ -65,7 +65,7 @@ GitHub's immutable-release settings read requires repository `Administration: re
 
 Configure repository Actions variable `NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID` with the App Client ID and repository Actions secret `NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY` with the App private key. The workflow reads them through `vars.NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID` and `secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY`, respectively.
 
-The workflow mints the installation token only for the immutable-release policy read. The ordinary job `GITHUB_TOKEN` remains the authority for exact-tag/release-existence reads and immutable release creation. Source configuration of this boundary does **not** prove that the App is installed, that its credentials are provisioned, or that immutable releases are enabled; those remain live control-plane evidence.
+The workflow mints the installation token only for the immutable-release policy read. The ordinary job `GITHUB_TOKEN` remains the authority for exact-tag/release-inventory reads and immutable release creation. Source configuration of this boundary does **not** prove that the App is installed, that its credentials are provisioned, or that immutable releases are enabled; those remain live control-plane evidence.
 
 Verify the policy with an appropriately authorized administrative read session:
 
@@ -106,6 +106,8 @@ gh workflow run release-evidence.yml \
 ```
 
 GitHub documents that immutable-release protection starts only after publication. `gh release create` with attached assets otherwise performs separate draft-creation, asset-upload, and publication API calls. Noema therefore makes those phases explicit: it creates the release with `--draft`, verifies the staged six-asset set and its digests, re-dereferences `v0.1.0`, and only then runs `gh release edit v0.1.0 --draft=false`. If the tag moved while assets were being staged, publication stops and the draft remains non-authoritative.
+
+Before draft creation, the workflow reads the authenticated, paginated release inventory and rejects any existing published release or retained draft with the same tag. This is intentionally stricter than a published-release-by-tag lookup because a failed prior run may have left a draft that must not be silently reused or replaced.
 
 A rerun after successful publication is expected to fail because an immutable release already exists. A failed run that already created a draft is also intentionally fail-closed rather than silently replacing that draft; an authorized operator must inspect the retained evidence and resolve the draft before retrying. The workflow never mutates or silently replaces buyer assets.
 
@@ -200,8 +202,8 @@ Publication stops without a release receipt when any of these conditions occurs:
 - the Release Policy Auditor App credentials are absent, invalid, not installed for `ContextualWisdomLab/noema`, or lack the required Administration read permission;
 - immutable releases are not enabled or the policy API cannot be read;
 - the tag does not resolve to the exact attested commit before staging, after draft asset staging, or after publication;
-- a release with the tag already exists;
-- release absence cannot be proven as HTTP 404;
+- an existing published release or retained draft matches the tag;
+- the authenticated release inventory cannot be read, admitted within its bounded response budget, or parsed as the expected paginated JSON shape;
 - the downloaded handoff checksum or exact file set differs;
 - draft creation or asset upload fails;
 - the staged release is not a mutable draft before publication;
