@@ -67,8 +67,9 @@ describe("procedural current-lifecycle read deadline", () => {
       read() {
         return new Promise<never>(() => undefined);
       },
-      async cancel() {
+      cancel() {
         cancelled = true;
+        throw new Error("deadline cleanup transport failed");
       },
       releaseLock() {
         released = true;
