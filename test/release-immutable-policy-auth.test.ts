@@ -93,6 +93,14 @@ describe("immutable-release policy authorization", () => {
     expect(guide).not.toContain("Configure these repository Actions values for that App");
   });
 
+  it("keeps the product gap baseline current with the live release-policy prerequisite", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    expect(baseline).toContain("Release Policy Auditor");
+    expect(baseline).toContain("NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID");
+    expect(baseline).toContain("NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY");
+    expect(baseline).toContain("does not prove App installation");
+  });
+
   it("does not rewrite unrelated historical changelog authority", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     expect(changelog).toContain(
