@@ -7,6 +7,8 @@ const cloudflareControlPlaneClients = [
   "scripts/cloudflare-worker-recover.mjs",
 ] as const;
 
+const sourceRepairExact = "80d3d579ad4a08ccb3f21e2735c7fb0bebc7b492";
+
 describe("Cloudflare control-plane JSON negotiation", () => {
   it("requests structured JSON responses before applying the bounded JSON reader", () => {
     for (const path of cloudflareControlPlaneClients) {
@@ -15,5 +17,21 @@ describe("Cloudflare control-plane JSON negotiation", () => {
       expect(source).toContain("readBoundedCloudflareJsonResponse");
       expect(source).toContain("AbortSignal.timeout(120_000)");
     }
+  });
+
+  it("keeps canonical operational and traceability authority aligned with the source repair", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const operability = readFileSync("docs/OPERABILITY.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(changelog).toContain("Protected #701");
+    expect(changelog).toContain(sourceRepairExact);
+    expect(operability).toContain('Accept: application/json');
+    expect(operability).toContain("Cloudflare. (2026, May 5). *Error responses*");
+    expect(traceability).toContain("Cloudflare control-plane JSON negotiation");
+    expect(traceability).toContain("Cloudflare. (2026, May 5). *Error responses*");
+    expect(baseline).toContain(`Protected #701 exact \`${sourceRepairExact}\``);
+    expect(baseline).toContain("Cloudflare-generated errors");
   });
 });
