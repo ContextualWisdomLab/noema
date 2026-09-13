@@ -130,6 +130,7 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
+/** Rejects retained structured-clone shapes that could disappear or change meaning under JSON equality. */
 function requireCanonicalHistoryShape(history: MutableHistory, message: string): void {
   requireHistory(JSON.stringify(Object.keys(history).sort()) === HISTORY_KEY_SET, message);
   requireHistory(history.stream !== null, message);
