@@ -53,6 +53,35 @@ describe("contextual-orchestrator health JSON integrity", () => {
     );
   });
 
+  it("keeps the media-type rejection when response cancellation rejects asynchronously", async () => {
+    let cancelCalled = false;
+    const response = {
+      ok: true,
+      status: 200,
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === "content-type" ? "text/plain" : null;
+        },
+      },
+      body: {
+        cancel() {
+          cancelCalled = true;
+          return Promise.reject(new Error("cleanup transport failed"));
+        },
+      },
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      "contextual-orchestrator health response content-type is not application/json",
+    );
+    await Promise.resolve();
+    expect(cancelCalled).toBe(true);
+  });
+
   it("rejects a health identity when the media type is missing", async () => {
     const body = JSON.stringify({
       status: "ok",
