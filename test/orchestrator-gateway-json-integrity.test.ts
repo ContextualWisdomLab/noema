@@ -53,6 +53,28 @@ describe("contextual-orchestrator health JSON integrity", () => {
     );
   });
 
+  it("rejects a health identity when the media type is missing", async () => {
+    const body = JSON.stringify({
+      status: "ok",
+      service: "contextual-orchestrator",
+    });
+    const response = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: null,
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      "contextual-orchestrator health response content-type is not application/json",
+    );
+  });
+
   it("accepts application/json with media-type parameters", async () => {
     const response = new Response(
       JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
