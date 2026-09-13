@@ -25,13 +25,13 @@ describe("Cloudflare control-plane JSON negotiation", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(changelog).toContain("Protected #701");
+    expect(changelog).toContain("PR #701");
     expect(changelog).toContain(sourceRepairExact);
     expect(operability).toContain('Accept: application/json');
     expect(operability).toContain("Cloudflare. (2026, May 5). *Error responses*");
     expect(traceability).toContain("Cloudflare control-plane JSON negotiation");
     expect(traceability).toContain("Cloudflare. (2026, May 5). *Error responses*");
-    expect(baseline).toContain(`Protected #701 exact \`${sourceRepairExact}\``);
+    expect(baseline).toContain(`PR #701 source exact \`${sourceRepairExact}\``);
     expect(baseline).toContain("Cloudflare-generated errors");
   });
 });
