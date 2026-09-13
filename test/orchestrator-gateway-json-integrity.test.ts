@@ -34,4 +34,89 @@ describe("contextual-orchestrator health JSON integrity", () => {
       }),
     ).rejects.toThrow(/duplicate decoded JSON keys/);
   });
+
+  it("rejects a valid identity document served under a non-JSON media type", async () => {
+    const response = new Response(
+      JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+      {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      },
+    );
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      "contextual-orchestrator health response content-type is not application/json",
+    );
+  });
+
+  it("keeps the media-type rejection when response cancellation rejects asynchronously", async () => {
+    let cancelCalled = false;
+    const response = {
+      ok: true,
+      status: 200,
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === "content-type" ? "text/plain" : null;
+        },
+      },
+      body: {
+        cancel() {
+          cancelCalled = true;
+          return Promise.reject(new Error("cleanup transport failed"));
+        },
+      },
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      "contextual-orchestrator health response content-type is not application/json",
+    );
+    await Promise.resolve();
+    expect(cancelCalled).toBe(true);
+  });
+
+  it("rejects a health identity when the media type is missing", async () => {
+    const body = JSON.stringify({
+      status: "ok",
+      service: "contextual-orchestrator",
+    });
+    const response = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: null,
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(
+      "contextual-orchestrator health response content-type is not application/json",
+    );
+  });
+
+  it("accepts application/json with media-type parameters", async () => {
+    const response = new Response(
+      JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      },
+    );
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).resolves.toEqual({ status: "ok", service: "contextual-orchestrator" });
+  });
 });

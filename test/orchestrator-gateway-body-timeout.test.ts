@@ -6,6 +6,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function jsonHeaders() {
+  return {
+    get(name: string) {
+      return name.toLowerCase() === "content-type" ? "application/json" : null;
+    },
+  };
+}
+
 describe("contextual-orchestrator health body timeout", () => {
   it("keeps an explicit caller timeout active while reading a stalled response body", async () => {
     let cancelled = false;
@@ -24,7 +32,7 @@ describe("contextual-orchestrator health body timeout", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: { getReader: () => reader },
     } as unknown as Response;
 
@@ -66,7 +74,7 @@ describe("contextual-orchestrator health body timeout", () => {
     resolveFetch({
       ok: true,
       status: 200,
-      headers: { get: () => null },
+      headers: jsonHeaders(),
       body: null,
       arrayBuffer: async () => encoded.buffer,
     } as unknown as Response);

@@ -52,6 +52,12 @@ function publicRepositoryEventFile(): string {
   return path;
 }
 
+function jsonResponse(body: BodyInit | null, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  return new Response(body, { ...init, headers });
+}
+
 describe("contextual-orchestrator gateway contract", () => {
   it("accepts an HTTPS /v1 URL and derives /healthz", () => {
     const parsed = parseOrchestratorGatewayUrl(
@@ -162,7 +168,7 @@ describe("contextual-orchestrator gateway contract", () => {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
         NOEMA_LLM_MODEL: "orchestrator/free",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
@@ -173,7 +179,7 @@ describe("contextual-orchestrator gateway contract", () => {
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "openai" }),
         { status: 200 },
       ),
@@ -193,7 +199,7 @@ describe("contextual-orchestrator gateway contract", () => {
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1/",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
@@ -211,10 +217,10 @@ describe("contextual-orchestrator gateway contract", () => {
       fetchImpl: async () => new Response("nope", { status: 503 }),
     })).rejects.toThrow(/status is 503/);
     await expect(verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
-      fetchImpl: async () => new Response("{", { status: 200 }),
+      fetchImpl: async () => jsonResponse("{", { status: 200 }),
     })).rejects.toThrow(/is not JSON/);
     await expect(verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
-      fetchImpl: async () => new Response("x".repeat(65_537), { status: 200 }),
+      fetchImpl: async () => jsonResponse("x".repeat(65_537), { status: 200 }),
     })).rejects.toThrow(/too large/);
     await expect(verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
       fetchImpl: "not-a-function" as unknown as typeof fetch,
@@ -229,7 +235,7 @@ describe("contextual-orchestrator gateway contract", () => {
     })).rejects.toThrow(/health request failed/);
 
     const previousFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(
+    globalThis.fetch = async () => jsonResponse(
       JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
       { status: 200 },
     );
@@ -243,7 +249,7 @@ describe("contextual-orchestrator gateway contract", () => {
     }
 
     await expect(verifyOrchestratorGatewayContract({
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
@@ -366,7 +372,7 @@ describe("contextual-orchestrator gateway contract", () => {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
         NOEMA_LLM_MODEL: "orchestrator/free",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
@@ -398,7 +404,7 @@ describe("contextual-orchestrator gateway contract", () => {
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
@@ -449,7 +455,7 @@ describe("contextual-orchestrator gateway contract", () => {
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
       },
-      fetchImpl: async () => new Response(
+      fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),

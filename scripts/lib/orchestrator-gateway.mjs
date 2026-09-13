@@ -274,9 +274,10 @@ export function requireOrchestratorApiKey(rawKey) {
 /**
  * Fetch `/healthz` without a bearer token and require the orchestrator identity.
  *
- * The response body is always bounded by byte count. When the caller supplies
- * `timeoutMs`, that explicit deadline also covers request and body reads. Noema
- * does not invent a default availability deadline for contextual-orchestrator.
+ * The successful response must identify itself as `application/json`; its body
+ * is always bounded by byte count. When the caller supplies `timeoutMs`, that
+ * explicit deadline also covers request and body reads. Noema does not invent
+ * a default availability deadline for contextual-orchestrator.
  *
  * @param {string} healthzUrl Absolute health URL derived from the `/v1` base.
  * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
@@ -332,6 +333,20 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
     if (!response.ok) {
       throw new Error(
         `contextual-orchestrator health response status is ${response.status}`,
+      );
+    }
+    const mediaType = String(response.headers?.get?.("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    if (mediaType !== "application/json") {
+      try {
+        void response.body?.cancel?.().catch(() => undefined);
+      } catch {
+        // Cancellation is cleanup only after the media-type decision is final.
+      }
+      throw new Error(
+        "contextual-orchestrator health response content-type is not application/json",
       );
     }
     const advertisedLength = response.headers?.get?.("content-length");
