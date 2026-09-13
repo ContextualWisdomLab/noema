@@ -25,12 +25,14 @@ describe("immutable-release policy authorization", () => {
     expect(mint).toContain("private-key: ${{ secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY }}");
     expect(mint).toContain("owner: ContextualWisdomLab");
     expect(mint).toContain("repositories: noema");
-    expect(mint).toContain("permission-administration: read");
-    expect(mint).toContain("permission-metadata: read");
-    expect(mint).not.toContain("permission-administration: write");
-    expect(mint).not.toContain("permission-contents:");
-    expect(mint).not.toContain("permission-actions:");
-    expect(mint).not.toContain("permission-pull-requests:");
+    const requestedPermissions = mint
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("permission-"));
+    expect(requestedPermissions).toEqual([
+      "permission-administration: read",
+      "permission-metadata: read",
+    ]);
 
     expect(policy).toContain("GH_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}");
     expect(policy).toContain("repos/${GITHUB_REPOSITORY}/immutable-releases");
