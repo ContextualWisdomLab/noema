@@ -12,6 +12,12 @@ function section(document: string, heading: string): string {
   return next < 0 ? document.slice(start) : document.slice(start, start + heading.length + next);
 }
 
+function listItem(document: string, prefix: string): string {
+  return document
+    .split("\n")
+    .find((line) => line.startsWith(prefix)) ?? "";
+}
+
 describe("protected #708 release authority", () => {
   it("documents all four release jobs instead of the obsolete two-job trust model", () => {
     const workflow = readFileSync(".github/workflows/release-evidence.yml", "utf8");
@@ -30,9 +36,10 @@ describe("protected #708 release authority", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const heading = "## Protected immutable-release draft publication — merged PR #708";
+    const changelogAuthority = listItem(section(changelog, "## Unreleased"), "- Protected #708 ");
     const authority = section(baseline, heading);
 
-    for (const document of [changelog, authority]) {
+    for (const document of [changelogAuthority, authority]) {
       expect(document).toContain("Protected #708");
       expect(document).toContain(protectedSourceExact);
       expect(document).toContain(protectedMergeExact);
