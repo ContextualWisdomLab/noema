@@ -13,7 +13,7 @@ import {
 function healthyResponse(): Response {
   return new Response(
     JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
-    { status: 200 },
+    { status: 200, headers: { "content-type": "application/json" } },
   );
 }
 
