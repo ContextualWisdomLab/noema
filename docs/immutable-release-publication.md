@@ -26,13 +26,16 @@ The workflow has two jobs with different authorities.
 
 - receives only the sealed bounded handoff through a GitHub Actions artifact;
 - does not check out repository code;
-- has `contents: write`, `actions: read`, and `attestations: read` only;
-- has no GitHub App, LLM, Cloudflare, deployment, or organization-administration credential;
+- keeps release creation on the job `GITHUB_TOKEN`, which has `contents: write`, `actions: read`, and `attestations: read` only;
+- mints a separate repository-scoped Release Policy Auditor GitHub App token with only `Administration: read` and `Metadata: read` for the immutable-release settings check;
+- never reuses the Release Policy Auditor token for tag lookup, release-existence checks, release creation, release verification, Actions, pull requests, deployment, LLM, Cloudflare, or organization administration;
 - fails closed unless GitHub's repository immutable-release API reports `enabled=true`;
 - refuses to overwrite an existing release or continue when release absence cannot be proved as HTTP 404;
 - dereferences the remote tag to the exact attested commit immediately before and after publication;
 - publishes the complete asset set in one `gh release create ... --verify-tag` transaction;
 - verifies the immutable release and every asset before emitting a publication receipt.
+
+The existing Noema Maintainer App is intentionally not broadened for this purpose. Repository-settings inspection and release publication are separate authorities.
 
 ## Published asset set
 
@@ -51,9 +54,24 @@ The workflow never uses `--clobber`. Any existing release with the same tag bloc
 
 ## Immutable-release prerequisite
 
-An administrator must enable immutable releases for `ContextualWisdomLab/noema` at the repository or organization level. The publication job can read and verify the policy, but it intentionally cannot change repository or organization administration settings.
+An administrator must enable immutable releases for `ContextualWisdomLab/noema` at the repository or organization level. The publication workflow intentionally cannot change that setting.
 
-Verify the policy with an appropriately authorized administrative session:
+GitHub's immutable-release settings read requires repository `Administration: read`, which is not a `GITHUB_TOKEN` workflow permission. Before publication, provision a dedicated GitHub App installed only where this settings read is required. Its repository permissions must be exactly:
+
+- Administration: read;
+- Metadata: read;
+- no Contents, Actions, Pull requests, Deployments, or Administration write authority.
+
+Configure these repository Actions values for that App:
+
+```text
+NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID
+NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY
+```
+
+The workflow mints the installation token only for the immutable-release policy read. The ordinary job `GITHUB_TOKEN` remains the authority for exact-tag/release-existence reads and immutable release creation. Source configuration of this boundary does **not** prove that the App is installed, that its credentials are provisioned, or that immutable releases are enabled; those remain live control-plane evidence.
+
+Verify the policy with an appropriately authorized administrative read session:
 
 ```bash
 gh api \
@@ -179,6 +197,7 @@ The acquisition audit fails closed when the selected release receipt is missing,
 
 Publication stops without a release receipt when any of these conditions occurs:
 
+- the Release Policy Auditor App credentials are absent, invalid, not installed for `ContextualWisdomLab/noema`, or lack the required Administration read permission;
 - immutable releases are not enabled or the policy API cannot be read;
 - the tag does not resolve to the exact attested commit before or after publication;
 - a release with the tag already exists;
