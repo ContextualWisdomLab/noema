@@ -37,6 +37,10 @@ describe("protected #710 release source authority", () => {
       expect(document).toContain("20-second timeout");
       expect(document).toContain("16 KiB output ceiling");
       expect(document).toContain("exactly one canonical lowercase full SHA");
+      expect(document).toContain("Repository substitution");
+      expect(document).toContain("malformed or ambiguous ref output");
+      expect(document).toContain("noncanonical SHA identity");
+      expect(document).toContain("network-independent");
       expect(document).toContain("fail closed");
       expect(document).toContain("does not prove");
     }
