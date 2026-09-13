@@ -193,3 +193,42 @@ test("keeps digest verification and event hashing outside the Durable Object tra
     "bounded-history verification and hashing must complete before the atomic CAS/write section",
   );
 });
+
+test("rejects a stale preverified append when another writer wins during out-of-transaction hashing", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const stale = await authenticatedEvaluation(decision, keys, 1);
+  const winner = await authenticatedEvaluation(decision, keys, 2);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+  let digestCalls = 0;
+  let winnerResult;
+  vi.spyOn(crypto.subtle, "digest").mockImplementation(async (...args) => {
+    digestCalls += 1;
+    if (!storage.inTransaction && digestCalls === 3) {
+      winnerResult = await repository.append(candidate, winner, 1);
+    }
+    return originalDigest(...args);
+  });
+
+  await assert.rejects(
+    repository.append(candidate, stale, 1),
+    /expected history version lost the CAS race/,
+  );
+
+  assert.equal(winnerResult?.kind, "accepted");
+  assert.equal(winnerResult?.snapshot.version, 2);
+  const recovered = await repository.read(candidate);
+  assert.equal(recovered?.version, 2);
+  assert.equal(recovered?.events.at(-1)?.handoffDigest, winner.handoffDigest);
+});
