@@ -11,7 +11,7 @@ describe("immutable release pre-publication tag stability", () => {
     const createIndex = publishJob.indexOf('gh release create "$RELEASE_TAG"');
     const draftIndex = publishJob.indexOf("--draft", createIndex);
     const recheckIndex = publishJob.indexOf(
-      'pre_publish_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq \'.sha\')"',
+      'pre_publish_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq \' .sha\')"'.replace("\' .sha\'", "\'.sha\'"),
       createIndex,
     );
     const publishIndex = publishJob.indexOf(
@@ -54,6 +54,26 @@ describe("immutable release pre-publication tag stability", () => {
     expect(stagedPublication).not.toContain(
       '"repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"',
     );
+  });
+
+  it("binds publication to the one verified draft release id", () => {
+    const workflow = readFileSync(workflowPath, "utf8");
+    const publishJob = workflow.slice(workflow.indexOf("  publish_release:"));
+
+    expect(publishJob).toContain(
+      '[.[][] | select(.tag_name == $tag)] | length',
+    );
+    expect(publishJob).toContain(
+      '.draft == true and .immutable == false and .tag_name == $tag and (.id | type == "number")',
+    );
+    expect(publishJob).toContain(
+      'release_id="$(jq -r \' .id\' "$publication_dir/release-draft-api.json")"'.replace("\' .id\'", "\'.id\'"),
+    );
+    expect(publishJob).toContain(
+      '"repos/${GITHUB_REPOSITORY}/releases/${release_id}"',
+    );
+    expect(publishJob).toContain("--method PATCH");
+    expect(publishJob).toContain("-F draft=false");
   });
 
   it("documents the authenticated inventory absence proof and staged publication boundary", () => {
