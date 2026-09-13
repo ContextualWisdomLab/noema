@@ -62,7 +62,7 @@ describe("immutable release pre-publication tag stability", () => {
     expect(guide).toContain("draft");
     expect(guide).toContain("authenticated release inventory");
     expect(guide).toContain("re-checks the release tag after asset staging and immediately before publication");
-    expect(guide).toContain("the tag remains mutable until the draft is published");
+    expect(guide).toContain("tag remains mutable until the draft is published");
     expect(guide).not.toContain("release absence cannot be proved as HTTP 404");
     expect(guide).not.toContain("release absence cannot be proven as HTTP 404");
     expect(guide).not.toContain("publishes the complete asset set in one `gh release create ... --verify-tag` transaction");
