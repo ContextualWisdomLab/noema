@@ -583,26 +583,31 @@ jobs:
               "$RELEASE_TAG" "${remote_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
             exit 1
           fi
-          set +e
-          gh api --include \
+          existing_release_inventory="$publication_dir/existing-release-inventory.json"
+          if ! timeout 20s gh api --paginate --slurp \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            >"$publication_dir/existing-release.http" 2>&1
-          existing_status=$?
-          set -e
-          http_status="$(awk 'toupper($1) ~ /^HTTP\// { code=$2 } END { print code }' \
-            "$publication_dir/existing-release.http")"
-          if [ "$existing_status" -eq 0 ]; then
-            echo "::error::Release ${RELEASE_TAG} already exists; immutable publication never overwrites a release."
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            >"$existing_release_inventory"; then
+            echo "::error::Could not read the authenticated release inventory."
             exit 1
           fi
-          if [ "$http_status" != "404" ]; then
-            cat "$publication_dir/existing-release.http"
-            printf '::error::Could not prove release absence; observed HTTP status %s.\n' "${http_status:-missing}"
+          inventory_bytes="$(stat -c '%s' "$existing_release_inventory")"
+          if [ "$inventory_bytes" -gt 4194304 ]; then
+            printf '::error::Release inventory exceeded the 4 MiB admission ceiling: %s bytes.\n' "$inventory_bytes"
             exit 1
           fi
-          printf 'Immutable-release enforcement is active and release %s is absent.\n' "$RELEASE_TAG"
+          jq -e 'type == "array" and all(.[]; type == "array")' \
+            "$existing_release_inventory" >/dev/null
+          existing_match_count="$(jq -r --arg tag "$RELEASE_TAG" \
+            '[.[][] | select(.tag_name == $tag)] | length' \
+            "$existing_release_inventory")"
+          if [ "$existing_match_count" != "0" ]; then
+            printf '::error::Release or draft for %s already exists (%s matches); publication never overwrites it.\n' \
+              "$RELEASE_TAG" "$existing_match_count"
+            exit 1
+          fi
+          printf 'Immutable-release enforcement is active, tag %s is exact, and no release or draft exists.\n' "$RELEASE_TAG"
 
       - name: Stage the complete buyer asset set as a draft
         env:
@@ -644,18 +649,32 @@ jobs:
           set -euo pipefail
           release_dir="$BUNDLE_DIR/release"
           publication_dir="$RUNNER_TEMP/release-publication"
-          gh release view "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,isImmutable,tagName,assets,url \
-            >"$publication_dir/release-draft-view.json"
-          gh api \
+          draft_inventory="$publication_dir/release-draft-inventory.json"
+          if ! timeout 20s gh api --paginate --slurp \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            >"$publication_dir/release-draft-api.json"
+            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            >"$draft_inventory"; then
+            echo "::error::Could not read the authenticated release inventory after draft staging."
+            exit 1
+          fi
+          inventory_bytes="$(stat -c '%s' "$draft_inventory")"
+          if [ "$inventory_bytes" -gt 4194304 ]; then
+            printf '::error::Release inventory exceeded the 4 MiB admission ceiling after draft staging: %s bytes.\n' "$inventory_bytes"
+            exit 1
+          fi
+          jq -e 'type == "array" and all(.[]; type == "array")' "$draft_inventory" >/dev/null
+          draft_match_count="$(jq -r --arg tag "$RELEASE_TAG" \
+            '[.[][] | select(.tag_name == $tag and .draft == true)] | length' \
+            "$draft_inventory")"
+          if [ "$draft_match_count" != "1" ]; then
+            printf '::error::Expected exactly one staged draft for %s; observed %s.\n' \
+              "$RELEASE_TAG" "$draft_match_count"
+            exit 1
+          fi
           jq -e --arg tag "$RELEASE_TAG" \
-            '.isDraft == true and .isImmutable == false and .tagName == $tag' \
-            "$publication_dir/release-draft-view.json" >/dev/null
+            'first(.[][] | select(.tag_name == $tag and .draft == true))' \
+            "$draft_inventory" >"$publication_dir/release-draft-api.json"
           jq -e --arg tag "$RELEASE_TAG" \
             '.draft == true and .immutable == false and .tag_name == $tag' \
             "$publication_dir/release-draft-api.json" >/dev/null
