@@ -175,6 +175,24 @@ describe("procedural current-lifecycle response bounds", () => {
     await expectInvalid(new Response(null, { status: 200, headers: JSON_HEADERS }));
   });
 
+  it("rejects a successful response without a declared JSON media type when no body exists", async () => {
+    await expectInvalid(new Response(null, { status: 200 }));
+  });
+
+  it("preserves fail-closed admission when non-JSON body cancellation throws synchronously", async () => {
+    const response = {
+      status: 200,
+      headers: new Headers({ "content-type": "text/plain; charset=utf-8" }),
+      body: {
+        cancel() {
+          throw new Error("cleanup transport failed synchronously");
+        },
+      },
+    } as unknown as Response;
+
+    await expectInvalid(response);
+  });
+
   it("cancels parseable JSON identified as non-JSON without waiting for cleanup", async () => {
     let markCancelStarted!: () => void;
     const cancelStarted = new Promise<void>((resolve) => {
