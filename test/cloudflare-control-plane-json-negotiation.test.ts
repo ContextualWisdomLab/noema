@@ -8,6 +8,8 @@ const cloudflareControlPlaneClients = [
 ] as const;
 
 const sourceRepairExact = "80d3d579ad4a08ccb3f21e2735c7fb0bebc7b492";
+const behavioralRepairExact = "2b31805eb2b81b6078fefe1ebcce8007b6ca5169";
+const protectedIntegration = "cf7f4279dbf83213557e987f0ee8fb52b12fcccf";
 
 describe("Cloudflare control-plane JSON negotiation", () => {
   it("routes every direct client through the behaviorally tested request boundary", () => {
@@ -18,16 +20,22 @@ describe("Cloudflare control-plane JSON negotiation", () => {
     }
   });
 
-  it("keeps canonical product and standards traceability aligned with the source repair", () => {
+  it("keeps canonical product and standards traceability aligned with protected request behavior", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(changelog).toContain("PR #701");
     expect(changelog).toContain(sourceRepairExact);
+    expect(changelog).toContain("Protected #702");
+    expect(changelog).toContain(behavioralRepairExact);
+    expect(changelog).toContain(protectedIntegration);
     expect(traceability).toContain("Cloudflare control-plane JSON negotiation");
     expect(traceability).toContain("Cloudflare. (2026, May 5). *Error responses*");
     expect(baseline).toContain(`PR #701 source exact \`${sourceRepairExact}\``);
     expect(baseline).toContain("Cloudflare-generated errors");
+    expect(baseline).toContain(`Protected #702 exact \`${behavioralRepairExact}\``);
+    expect(baseline).toContain(protectedIntegration);
+    expect(baseline).not.toContain("It remains active-PR source/test evidence until normal integration.");
   });
 });
