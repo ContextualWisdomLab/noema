@@ -13,6 +13,7 @@ type TaskState = "pending" | "running" | "succeeded" | "failed" | "cancelled" | 
 type ResponseStep = Response | Error;
 
 const executionId = "run-current-lifecycle-fail-closed";
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
 function plan(): WorkflowTaskPlan {
   return {
@@ -50,7 +51,7 @@ function snapshot(states: readonly TaskState[], transitionSequence = 2): Record<
 }
 
 function ok(data: unknown): Response {
-  return new Response(JSON.stringify({ ok: true, data }), { status: 200 });
+  return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: JSON_HEADERS });
 }
 
 class WorkflowNamespace {
@@ -136,10 +137,13 @@ describe("procedural current lifecycle fail-closed evidence validation", () => {
   });
 
   it("rejects malformed success envelopes before they can become lifecycle evidence", async () => {
-    await expectFailure(new Response("{", { status: 200 }), "invalid_workflow_state_response");
+    await expectFailure(new Response("{", { status: 200, headers: JSON_HEADERS }), "invalid_workflow_state_response");
     await expectFailure(ok(null), "invalid_workflow_state_response");
     await expectFailure(
-      new Response(JSON.stringify({ ok: false, data: snapshot(["running", "pending"]) }), { status: 200 }),
+      new Response(
+        JSON.stringify({ ok: false, data: snapshot(["running", "pending"]) }),
+        { status: 200, headers: JSON_HEADERS },
+      ),
       "invalid_workflow_state_response",
     );
   });
