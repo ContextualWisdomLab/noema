@@ -18,7 +18,11 @@ function responseLike(input: {
     ok: true,
     status: 200,
     headers: {
-      get: () => input.contentLength ?? null,
+      get(name: string) {
+        if (name.toLowerCase() === "content-type") return "application/json";
+        if (name.toLowerCase() === "content-length") return input.contentLength ?? null;
+        return null;
+      },
     },
     body: input.body ?? null,
     arrayBuffer: input.arrayBuffer ?? (async () => new TextEncoder().encode(healthyPayload).buffer),
@@ -34,6 +38,7 @@ describe("contextual-orchestrator residual health coverage", () => {
     const response = new Response(healthyPayload, {
       status: 200,
       headers: {
+        "content-type": "application/json",
         "content-length": "not-a-decimal-length",
       },
     });
