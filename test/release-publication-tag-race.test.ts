@@ -33,6 +33,29 @@ describe("immutable release pre-publication tag stability", () => {
     );
   });
 
+  it("uses the authenticated release inventory for draft absence and exact staged-draft identity", () => {
+    const workflow = readFileSync(workflowPath, "utf8");
+    const publishJob = workflow.slice(workflow.indexOf("  publish_release:"));
+    const createIndex = publishJob.indexOf('gh release create "$RELEASE_TAG"');
+    const publishIndex = publishJob.indexOf(
+      'gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false',
+      createIndex,
+    );
+    const preCreate = publishJob.slice(0, createIndex);
+    const stagedPublication = publishJob.slice(createIndex, publishIndex);
+
+    expect(preCreate).toContain("existing-release-inventory.json");
+    expect(preCreate).toContain("--paginate --slurp");
+    expect(preCreate).toContain(".tag_name == $tag");
+    expect(stagedPublication).toContain("release-draft-inventory.json");
+    expect(stagedPublication).toContain("--paginate --slurp");
+    expect(stagedPublication).toContain(".tag_name == $tag and .draft == true");
+    expect(stagedPublication).toContain("length == 1");
+    expect(stagedPublication).not.toContain(
+      '"repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"',
+    );
+  });
+
   it("documents that immutable protection begins only when the staged draft is published", () => {
     const guide = readFileSync(publicationGuidePath, "utf8");
 
