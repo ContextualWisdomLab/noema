@@ -331,7 +331,10 @@ describe("signed release evidence", () => {
     expect(workflow).toContain("gh attestation verify");
     expect(workflow).toContain("--deny-self-hosted-runners");
     expect(workflow).toContain("retention-days: 90");
-    expect(workflow).not.toContain("secrets.");
+    const secretReferences = workflow.match(/\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}/g) ?? [];
+    expect(secretReferences).toEqual([
+      "${{ secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY }}",
+    ]);
     expect(workflow).not.toContain("wrangler deploy");
   });
 

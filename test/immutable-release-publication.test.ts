@@ -394,7 +394,12 @@ describe("immutable buyer release publication", () => {
 
     const publicationJob = workflow.slice(workflow.indexOf("  publish_release:"));
     expect(publicationJob).not.toContain("actions/checkout@");
-    expect(publicationJob).not.toContain("secrets.");
+    const publicationSecretReferences = publicationJob.match(
+      /\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}/g,
+    ) ?? [];
+    expect(publicationSecretReferences).toEqual([
+      "${{ secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY }}",
+    ]);
     expect(publicationJob).not.toContain("wrangler deploy");
     expect(publicationJob).not.toContain("NOEMA_LLM");
     expect(publicationJob).not.toContain("GITHUB_APP_PRIVATE_KEY");
