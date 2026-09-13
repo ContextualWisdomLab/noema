@@ -16,7 +16,7 @@ describe("#689 exchange locked-reader documentation authority", () => {
       "merged PR #689 exact `b838c352a7cd0f7f58a905857537a3a9675a56f2`",
     );
     expect(baseline).toContain(
-      "protected main `620b29fae9a5dad5d463aff83dd6adb6b67f9305`",
+      "#689의 GitHub-verified normal merge identity `620b29fae9a5dad5d463aff83dd6adb6b67f9305`",
     );
     expect(baseline).toContain(
       "locked or otherwise non-stream-readable `/exchange` request body",
