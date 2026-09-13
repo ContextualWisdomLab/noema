@@ -40,6 +40,9 @@ const EVENT_KEYS = [
   "priorEventDigest",
   "eventDigest",
 ] as const;
+const STREAM_KEY_SET = JSON.stringify([...STREAM_KEYS].sort());
+const HISTORY_KEY_SET = JSON.stringify([...HISTORY_KEYS].sort());
+const EVENT_KEY_SET = JSON.stringify([...EVENT_KEYS].sort());
 
 /**
  * Maximum complete evaluation events retained for one procedural graph lineage. The repository never
@@ -127,27 +130,22 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
-function hasExactObjectKeys(value: unknown, expected: readonly string[]): boolean {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const keys = Object.keys(value).sort();
-  const expectedKeys = [...expected].sort();
-  return keys.length === expectedKeys.length
-    && keys.every((key, index) => key === expectedKeys[index]);
-}
-
-function hasDenseArrayKeys(value: unknown): boolean {
-  if (!Array.isArray(value)) return false;
-  const keys = Object.keys(value);
-  return keys.length === value.length
-    && keys.every((key, index) => key === String(index));
-}
-
-function hasCanonicalHistoryShape(history: MutableHistory): boolean {
-  return hasExactObjectKeys(history, HISTORY_KEYS)
-    && hasExactObjectKeys(history.stream, STREAM_KEYS)
-    && hasDenseArrayKeys(history.rejectedKeys)
-    && hasDenseArrayKeys(history.events)
-    && history.events.every((event) => hasExactObjectKeys(event, EVENT_KEYS));
+function requireCanonicalHistoryShape(history: MutableHistory, message: string): void {
+  requireHistory(JSON.stringify(Object.keys(history).sort()) === HISTORY_KEY_SET, message);
+  requireHistory(history.stream !== null, message);
+  requireHistory(typeof history.stream === "object", message);
+  requireHistory(!Array.isArray(history.stream), message);
+  requireHistory(JSON.stringify(Object.keys(history.stream).sort()) === STREAM_KEY_SET, message);
+  requireHistory(Array.isArray(history.rejectedKeys), message);
+  requireHistory(Object.keys(history.rejectedKeys).length === history.rejectedKeys.length, message);
+  requireHistory(Array.isArray(history.events), message);
+  requireHistory(Object.keys(history.events).length === history.events.length, message);
+  for (const event of history.events) {
+    requireHistory(event !== null, message);
+    requireHistory(typeof event === "object", message);
+    requireHistory(!Array.isArray(event), message);
+    requireHistory(JSON.stringify(Object.keys(event).sort()) === EVENT_KEY_SET, message);
+  }
 }
 
 async function sha256(value: unknown): Promise<string> {
@@ -219,7 +217,7 @@ async function verifyStoredHistory(
   requireHistory(typeof value === "object", "durable procedural history integrity check failed");
   requireHistory(!Array.isArray(value), "durable procedural history integrity check failed");
   const history = value as MutableHistory;
-  requireHistory(hasCanonicalHistoryShape(history), "durable procedural history integrity check failed");
+  requireCanonicalHistoryShape(history, "durable procedural history integrity check failed");
   requireHistory(history.schemaVersion === HISTORY_SCHEMA_VERSION, "durable procedural history integrity check failed");
   requireHistory(JSON.stringify(history.stream) === JSON.stringify(expectedStream), "durable procedural history integrity check failed");
   requireHistory(Number.isSafeInteger(history.version), "durable procedural history integrity check failed");
@@ -346,7 +344,7 @@ function requireCurrentHistoryCas(
     return;
   }
   requireHistory(current !== undefined, "expected history version lost the CAS race");
-  requireHistory(hasCanonicalHistoryShape(current), "expected history version lost the CAS race");
+  requireCanonicalHistoryShape(current, "expected history version lost the CAS race");
   requireHistory(
     JSON.stringify(current) === JSON.stringify(verified),
     "expected history version lost the CAS race",
