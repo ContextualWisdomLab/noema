@@ -156,6 +156,38 @@ function requireCanonicalHistoryShape(history: unknown, message: string): assert
   }
 }
 
+/** Compares the fixed stream identity without coercion or JSON serialization. */
+function sameStream(
+  current: ProceduralEvaluationHistoryStream,
+  verified: ProceduralEvaluationHistoryStream,
+): boolean {
+  return STREAM_KEYS.every((key) => Object.is(current[key], verified[key]));
+}
+
+/** Compares a retained scalar projection without coercion or serialization side effects. */
+function sameStringList(current: readonly string[], verified: readonly string[]): boolean {
+  return current.length === verified.length
+    && current.every((value, index) => Object.is(value, verified[index]));
+}
+
+/**
+ * Compares the complete admitted retained value domain after canonical shape validation. Every retained
+ * event field is compared with Object.is so structured-clone values cannot exploit JSON coercion or throws.
+ */
+function sameCanonicalHistory(current: MutableHistory, verified: MutableHistory): boolean {
+  if (!Object.is(current.schemaVersion, verified.schemaVersion)) return false;
+  if (!sameStream(current.stream, verified.stream)) return false;
+  if (!Object.is(current.version, verified.version)) return false;
+  if (!Object.is(current.headEventDigest, verified.headEventDigest)) return false;
+  if (!sameStringList(current.rejectedKeys, verified.rejectedKeys)) return false;
+  if (current.events.length !== verified.events.length) return false;
+  return current.events.every((event, index) => {
+    const verifiedEvent = verified.events[index];
+    return verifiedEvent !== undefined
+      && EVENT_KEYS.every((key) => Object.is(event[key], verifiedEvent[key]));
+  });
+}
+
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -224,7 +256,7 @@ async function verifyStoredHistory(
   requireCanonicalHistoryShape(value, "durable procedural history integrity check failed");
   const history = value;
   requireHistory(history.schemaVersion === HISTORY_SCHEMA_VERSION, "durable procedural history integrity check failed");
-  requireHistory(JSON.stringify(history.stream) === JSON.stringify(expectedStream), "durable procedural history integrity check failed");
+  requireHistory(sameStream(history.stream, expectedStream), "durable procedural history integrity check failed");
   requireHistory(Number.isSafeInteger(history.version), "durable procedural history integrity check failed");
   requireHistory(history.version >= 1, "durable procedural history integrity check failed");
   requireHistory(history.version <= MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS, "durable procedural history integrity check failed");
@@ -277,7 +309,7 @@ async function verifyStoredHistory(
   }
 
   const derivedRejectedKeys = [...rejected].sort();
-  requireHistory(JSON.stringify(history.rejectedKeys) === JSON.stringify(derivedRejectedKeys), "durable procedural history integrity check failed");
+  requireHistory(sameStringList(history.rejectedKeys, derivedRejectedKeys), "durable procedural history integrity check failed");
   requireHistory(history.headEventDigest === priorEventDigest, "durable procedural history integrity check failed");
   return history;
 }
@@ -348,7 +380,7 @@ function requireCurrentHistoryCas(
   }
   requireCanonicalHistoryShape(current, "expected history version lost the CAS race");
   requireHistory(
-    JSON.stringify(current) === JSON.stringify(verified),
+    sameCanonicalHistory(current, verified),
     "expected history version lost the CAS race",
   );
 }
