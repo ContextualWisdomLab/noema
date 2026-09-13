@@ -316,3 +316,34 @@ test("revalidates exact replay against current durable bytes before returning", 
     /durable procedural history integrity check failed/,
   );
 });
+
+test("fails closed when retained structure gains JSON-invisible fields after verification", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const second = await authenticatedEvaluation(decision, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  storage.beforeTransaction = async () => {
+    const [key, retained] = storage.records.entries().next().value;
+    retained.events[0].postVerificationTamper = undefined;
+    storage.records.set(key, retained);
+  };
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    /expected history version lost the CAS race/,
+  );
+
+  const [, corrupted] = storage.records.entries().next().value;
+  assert.equal(corrupted.version, 1);
+  assert.equal(Object.hasOwn(corrupted.events[0], "postVerificationTamper"), true);
+});
