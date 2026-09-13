@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 import { TextDecoder } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { readBoundedCloudflareJsonResponse } from "./lib/cloudflare-response.mjs";
+import { requestCloudflareJson } from "./lib/cloudflare-response.mjs";
 import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
 import {
   planExactRecoveryDeployment,
@@ -23,7 +23,6 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const API_ORIGIN = "https://api.cloudflare.com";
 const API_PREFIX = "/client/v4";
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 16 * 1024 * 1024;
 const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -110,23 +109,6 @@ function readReceipt(path) {
   }
 }
 
-async function parseCloudflareResponse(response, operation) {
-  return readBoundedCloudflareJsonResponse(response, operation, MAX_RESPONSE_BYTES);
-}
-
-async function cloudflareJson(url, token, operation, init = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-    },
-    signal: AbortSignal.timeout(120_000),
-  });
-  return parseCloudflareResponse(response, operation);
-}
-
 function activeDeploymentId(result) {
   const deployments = Array.isArray(result) ? result : result?.deployments;
   if (!Array.isArray(deployments) || deployments.length === 0) {
@@ -185,11 +167,11 @@ async function main() {
   const deploymentsUrl = `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/deployments`;
 
   // The read immediately before mutation prevents a stale incident receipt from overwriting a newer operator action.
-  const current = await cloudflareJson(deploymentsUrl, apiToken, "Worker recovery preflight");
+  const current = await requestCloudflareJson(deploymentsUrl, apiToken, "Worker recovery preflight");
   const currentDeploymentId = activeDeploymentId(current);
   const plan = planExactRecoveryDeployment(evidence, currentDeploymentId, scriptName);
 
-  const restored = await cloudflareJson(deploymentsUrl, apiToken, "Worker exact-distribution recovery", {
+  const restored = await requestCloudflareJson(deploymentsUrl, apiToken, "Worker exact-distribution recovery", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(plan.request),
@@ -197,7 +179,7 @@ async function main() {
   const mutationResponse = assertRestoredDistribution(restored, plan.request);
 
   // Mutation acknowledgement is not active-state authority. Re-read provider state before reporting recovery success.
-  const postMutationStatus = await cloudflareJson(
+  const postMutationStatus = await requestCloudflareJson(
     deploymentsUrl,
     apiToken,
     "Worker recovery status verification",

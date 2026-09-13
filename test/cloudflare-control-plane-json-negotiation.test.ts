@@ -10,12 +10,11 @@ const cloudflareControlPlaneClients = [
 const sourceRepairExact = "80d3d579ad4a08ccb3f21e2735c7fb0bebc7b492";
 
 describe("Cloudflare control-plane JSON negotiation", () => {
-  it("requests structured JSON responses before applying the bounded JSON reader", () => {
+  it("routes every direct client through the behaviorally tested request boundary", () => {
     for (const path of cloudflareControlPlaneClients) {
       const source = readFileSync(path, "utf8");
-      expect(source).toContain('accept: "application/json"');
-      expect(source).toContain("readBoundedCloudflareJsonResponse");
-      expect(source).toContain("AbortSignal.timeout(120_000)");
+      expect(source).toContain("requestCloudflareJson");
+      expect(source).not.toContain("fetch(");
     }
   });
 
