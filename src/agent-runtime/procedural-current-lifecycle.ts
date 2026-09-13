@@ -142,8 +142,8 @@ function cancelCurrentWorkflowReaderBestEffort(
  * same stable invalid-response diagnostic instead of leaking a raw stream exception. An absolute ten-second
  * read deadline prevents an admitted HTTP 200 response from pinning procedural guidance forever when no chunk
  * ever arrives. Oversize or timed-out streams request cancellation, but cancellation completion is cleanup
- * rather than decision authority; it cannot delay or replace the stable fail-closed diagnostic. The reader
- * lock is released on every terminal path independently of cancellation success.
+ * rather than decision authority; it cannot delay or replace the stable fail-closed diagnostic. The reader lock is released
+ * on every terminal path independently of cancellation success.
  */
 async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
   if (response.body === null) {
