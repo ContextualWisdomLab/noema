@@ -142,3 +142,9 @@ Protected history includes merged PR #697 exact `1e0ac2eac6d3172468c842cae957079
 The existing 65,536-byte ceiling, optional caller-supplied deadline with no invented default timeout, fixed retained buffer, best-effort cancellation, reader-lock lifecycle after successful acquisition, fatal UTF-8, duplicate-key/JSON admission, and exact `{ status: "ok", service: "contextual-orchestrator" }` identity remain unchanged.
 
 #697 remains protected source evidence; immutable release and deployed availability/p95/recovery evidence remain separate. #697 does not transfer contextual-orchestrator service, provider/model routing, credential, outbound, quarantine/security, release/deployment, or foreign domain authority to Noema.
+
+## Protected procedural current-lifecycle read deadline — merged PR #699
+
+Protected history includes merged PR #699 exact `e52408745efc73351c098227ae4c85c309fdd0c9`. Protected #699 closes the stalled-read liveness gap on Agent Runtime's private Workflow / Task Execution current-state response path: after successful reader acquisition, a 10-second absolute read deadline prevents an HTTP 200 response that never yields another chunk from pinning procedural guidance indefinitely. Deadline expiry preserves the stable `invalid_workflow_state_response` fail-closed contract, requests cancellation only as best-effort cleanup, clears the deadline timer, and releases the reader lock on every terminal path.
+
+The existing fixed 1 MiB retained buffer, byte ceiling, fatal UTF-8/JSON admission, canonical execution binding, and Workflow / Task Execution ownership remain unchanged. #699 remains protected source/test evidence; immutable release, deployed Durable Object recovery, and production p95/heap evidence remain separate. Workflow / Task lifecycle, provider/model routing, outbound, credential, quarantine/security, release/deployment, and foreign-domain authority stay with their existing owners.
