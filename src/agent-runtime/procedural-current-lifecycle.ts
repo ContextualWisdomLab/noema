@@ -128,6 +128,19 @@ function currentWorkflowEvidence(
   });
 }
 
+/** Requests response-body cleanup without allowing cleanup completion to become decision authority. */
+function cancelCurrentWorkflowResponseBodyBestEffort(
+  body: ReadableStream<Uint8Array> | null,
+  reason: string,
+): void {
+  if (body === null) return;
+  try {
+    void body.cancel(reason).catch(() => undefined);
+  } catch {
+    // A locked or hostile body must not replace the stable fail-closed admission result.
+  }
+}
+
 function cancelCurrentWorkflowReaderBestEffort(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   reason: string,
@@ -224,6 +237,10 @@ async function readCurrentWorkflowEvidence(
   if (response.status === 503) return rejectCurrentLifecycle("workflow_state_unavailable");
   if (response.status !== 200) return rejectCurrentLifecycle("invalid_workflow_state_response");
   if (!isJsonMediaType(response.headers.get("content-type"))) {
+    cancelCurrentWorkflowResponseBodyBestEffort(
+      response.body,
+      "Noema current workflow-state response used an unsupported media type",
+    );
     return rejectCurrentLifecycle("invalid_workflow_state_response");
   }
 
