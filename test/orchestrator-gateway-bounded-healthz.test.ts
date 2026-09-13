@@ -2,17 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import { verifyOrchestratorHealthz } from "../scripts/lib/orchestrator-gateway.mjs";
 
+function jsonHeaders(contentLength: string | null = null) {
+  return {
+    get(name: string) {
+      if (name.toLowerCase() === "content-type") return "application/json";
+      if (name.toLowerCase() === "content-length") return contentLength;
+      return null;
+    },
+  };
+}
+
 describe("contextual-orchestrator bounded health response", () => {
   it("rejects an advertised oversized body before materializing it", async () => {
     let materialized = false;
     const response = {
       ok: true,
       status: 200,
-      headers: {
-        get(name: string) {
-          return name.toLowerCase() === "content-length" ? "65537" : null;
-        },
-      },
+      headers: jsonHeaders("65537"),
       async arrayBuffer() {
         materialized = true;
         return new Uint8Array(65_537).buffer;
@@ -32,11 +38,7 @@ describe("contextual-orchestrator bounded health response", () => {
     const response = {
       ok: true,
       status: 200,
-      headers: {
-        get() {
-          return null;
-        },
-      },
+      headers: jsonHeaders(),
       async arrayBuffer() {
         materialized += 1;
         return new Uint8Array(65_537).buffer;
