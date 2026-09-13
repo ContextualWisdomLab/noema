@@ -9,6 +9,13 @@ function stepBlock(workflow: string, name: string): string {
   return workflow.slice(start, next === -1 ? undefined : next);
 }
 
+function unreleasedSection(changelog: string): string {
+  const start = changelog.indexOf("## Unreleased");
+  expect(start).toBeGreaterThanOrEqual(0);
+  const next = changelog.indexOf("\n## ", start + "## Unreleased".length);
+  return changelog.slice(start, next === -1 ? undefined : next);
+}
+
 describe("immutable-release policy authorization", () => {
   it("isolates administration-read policy proof from tag and publication authority", () => {
     const workflow = readFileSync(".github/workflows/release-evidence.yml", "utf8");
@@ -34,10 +41,28 @@ describe("immutable-release policy authorization", () => {
       "permission-metadata: read",
     ]);
 
-    expect(policy).toContain("GH_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}");
+    expect(policy).toContain(
+      "DELEGATED_RELEASE_POLICY_AUDITOR_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}",
+    );
+    expect(policy).toContain("umask 077");
+    expect(policy).toContain("mktemp -d");
+    expect(policy).toContain('chmod 0600 "$token_path"');
+    expect(policy).toContain("unset DELEGATED_RELEASE_POLICY_AUDITOR_TOKEN");
+    expect(policy).toContain("NOEMA_RELEASE_AUDITOR_TOKEN_PATH");
+    expect(policy).toContain("delegated-github-token.mjs");
+    expect(policy).toContain("readDelegatedGithubToken");
+    expect(policy).toContain('GH_HOST: "github.com"');
+    expect(policy).toContain("maxBuffer: 16 * 1024");
+    expect(policy).toContain("timeout: 20_000");
     expect(policy).toContain("repos/${GITHUB_REPOSITORY}/immutable-releases");
-    expect(policy).not.toContain("GH_TOKEN: ${{ github.token }}");
+    expect(policy).not.toContain("GH_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}");
     expect(policy).not.toContain("releases/tags/${RELEASE_TAG}");
+
+    expect(workflow).toContain(
+      "install -m 0644 scripts/lib/delegated-github-token.mjs delegated-github-token.mjs",
+    );
+    expect(workflow).toContain("release-publication-receipt.mjs \\\n            delegated-github-token.mjs \\\n            verification-handoff.json");
+    expect(workflow).toContain("release-publication-receipt.mjs \\\n            delegated-github-token.mjs \\\n            >release-bundle.sha256");
 
     expect(releaseAbsence).toContain("GH_TOKEN: ${{ github.token }}");
     expect(releaseAbsence).toContain("repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}");
@@ -47,5 +72,13 @@ describe("immutable-release policy authorization", () => {
 
     expect(publication).toContain("GH_TOKEN: ${{ github.token }}");
     expect(publication).not.toContain("steps.release_policy_auditor.outputs.token");
+  });
+
+  it("records the release-policy auditor boundary in the Unreleased changelog", () => {
+    const changelog = unreleasedSection(readFileSync("CHANGELOG.md", "utf8"));
+    expect(changelog).toContain("Release Policy Auditor");
+    expect(changelog).toContain("Administration: read");
+    expect(changelog).toContain("capability file");
+    expect(changelog).toContain("PR #706");
   });
 });
