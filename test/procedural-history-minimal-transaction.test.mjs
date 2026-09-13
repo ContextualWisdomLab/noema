@@ -347,3 +347,36 @@ test("fails closed when retained structure gains JSON-invisible fields after ver
   assert.equal(corrupted.version, 1);
   assert.equal(Object.hasOwn(corrupted.events[0], "postVerificationTamper"), true);
 });
+
+test("normalizes a transaction-local null replacement to the CAS conflict boundary", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const second = await authenticatedEvaluation(decision, keys, 1);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  storage.beforeTransaction = async () => {
+    const [key] = storage.records.keys();
+    storage.records.set(key, null);
+  };
+
+  await assert.rejects(
+    repository.append(candidate, second, 1),
+    (error) => {
+      assert.equal(error?.name, "ProceduralEvaluationHistoryConflictError");
+      assert.match(error?.message ?? "", /expected history version lost the CAS race/);
+      return true;
+    },
+  );
+
+  const [, malformed] = storage.records.entries().next().value;
+  assert.equal(malformed, null);
+});
