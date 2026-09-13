@@ -123,6 +123,17 @@ function currentWorkflowEvidence(
   });
 }
 
+function cancelCurrentWorkflowReaderBestEffort(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: string,
+): void {
+  try {
+    void reader.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cleanup cannot replace a decision already made by the bounded-response admission path.
+  }
+}
+
 /**
  * Reads one private Workflow / Task Execution response into fixed retained storage before JSON admission.
  * The byte ceiling is deliberately much larger than the bounded workflow snapshot schema but prevents a
@@ -147,13 +158,14 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
   }
   const storage = new Uint8Array(MAX_CURRENT_WORKFLOW_RESPONSE_BYTES);
   let totalBytes = 0;
-  let deadlineHandle: ReturnType<typeof setTimeout> | undefined;
+  let rejectReadDeadline!: (reason?: unknown) => void;
   const readDeadline = new Promise<never>((_resolve, reject) => {
-    deadlineHandle = setTimeout(
-      () => reject(CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE),
-      CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE_MS,
-    );
+    rejectReadDeadline = reject;
   });
+  const deadlineHandle = setTimeout(
+    () => rejectReadDeadline(CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE),
+    CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE_MS,
+  );
   try {
     while (true) {
       const { done, value } = await Promise.race([reader.read(), readDeadline]);
@@ -162,11 +174,10 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
         return rejectCurrentLifecycle("invalid_workflow_state_response");
       }
       if (value.byteLength > MAX_CURRENT_WORKFLOW_RESPONSE_BYTES - totalBytes) {
-        try {
-          void reader.cancel("Noema current workflow-state response exceeded byte ceiling").catch(() => undefined);
-        } catch {
-          // The byte-ceiling decision does not depend on cleanup transport behavior.
-        }
+        cancelCurrentWorkflowReaderBestEffort(
+          reader,
+          "Noema current workflow-state response exceeded byte ceiling",
+        );
         return rejectCurrentLifecycle("invalid_workflow_state_response");
       }
       storage.set(value, totalBytes);
@@ -175,15 +186,14 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
   } catch (error) {
     if (error instanceof ProceduralCurrentLifecycleError) throw error;
     if (error === CURRENT_WORKFLOW_RESPONSE_READ_DEADLINE) {
-      try {
-        void reader.cancel("Noema current workflow-state response exceeded read deadline").catch(() => undefined);
-      } catch {
-        // The read-deadline decision does not depend on cleanup transport behavior.
-      }
+      cancelCurrentWorkflowReaderBestEffort(
+        reader,
+        "Noema current workflow-state response exceeded read deadline",
+      );
     }
     return rejectCurrentLifecycle("invalid_workflow_state_response");
   } finally {
-    if (deadlineHandle !== undefined) clearTimeout(deadlineHandle);
+    clearTimeout(deadlineHandle);
     reader.releaseLock();
   }
 
