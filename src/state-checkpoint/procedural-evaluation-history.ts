@@ -273,6 +273,7 @@ function replayMatches(
   ]);
 }
 
+/** Builds the only valid empty durable history used before the first CAS append. */
 function emptyHistory(stream: ProceduralEvaluationHistoryStream): MutableHistory {
   return {
     schemaVersion: HISTORY_SCHEMA_VERSION,
@@ -284,6 +285,11 @@ function emptyHistory(stream: ProceduralEvaluationHistoryStream): MutableHistory
   };
 }
 
+/**
+ * Requires transaction-local retained bytes to equal the complete history that was cryptographically
+ * verified before the transaction. This closes the async interleaving window without rehashing inside
+ * the atomic section, so corruption or a concurrent append fails closed before the single write.
+ */
 function requireCurrentHistoryCas(
   current: MutableHistory | undefined,
   verified: MutableHistory,
@@ -293,15 +299,10 @@ function requireCurrentHistoryCas(
     return;
   }
   requireHistory(current !== undefined, "expected history version lost the CAS race");
-  requireHistory(current.schemaVersion === HISTORY_SCHEMA_VERSION, "expected history version lost the CAS race");
-  requireHistory(JSON.stringify(current.stream) === JSON.stringify(verified.stream), "expected history version lost the CAS race");
-  requireHistory(current.version === verified.version, "expected history version lost the CAS race");
-  requireHistory(current.headEventDigest === verified.headEventDigest, "expected history version lost the CAS race");
-  requireHistory(Array.isArray(current.events), "expected history version lost the CAS race");
-  requireHistory(current.events.length === verified.events.length, "expected history version lost the CAS race");
-  requireHistory(current.events.at(-1)?.eventDigest === verified.headEventDigest, "expected history version lost the CAS race");
-  requireHistory(Array.isArray(current.rejectedKeys), "expected history version lost the CAS race");
-  requireHistory(JSON.stringify(current.rejectedKeys) === JSON.stringify(verified.rejectedKeys), "expected history version lost the CAS race");
+  requireHistory(
+    JSON.stringify(current) === JSON.stringify(verified),
+    "expected history version lost the CAS race",
+  );
 }
 
 /**
@@ -328,8 +329,8 @@ export class DurableProceduralEvaluationHistoryRepository {
   /**
    * Retains one still-current authenticated evaluator handoff for the exact candidate graph. Bounded
    * history integrity verification and event hashing finish before the Durable Object transaction; the
-   * atomic section then rechecks only current version/head/projection CAS authority before the write.
-   * Exact replay is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
+   * atomic section then rechecks complete verified-history CAS authority before the write. Exact replay
+   * is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
    * @param candidate Locally admitted direct-child graph bound by the authenticated evaluation evidence.
    * @param authenticated Still-current process-local signed evaluator authority produced by Agent Runtime.
    * @param expectedVersion Exact durable history version observed by the caller before this append attempt.
