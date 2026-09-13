@@ -481,9 +481,20 @@ jobs:
             '.schemaVersion == 1 and .source.repository == $repo and .source.ref == $ref and .source.commitSha == $sha and .source.version == $version' \
             release-evidence.json >/dev/null
 
-      - name: Require immutable-release enforcement and absent prior release
+      - name: Mint immutable-release policy auditor token
+        id: release_policy_auditor
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-administration: read
+          permission-metadata: read
+
+      - name: Require immutable-release enforcement
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release_policy_auditor.outputs.token }}
         run: |
           set -euo pipefail
           publication_dir="$RUNNER_TEMP/release-publication"
@@ -496,6 +507,13 @@ jobs:
             >"$publication_dir/immutable-release-policy.json"
           jq -e '.enabled == true and (.enforced_by_owner | type == "boolean")' \
             "$publication_dir/immutable-release-policy.json" >/dev/null
+
+      - name: Require exact tag and absent prior release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publication_dir="$RUNNER_TEMP/release-publication"
           remote_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
           if [ "$remote_tag_sha" != "$RELEASE_COMMIT_SHA" ]; then
             printf '::error::Remote tag %s resolves to %s, expected %s.\n' \
