@@ -276,3 +276,43 @@ test("fails closed when retained event bytes change after verification but befor
     /durable procedural history integrity check failed/,
   );
 });
+
+test("revalidates exact replay against current durable bytes before returning", async () => {
+  const { baseline, candidate } = await fixtureGraphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const first = await authenticatedEvaluation(decision, keys, 0);
+  const storage = new TransactionObservedStorage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, first, 0);
+
+  const originalGet = storage.get.bind(storage);
+  let mutateAfterRead = true;
+  storage.get = async (key) => {
+    const value = await originalGet(key);
+    if (mutateAfterRead && value !== undefined) {
+      mutateAfterRead = false;
+      const retained = storage.records.get(key);
+      retained.events[0].candidateReceiptDigest = digest("f");
+      storage.records.set(key, retained);
+    }
+    return value;
+  };
+
+  await assert.rejects(
+    repository.append(candidate, first, 1),
+    /expected history version lost the CAS race/,
+  );
+
+  const [, corrupted] = storage.records.entries().next().value;
+  assert.equal(corrupted.events[0].candidateReceiptDigest, digest("f"));
+  await assert.rejects(
+    repository.read(candidate),
+    /durable procedural history integrity check failed/,
+  );
+});
