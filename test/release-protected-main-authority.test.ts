@@ -5,8 +5,8 @@ import {
   verifyReleaseProtectedSource,
 } from "../scripts/release-protected-source.mjs";
 
-const CURRENT_MAIN = "1111111111111111111111111111111111111111";
-const OTHER_COMMIT = "2222222222222222222222222222222222222222";
+const CURRENT_MAIN = "a111111111111111111111111111111111111111";
+const OTHER_COMMIT = "b222222222222222222222222222222222222222";
 
 function releaseEnv(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
