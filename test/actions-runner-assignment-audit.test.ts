@@ -300,6 +300,53 @@ describe("GitHub Actions runner-assignment evidence", () => {
     );
   });
 
+  it("does not let a runner-less conditional skip mask a sibling runner-assignment stall", () => {
+    const result = evaluate([workflowRun({
+      workflow_run_status: "queued",
+      workflow_conclusion: null,
+      workflow_jobs: [
+        {
+          workflow_job_id: 201,
+          workflow_job_name: "detect-scope",
+          run_attempt: 1,
+          workflow_job_status: "queued",
+          workflow_job_conclusion: null,
+          started_at: "2026-08-09T23:50:00.000Z",
+          completed_at: null,
+          runner_id: 0,
+          runner_name: "",
+        },
+        {
+          workflow_job_id: 202,
+          workflow_job_name: "gitleaks",
+          run_attempt: 1,
+          workflow_job_status: "completed",
+          workflow_job_conclusion: "skipped",
+          started_at: "2026-08-09T23:50:00.000Z",
+          completed_at: "2026-08-09T23:50:00.000Z",
+          runner_id: null,
+          runner_name: null,
+        },
+      ],
+    })]);
+
+    expect(result.audit_status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_stalled");
+    expect(result.assignment_checks).toContainEqual(
+      expect.objectContaining({
+        check_code: "runner_assignment_not_required",
+        check_passed: true,
+        workflow_job_id: 202,
+      }),
+    );
+    expect(result.assignment_checks).not.toContainEqual(
+      expect.objectContaining({
+        check_code: "runner_assignment_observed",
+        workflow_job_id: 202,
+      }),
+    );
+  });
+
   it("rejects workflow evidence from a different source head", () => {
     const result = evaluate([workflowRun({ head_sha: "fedcba9876543210fedcba9876543210fedcba98" })]);
     expect(result.audit_status).toBe("FAIL");
