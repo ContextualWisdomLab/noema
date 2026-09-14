@@ -17,6 +17,32 @@ const DECISION_REASONS = new Set([
   "score_regression",
   "validation_non_regression",
 ]);
+const STREAM_KEYS = ["tenantId", "taskType", "graphId"] as const;
+const HISTORY_KEYS = ["schemaVersion", "stream", "version", "headEventDigest", "rejectedKeys", "events"] as const;
+const EVENT_KEYS = [
+  "schemaVersion",
+  "version",
+  "candidateRevision",
+  "baselineDigest",
+  "candidateDigest",
+  "contextDigest",
+  "baselineReceiptDigest",
+  "candidateReceiptDigest",
+  "rejectionKey",
+  "decisionReason",
+  "envelopeDigest",
+  "signerKeyId",
+  "handoffDigest",
+  "issuedAtEpochSeconds",
+  "expiresAtEpochSeconds",
+  "eligibleForApproval",
+  "activationAuthorized",
+  "priorEventDigest",
+  "eventDigest",
+] as const;
+const STREAM_KEY_SET = JSON.stringify([...STREAM_KEYS].sort());
+const HISTORY_KEY_SET = JSON.stringify([...HISTORY_KEYS].sort());
+const EVENT_KEY_SET = JSON.stringify([...EVENT_KEYS].sort());
 
 /**
  * Maximum complete evaluation events retained for one procedural graph lineage. The repository never
@@ -104,6 +130,77 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
+/** Accepts only canonical lowercase SHA-256 strings without coercing runtime-untrusted retained values. */
+function isCanonicalSha256(value: unknown): value is string {
+  return typeof value === "string" && SHA256.test(value);
+}
+
+/** Requires every array slot to be an own indexed property and rejects compensating custom properties. */
+function requireDenseArrayShape(value: readonly unknown[], message: string): void {
+  requireHistory(Object.keys(value).length === value.length, message);
+  for (let index = 0; index < value.length; index += 1) {
+    requireHistory(Object.hasOwn(value, index), message);
+  }
+}
+
+/**
+ * Rejects runtime-untrusted retained structured-clone shapes before JSON equality can erase fields or
+ * native object operations can leak arbitrary JavaScript exceptions across the State / Checkpoint boundary.
+ */
+function requireCanonicalHistoryShape(history: unknown, message: string): asserts history is MutableHistory {
+  requireHistory(history !== null, message);
+  requireHistory(typeof history === "object", message);
+  requireHistory(!Array.isArray(history), message);
+  const retained = history as MutableHistory;
+  requireHistory(JSON.stringify(Object.keys(retained).sort()) === HISTORY_KEY_SET, message);
+  requireHistory(retained.stream !== null, message);
+  requireHistory(typeof retained.stream === "object", message);
+  requireHistory(!Array.isArray(retained.stream), message);
+  requireHistory(JSON.stringify(Object.keys(retained.stream).sort()) === STREAM_KEY_SET, message);
+  requireHistory(Array.isArray(retained.rejectedKeys), message);
+  requireDenseArrayShape(retained.rejectedKeys, message);
+  requireHistory(Array.isArray(retained.events), message);
+  requireDenseArrayShape(retained.events, message);
+  for (const event of retained.events) {
+    requireHistory(event !== null, message);
+    requireHistory(typeof event === "object", message);
+    requireHistory(!Array.isArray(event), message);
+    requireHistory(JSON.stringify(Object.keys(event).sort()) === EVENT_KEY_SET, message);
+  }
+}
+
+/** Compares the fixed stream identity without coercion or JSON serialization. */
+function sameStream(
+  current: ProceduralEvaluationHistoryStream,
+  verified: ProceduralEvaluationHistoryStream,
+): boolean {
+  return STREAM_KEYS.every((key) => Object.is(current[key], verified[key]));
+}
+
+/** Compares a retained scalar projection without coercion or serialization side effects. */
+function sameStringList(current: readonly string[], verified: readonly string[]): boolean {
+  return current.length === verified.length
+    && current.every((value, index) => Object.is(value, verified[index]));
+}
+
+/**
+ * Compares the complete admitted retained value domain after canonical shape validation. Every retained
+ * event field is compared with Object.is so structured-clone values cannot exploit JSON coercion or throws.
+ */
+function sameCanonicalHistory(current: MutableHistory, verified: MutableHistory): boolean {
+  if (!Object.is(current.schemaVersion, verified.schemaVersion)) return false;
+  if (!sameStream(current.stream, verified.stream)) return false;
+  if (!Object.is(current.version, verified.version)) return false;
+  if (!Object.is(current.headEventDigest, verified.headEventDigest)) return false;
+  if (!sameStringList(current.rejectedKeys, verified.rejectedKeys)) return false;
+  if (current.events.length !== verified.events.length) return false;
+  return current.events.every((event, index) => {
+    const verifiedEvent = verified.events[index];
+    return verifiedEvent !== undefined
+      && EVENT_KEYS.every((key) => Object.is(event[key], verifiedEvent[key]));
+  });
+}
+
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -169,20 +266,15 @@ async function verifyStoredHistory(
   value: unknown,
   expectedStream: ProceduralEvaluationHistoryStream,
 ): Promise<MutableHistory> {
-  requireHistory(value !== null, "durable procedural history integrity check failed");
-  requireHistory(typeof value === "object", "durable procedural history integrity check failed");
-  requireHistory(!Array.isArray(value), "durable procedural history integrity check failed");
-  const history = value as MutableHistory;
+  requireCanonicalHistoryShape(value, "durable procedural history integrity check failed");
+  const history = value;
   requireHistory(history.schemaVersion === HISTORY_SCHEMA_VERSION, "durable procedural history integrity check failed");
-  requireHistory(JSON.stringify(history.stream) === JSON.stringify(expectedStream), "durable procedural history integrity check failed");
+  requireHistory(sameStream(history.stream, expectedStream), "durable procedural history integrity check failed");
   requireHistory(Number.isSafeInteger(history.version), "durable procedural history integrity check failed");
   requireHistory(history.version >= 1, "durable procedural history integrity check failed");
   requireHistory(history.version <= MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS, "durable procedural history integrity check failed");
-  requireHistory(Array.isArray(history.events), "durable procedural history integrity check failed");
   requireHistory(history.events.length === history.version, "durable procedural history integrity check failed");
-  requireHistory(Array.isArray(history.rejectedKeys), "durable procedural history integrity check failed");
-  requireHistory(typeof history.headEventDigest === "string", "durable procedural history integrity check failed");
-  requireHistory(SHA256.test(history.headEventDigest), "durable procedural history integrity check failed");
+  requireHistory(isCanonicalSha256(history.headEventDigest), "durable procedural history integrity check failed");
 
   const rejected = new Set<string>();
   const handoffDigests = new Set<string>();
@@ -195,18 +287,18 @@ async function verifyStoredHistory(
     requireHistory(event.version === index + 1, "durable procedural history integrity check failed");
     requireHistory(Number.isSafeInteger(event.candidateRevision), "durable procedural history integrity check failed");
     requireHistory(event.candidateRevision >= 2, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.baselineDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.candidateDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.contextDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.baselineReceiptDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.candidateReceiptDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.rejectionKey), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.baselineDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.candidateDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.contextDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.baselineReceiptDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.candidateReceiptDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.rejectionKey), "durable procedural history integrity check failed");
     requireHistory(DECISION_REASONS.has(event.decisionReason), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.envelopeDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.envelopeDigest), "durable procedural history integrity check failed");
     requireHistory(typeof event.signerKeyId === "string", "durable procedural history integrity check failed");
     requireHistory(event.signerKeyId.length >= 1, "durable procedural history integrity check failed");
     requireHistory(event.signerKeyId.length <= 128, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.handoffDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.handoffDigest), "durable procedural history integrity check failed");
     requireHistory(!handoffDigests.has(event.handoffDigest), "durable procedural history integrity check failed");
     handoffDigests.add(event.handoffDigest);
     requireHistory(Number.isSafeInteger(event.issuedAtEpochSeconds), "durable procedural history integrity check failed");
@@ -215,7 +307,7 @@ async function verifyStoredHistory(
     requireHistory(typeof event.eligibleForApproval === "boolean", "durable procedural history integrity check failed");
     requireHistory(event.activationAuthorized === false, "durable procedural history integrity check failed");
     requireHistory(event.priorEventDigest === priorEventDigest, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.eventDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.eventDigest), "durable procedural history integrity check failed");
     const observedDigest = await sha256(eventHashMaterial(expectedStream, event));
     requireHistory(event.eventDigest === observedDigest, "durable procedural history integrity check failed");
     requireHistory(event.eligibleForApproval === (event.decisionReason === "validation_non_regression"), "durable procedural history integrity check failed");
@@ -229,7 +321,7 @@ async function verifyStoredHistory(
   }
 
   const derivedRejectedKeys = [...rejected].sort();
-  requireHistory(JSON.stringify(history.rejectedKeys) === JSON.stringify(derivedRejectedKeys), "durable procedural history integrity check failed");
+  requireHistory(sameStringList(history.rejectedKeys, derivedRejectedKeys), "durable procedural history integrity check failed");
   requireHistory(history.headEventDigest === priorEventDigest, "durable procedural history integrity check failed");
   return history;
 }
@@ -273,6 +365,38 @@ function replayMatches(
   ]);
 }
 
+/** Builds the only valid empty durable history used before the first CAS append. */
+function emptyHistory(stream: ProceduralEvaluationHistoryStream): MutableHistory {
+  return {
+    schemaVersion: HISTORY_SCHEMA_VERSION,
+    stream,
+    version: 0,
+    headEventDigest: "",
+    rejectedKeys: [],
+    events: [],
+  };
+}
+
+/**
+ * Requires transaction-local retained bytes to equal the complete history that was cryptographically
+ * verified before the transaction. Runtime-untrusted bytes are domain-normalized before canonical
+ * key/array shape and equality checks, without rehashing inside the atomic section.
+ */
+function requireCurrentHistoryCas(
+  current: unknown,
+  verified: MutableHistory,
+): void {
+  if (verified.version === 0) {
+    requireHistory(current === undefined, "expected history version lost the CAS race");
+    return;
+  }
+  requireCanonicalHistoryShape(current, "expected history version lost the CAS race");
+  requireHistory(
+    sameCanonicalHistory(current, verified),
+    "expected history version lost the CAS race",
+  );
+}
+
 /**
  * State / Checkpoint repository for authenticated procedural evaluation and rejection evidence. It
  * persists a bounded complete lineage under atomic CAS without creating workflow, policy, or activation truth.
@@ -289,14 +413,17 @@ export class DurableProceduralEvaluationHistoryRepository {
   async read(candidate: ProceduralGraph): Promise<ProceduralEvaluationHistorySnapshot | null> {
     assertProceduralGraph(candidate);
     const stream = streamFromGraph(candidate);
-    const value = await this.storage.get<MutableHistory>(await storageKey(stream));
+    const value = await this.storage.get<unknown>(await storageKey(stream));
     if (value === undefined) return null;
     return frozenSnapshot(await verifyStoredHistory(value, stream));
   }
 
   /**
-   * Atomically retains one still-current authenticated evaluator handoff for the exact candidate graph.
-   * Exact replay is idempotent; stale CAS, stale rejection context, full history, or lineage drift fails closed.
+   * Retains one still-current authenticated evaluator handoff for the exact candidate graph. Bounded
+   * history integrity verification and event hashing finish before the Durable Object transaction; the
+   * atomic section rechecks complete verified-history CAS authority and handoff freshness before replay
+   * return or write. Exact replay is idempotent; stale CAS, stale rejection context, full history, or
+   * lineage drift fails closed.
    * @param candidate Locally admitted direct-child graph bound by the authenticated evaluation evidence.
    * @param authenticated Still-current process-local signed evaluator authority produced by Agent Runtime.
    * @param expectedVersion Exact durable history version observed by the caller before this append attempt.
@@ -316,71 +443,77 @@ export class DurableProceduralEvaluationHistoryRepository {
     requireHistory(evidence.baselineDigest === candidate.parentDigest, "authenticated evaluation does not bind the admitted candidate graph");
     const stream = streamFromGraph(candidate);
     const key = await storageKey(stream);
+    const retained = await this.storage.get<unknown>(key);
+    const history = retained === undefined
+      ? emptyHistory(stream)
+      : await verifyStoredHistory(retained, stream);
+
+    if (retained === undefined) {
+      requireHistory(expectedVersion === 0, "expected history version lost the CAS race");
+    } else {
+      const replay = history.events.find((event) => event.handoffDigest === authenticated.handoffDigest);
+      if (replay !== undefined) {
+        requireHistory(replayMatches(replay, candidate, authenticated), "authenticated replay names different durable semantics");
+        return this.storage.transaction(async (transaction: HistoryTransaction) => {
+          const current = await transaction.get<unknown>(key);
+          requireCurrentHistoryCas(current, history);
+          assertAuthenticatedProceduralEvaluationEvidence(authenticated);
+          return {
+            kind: "replay" as const,
+            event: Object.freeze({ ...replay }),
+            snapshot: frozenSnapshot(history),
+          };
+        });
+      }
+      requireHistory(history.version === expectedVersion, "expected history version lost the CAS race");
+    }
+
+    requireHistory(history.events.length < MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS, "durable procedural history capacity is exhausted");
+    const rejectionKeys = new Set(history.rejectedKeys);
+    if (evidence.decisionReason === "previously_rejected") {
+      requireHistory(rejectionKeys.has(evidence.rejectionKey), "decision does not reflect durable rejection history");
+    } else {
+      requireHistory(!rejectionKeys.has(evidence.rejectionKey), "decision does not reflect durable rejection history");
+    }
+    if (!evidence.eligibleForApproval) rejectionKeys.add(evidence.rejectionKey);
+
+    const withoutDigest: Omit<ProceduralEvaluationHistoryEvent, "eventDigest"> = {
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      version: history.version + 1,
+      candidateRevision: candidate.revision,
+      baselineDigest: evidence.baselineDigest,
+      candidateDigest: evidence.candidateDigest,
+      contextDigest: evidence.contextDigest,
+      baselineReceiptDigest: evidence.baselineReceiptDigest,
+      candidateReceiptDigest: evidence.candidateReceiptDigest,
+      rejectionKey: evidence.rejectionKey,
+      decisionReason: evidence.decisionReason,
+      envelopeDigest: evidence.envelopeDigest,
+      signerKeyId: authenticated.signerKeyId,
+      handoffDigest: authenticated.handoffDigest,
+      issuedAtEpochSeconds: authenticated.issuedAtEpochSeconds,
+      expiresAtEpochSeconds: authenticated.expiresAtEpochSeconds,
+      eligibleForApproval: evidence.eligibleForApproval,
+      activationAuthorized: false,
+      priorEventDigest: history.version === 0 ? null : history.headEventDigest,
+    };
+    const event: ProceduralEvaluationHistoryEvent = Object.freeze({
+      ...withoutDigest,
+      eventDigest: await sha256(eventHashMaterial(stream, withoutDigest)),
+    });
+    const next: MutableHistory = {
+      schemaVersion: HISTORY_SCHEMA_VERSION,
+      stream,
+      version: event.version,
+      headEventDigest: event.eventDigest,
+      rejectedKeys: [...rejectionKeys].sort(),
+      events: [...history.events, event],
+    };
 
     return this.storage.transaction(async (transaction: HistoryTransaction) => {
-      const retained = await transaction.get<MutableHistory>(key);
-      let history: MutableHistory;
-      if (retained === undefined) {
-        requireHistory(expectedVersion === 0, "expected history version lost the CAS race");
-        history = {
-          schemaVersion: HISTORY_SCHEMA_VERSION,
-          stream,
-          version: 0,
-          headEventDigest: "",
-          rejectedKeys: [],
-          events: [],
-        };
-      } else {
-        history = await verifyStoredHistory(retained, stream);
-        const replay = history.events.find((event) => event.handoffDigest === authenticated.handoffDigest);
-        if (replay !== undefined) {
-          requireHistory(replayMatches(replay, candidate, authenticated), "authenticated replay names different durable semantics");
-          return { kind: "replay" as const, event: Object.freeze({ ...replay }), snapshot: frozenSnapshot(history) };
-        }
-        requireHistory(history.version === expectedVersion, "expected history version lost the CAS race");
-      }
-
-      requireHistory(history.events.length < MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS, "durable procedural history capacity is exhausted");
-      const rejectionKeys = new Set(history.rejectedKeys);
-      if (evidence.decisionReason === "previously_rejected") {
-        requireHistory(rejectionKeys.has(evidence.rejectionKey), "decision does not reflect durable rejection history");
-      } else {
-        requireHistory(!rejectionKeys.has(evidence.rejectionKey), "decision does not reflect durable rejection history");
-      }
-      if (!evidence.eligibleForApproval) rejectionKeys.add(evidence.rejectionKey);
-
-      const withoutDigest: Omit<ProceduralEvaluationHistoryEvent, "eventDigest"> = {
-        schemaVersion: EVENT_SCHEMA_VERSION,
-        version: history.version + 1,
-        candidateRevision: candidate.revision,
-        baselineDigest: evidence.baselineDigest,
-        candidateDigest: evidence.candidateDigest,
-        contextDigest: evidence.contextDigest,
-        baselineReceiptDigest: evidence.baselineReceiptDigest,
-        candidateReceiptDigest: evidence.candidateReceiptDigest,
-        rejectionKey: evidence.rejectionKey,
-        decisionReason: evidence.decisionReason,
-        envelopeDigest: evidence.envelopeDigest,
-        signerKeyId: authenticated.signerKeyId,
-        handoffDigest: authenticated.handoffDigest,
-        issuedAtEpochSeconds: authenticated.issuedAtEpochSeconds,
-        expiresAtEpochSeconds: authenticated.expiresAtEpochSeconds,
-        eligibleForApproval: evidence.eligibleForApproval,
-        activationAuthorized: false,
-        priorEventDigest: history.version === 0 ? null : history.headEventDigest,
-      };
-      const event: ProceduralEvaluationHistoryEvent = Object.freeze({
-        ...withoutDigest,
-        eventDigest: await sha256(eventHashMaterial(stream, withoutDigest)),
-      });
-      const next: MutableHistory = {
-        schemaVersion: HISTORY_SCHEMA_VERSION,
-        stream,
-        version: event.version,
-        headEventDigest: event.eventDigest,
-        rejectedKeys: [...rejectionKeys].sort(),
-        events: [...history.events, event],
-      };
+      const current = await transaction.get<unknown>(key);
+      requireCurrentHistoryCas(current, history);
+      assertAuthenticatedProceduralEvaluationEvidence(authenticated);
       await transaction.put(key, next);
       return { kind: "accepted" as const, event, snapshot: frozenSnapshot(next) };
     });
