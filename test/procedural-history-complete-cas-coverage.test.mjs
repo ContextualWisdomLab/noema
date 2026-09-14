@@ -194,6 +194,7 @@ test.each([
   ["stream identity", (retained) => { retained.stream.graphId = "graph-interleaved"; }],
   ["version", (retained) => { retained.version += 1; }],
   ["head digest", (retained) => { retained.headEventDigest = digest("d"); }],
+  ["event count", (retained) => { retained.events.push(structuredClone(retained.events[0])); }],
 ])("rejects complete retained-state CAS drift in %s", async (_name, mutate) => {
   await expectCasConflictAfterMutation(mutate);
 });
