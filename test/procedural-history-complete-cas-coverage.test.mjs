@@ -161,7 +161,11 @@ async function expectCasConflictAfterMutation(mutate, { rejectedFirst = false } 
     candidate,
     rejectedFirst ? { safetyViolations: 1 } : undefined,
   );
-  const secondDecision = await screenedDecision(baseline, candidate);
+  const secondDecision = await screenedDecision(
+    baseline,
+    candidate,
+    rejectedFirst ? { rejectedKeys: [firstDecision.rejectionKey] } : undefined,
+  );
   const keys = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
