@@ -130,6 +130,11 @@ function requireHistory(condition: boolean, message: string): asserts condition 
   if (!condition) throw new ProceduralEvaluationHistoryConflictError(message);
 }
 
+/** Accepts only canonical lowercase SHA-256 strings without coercing runtime-untrusted retained values. */
+function isCanonicalSha256(value: unknown): value is string {
+  return typeof value === "string" && SHA256.test(value);
+}
+
 /** Requires every array slot to be an own indexed property and rejects compensating custom properties. */
 function requireDenseArrayShape(value: readonly unknown[], message: string): void {
   requireHistory(Object.keys(value).length === value.length, message);
@@ -269,8 +274,7 @@ async function verifyStoredHistory(
   requireHistory(history.version >= 1, "durable procedural history integrity check failed");
   requireHistory(history.version <= MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS, "durable procedural history integrity check failed");
   requireHistory(history.events.length === history.version, "durable procedural history integrity check failed");
-  requireHistory(typeof history.headEventDigest === "string", "durable procedural history integrity check failed");
-  requireHistory(SHA256.test(history.headEventDigest), "durable procedural history integrity check failed");
+  requireHistory(isCanonicalSha256(history.headEventDigest), "durable procedural history integrity check failed");
 
   const rejected = new Set<string>();
   const handoffDigests = new Set<string>();
@@ -283,18 +287,18 @@ async function verifyStoredHistory(
     requireHistory(event.version === index + 1, "durable procedural history integrity check failed");
     requireHistory(Number.isSafeInteger(event.candidateRevision), "durable procedural history integrity check failed");
     requireHistory(event.candidateRevision >= 2, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.baselineDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.candidateDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.contextDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.baselineReceiptDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.candidateReceiptDigest), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.rejectionKey), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.baselineDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.candidateDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.contextDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.baselineReceiptDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.candidateReceiptDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.rejectionKey), "durable procedural history integrity check failed");
     requireHistory(DECISION_REASONS.has(event.decisionReason), "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.envelopeDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.envelopeDigest), "durable procedural history integrity check failed");
     requireHistory(typeof event.signerKeyId === "string", "durable procedural history integrity check failed");
     requireHistory(event.signerKeyId.length >= 1, "durable procedural history integrity check failed");
     requireHistory(event.signerKeyId.length <= 128, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.handoffDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.handoffDigest), "durable procedural history integrity check failed");
     requireHistory(!handoffDigests.has(event.handoffDigest), "durable procedural history integrity check failed");
     handoffDigests.add(event.handoffDigest);
     requireHistory(Number.isSafeInteger(event.issuedAtEpochSeconds), "durable procedural history integrity check failed");
@@ -303,7 +307,7 @@ async function verifyStoredHistory(
     requireHistory(typeof event.eligibleForApproval === "boolean", "durable procedural history integrity check failed");
     requireHistory(event.activationAuthorized === false, "durable procedural history integrity check failed");
     requireHistory(event.priorEventDigest === priorEventDigest, "durable procedural history integrity check failed");
-    requireHistory(SHA256.test(event.eventDigest), "durable procedural history integrity check failed");
+    requireHistory(isCanonicalSha256(event.eventDigest), "durable procedural history integrity check failed");
     const observedDigest = await sha256(eventHashMaterial(expectedStream, event));
     requireHistory(event.eventDigest === observedDigest, "durable procedural history integrity check failed");
     requireHistory(event.eligibleForApproval === (event.decisionReason === "validation_non_regression"), "durable procedural history integrity check failed");
