@@ -268,6 +268,17 @@ describe("GitHub Actions runner-assignment evidence", () => {
           runner_id: null,
           runner_name: null,
         },
+        {
+          workflow_job_id: 203,
+          workflow_job_name: "preassigned-conditional-job",
+          run_attempt: 1,
+          workflow_job_status: "completed",
+          workflow_job_conclusion: "skipped",
+          started_at: "2026-08-09T23:51:30.000Z",
+          completed_at: "2026-08-09T23:52:00.000Z",
+          runner_id: 88,
+          runner_name: "GitHub Actions 88",
+        },
       ],
     })]);
 
@@ -278,6 +289,13 @@ describe("GitHub Actions runner-assignment evidence", () => {
         check_code: "runner_assignment_not_required",
         check_passed: true,
         workflow_job_id: 202,
+      }),
+    );
+    expect(result.assignment_checks).toContainEqual(
+      expect.objectContaining({
+        check_code: "runner_assignment_observed",
+        check_passed: true,
+        workflow_job_id: 203,
       }),
     );
   });
