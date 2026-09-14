@@ -241,6 +241,47 @@ describe("GitHub Actions runner-assignment evidence", () => {
     );
   });
 
+  it("does not misclassify a conditionally skipped job as a runner-assignment failure", () => {
+    const result = evaluate([workflowRun({
+      workflow_run_status: "completed",
+      workflow_conclusion: "success",
+      workflow_jobs: [
+        {
+          workflow_job_id: 201,
+          workflow_job_name: "detect-scope",
+          run_attempt: 1,
+          workflow_job_status: "completed",
+          workflow_job_conclusion: "success",
+          started_at: "2026-08-09T23:51:00.000Z",
+          completed_at: "2026-08-09T23:52:00.000Z",
+          runner_id: 77,
+          runner_name: "GitHub Actions 77",
+        },
+        {
+          workflow_job_id: 202,
+          workflow_job_name: "dependency-review",
+          run_attempt: 1,
+          workflow_job_status: "completed",
+          workflow_job_conclusion: "skipped",
+          started_at: null,
+          completed_at: "2026-08-09T23:52:00.000Z",
+          runner_id: null,
+          runner_name: null,
+        },
+      ],
+    })]);
+
+    expect(result.audit_status).toBe("PASS");
+    expect(result.assignment_failures).toEqual([]);
+    expect(result.assignment_checks).toContainEqual(
+      expect.objectContaining({
+        check_code: "runner_assignment_not_required",
+        check_passed: true,
+        workflow_job_id: 202,
+      }),
+    );
+  });
+
   it("rejects workflow evidence from a different source head", () => {
     const result = evaluate([workflowRun({ head_sha: "fedcba9876543210fedcba9876543210fedcba98" })]);
     expect(result.audit_status).toBe("FAIL");
