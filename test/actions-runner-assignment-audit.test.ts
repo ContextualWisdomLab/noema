@@ -332,6 +332,18 @@ describe("GitHub Actions runner-assignment evidence", () => {
 
     expect(result.audit_status).toBe("FAIL");
     expect(failureCodes(result)).toContain("runner_assignment_stalled");
+    expect(result.assignment_failures).toContainEqual(
+      expect.objectContaining({
+        failure_code: "runner_assignment_stalled",
+        workflow_job_id: 201,
+      }),
+    );
+    expect(result.assignment_failures).not.toContainEqual(
+      expect.objectContaining({
+        failure_code: "runner_assignment_stalled",
+        workflow_job_id: 202,
+      }),
+    );
     expect(result.assignment_checks).toContainEqual(
       expect.objectContaining({
         check_code: "runner_assignment_not_required",
