@@ -132,7 +132,23 @@ do not inherit a global blacklist. Returning a key does not persist it, and does
 not disclose holdout examples to a refiner. Protected #597 adds bounded durable evaluation/rejection history
 under the existing State / Checkpoint bounded context, retaining payload-minimized
 exact graph/evaluation/authenticated signed-claim identities with monotonic CAS and
-bounded restart-safe history. Protected #599 adds a provenance-preserving verified read boundary
+bounded restart-safe history. Protected #714 hardens that same State / Checkpoint
+history path without widening its authority: complete retained-chain cryptographic
+verification, rejection-context derivation, and next-event SHA-256 are performed
+before `DurableObjectStorage.transaction()`. Append and exact replay then re-read the
+retained value inside the short transaction, require canonical structured-clone
+shape, compare the complete current retained structure with the exact structure
+cryptographically verified before the transaction, and recheck authenticated
+evaluator-handoff freshness immediately before durable `put` or exact replay return.
+Runtime-untrusted retained digest fields must already be canonical lowercase 64-hex
+strings before regex or hash use; coercible non-string lookalikes fail closed as
+State / Checkpoint integrity conflicts rather than becoming authority through string
+coercion. Protected regressions cover legal concurrent append, post-verification event
+mutation, exact-replay drift, JSON-invisible unknown structured-clone fields,
+sparse/noncanonical arrays, handoff expiry during non-atomic preverification,
+complete retained-state drift, and non-string digest corruption. This protected
+source/test evidence does not prove deployed Durable Object contention, restart,
+recovery, buyer-path p95, or heap behavior. Protected #599 adds a provenance-preserving verified read boundary
 so downstream consumers can assert that a history snapshot was emitted by the
 verified repository rather than accepting a structurally forged lookalike. That
 process-local read provenance does not prove that a snapshot remains current after
@@ -189,7 +205,7 @@ acceptance boundaries.
 
 | Owner | Planned responsibility; not a claim of deployed integration |
 | --- | --- |
-| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL with protected #652 response bound, bounded State / Checkpoint evaluation/rejection history, provenance-preserving history reads, protected #601 Policy / Approval CAS, and protected #603 publication-time preflight; graph publication/activation remains separate work |
+| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL with protected #652 response bound, bounded State / Checkpoint evaluation/rejection history hardened by protected #714 complete revalidation/freshness/type admission, provenance-preserving history reads, protected #601 Policy / Approval CAS, and protected #603 publication-time preflight; graph publication/activation remains separate work |
 | context-graph-contracts | Released language-neutral schemas, digest rules, conformance fixtures |
 | enterprise-architecture-core | Capability/owner map, versioned adoption matrix and evidence classes |
 | contextual-orchestrator | Existing gateway routing for later guide/solver/refiner calls; no client-side provider fallback |
@@ -244,7 +260,8 @@ product invocation, or activation composition. Protected #603 adds the missing
 publication-time State / Checkpoint + Policy / Approval reconciliation preflight, but
 that preflight is deliberately not an atomic publisher and carries no publication or
 activation authority. Protected #594 provides signed evaluator-handoff verification,
-#597 provides bounded durable evaluation/rejection history, #599 provides repository-
+#597 provides bounded durable evaluation/rejection history, protected #714 hardens
+that history's transaction/type/freshness boundary, #599 provides repository-
 verified read provenance, #601 provides the Policy / Approval CAS ledger, and #652
 bounds the private current Workflow / Task response retained before Agent Runtime
 admission; none of those source slices is release, deployment, graph publication, or
