@@ -15,6 +15,41 @@ const EVENT_SCHEMA_VERSION = "noema.procedural-policy-approval-event/v1" as cons
 const MAX_PROCEDURAL_POLICY_APPROVAL_EVENTS = 128;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u;
+const APPROVAL_KEYS = [
+  "schemaVersion",
+  "tenantId",
+  "taskType",
+  "graphId",
+  "version",
+  "status",
+  "candidateDigest",
+  "historyVersion",
+  "historyHeadEventDigest",
+  "policyVersion",
+  "headEventDigest",
+  "activationAuthorized",
+  "events",
+] as const;
+const EVENT_KEYS = [
+  "schemaVersion",
+  "version",
+  "decisionId",
+  "action",
+  "policyVersion",
+  "candidateDigest",
+  "historyVersion",
+  "historyHeadEventDigest",
+  "envelopeDigest",
+  "handoffDigest",
+  "signerKeyId",
+  "expectedApprovalVersion",
+  "status",
+  "activationAuthorized",
+  "priorEventDigest",
+  "eventDigest",
+] as const;
+const APPROVAL_KEY_SET = JSON.stringify([...APPROVAL_KEYS].sort());
+const EVENT_KEY_SET = JSON.stringify([...EVENT_KEYS].sort());
 
 /** Exact request exposed to Noema's independently composed Policy / Approval authority. */
 export interface ProceduralPolicyDecisionRequest {
@@ -106,6 +141,7 @@ export interface ProceduralPolicyApprovalAppendResult {
 
 /** Raised when procedural Policy / Approval provenance, semantics, or CAS state fails closed. */
 export class ProceduralPolicyApprovalConflictError extends Error {
+  /** Creates a fail-closed Policy / Approval conflict with a stable diagnostic message. */
   constructor(message: string) {
     super(message);
     this.name = "ProceduralPolicyApprovalConflictError";
@@ -133,24 +169,29 @@ type ApprovalTransaction = Pick<DurableObjectTransaction, "get" | "put">;
 
 const admittedApprovalSnapshots = new WeakSet<object>();
 
+/** Raises the canonical Policy / Approval conflict used by all fail-closed guards. */
 function rejectApproval(message: string): never {
   throw new ProceduralPolicyApprovalConflictError(message);
 }
 
+/** Requires a Policy / Approval invariant and fails closed with the supplied diagnostic when false. */
 function requireApproval(condition: boolean, message: string): asserts condition {
   if (!condition) rejectApproval(message);
 }
 
+/** Admits a decision or request identity only when it is already a canonical bounded string. */
 function requireIdentity(value: unknown, label: string): string {
   requireApproval(typeof value === "string" && IDENTITY.test(value), `${label} is not canonical`);
   return value;
 }
 
+/** Admits a decision or request digest only when it is already a canonical lowercase SHA-256 string. */
 function requireDigest(value: unknown, label: string): string {
   requireApproval(typeof value === "string" && SHA256.test(value), `${label} is not canonical`);
   return value;
 }
 
+/** Admits a bounded safe integer version used by approval history and optimistic CAS. */
 function requireVersion(value: unknown, label: string): number {
   requireApproval(
     typeof value === "number"
@@ -162,12 +203,62 @@ function requireVersion(value: unknown, label: string): number {
   return value;
 }
 
+/** Accepts retained identities only when the runtime value is already a canonical string. */
+function isCanonicalIdentity(value: unknown): value is string {
+  return typeof value === "string" && IDENTITY.test(value);
+}
+
+/** Accepts retained SHA-256 values only when the runtime value is already a canonical string. */
+function isCanonicalDigest(value: unknown): value is string {
+  return typeof value === "string" && SHA256.test(value);
+}
+
+/** Requires every retained array slot to be an own indexed property with no compensating custom keys. */
+function requireDenseArrayShape(value: readonly unknown[], message: string): void {
+  requireApproval(Object.keys(value).length === value.length, message);
+  for (let index = 0; index < value.length; index += 1) {
+    requireApproval(Object.hasOwn(value, index), message);
+  }
+}
+
+/**
+ * Rejects runtime-untrusted structured-clone shapes before cryptographic rehashing or optimistic CAS.
+ * Unknown enumerable fields, sparse arrays, and non-canonical event records cannot be normalized away.
+ */
+function requireCanonicalApprovalShape(input: unknown, message: string): asserts input is MutableApproval {
+  requireApproval(input !== null && typeof input === "object" && !Array.isArray(input), message);
+  const approval = input as MutableApproval;
+  requireApproval(JSON.stringify(Object.keys(approval).sort()) === APPROVAL_KEY_SET, message);
+  requireApproval(Array.isArray(approval.events), message);
+  requireDenseArrayShape(approval.events, message);
+  for (const event of approval.events) {
+    requireApproval(event !== null && typeof event === "object" && !Array.isArray(event), message);
+    requireApproval(JSON.stringify(Object.keys(event).sort()) === EVENT_KEY_SET, message);
+  }
+}
+
+/** Compares the complete admitted retained Policy / Approval structure without JSON coercion. */
+function sameCanonicalApproval(current: MutableApproval, verified: MutableApproval): boolean {
+  for (const key of APPROVAL_KEYS) {
+    if (key === "events") continue;
+    if (!Object.is(current[key], verified[key])) return false;
+  }
+  if (current.events.length !== verified.events.length) return false;
+  return current.events.every((event, index) => {
+    const verifiedEvent = verified.events[index];
+    return verifiedEvent !== undefined
+      && EVENT_KEYS.every((key) => Object.is(event[key], verifiedEvent[key]));
+  });
+}
+
+/** Computes the canonical lowercase SHA-256 digest for one JSON-stable hash material value. */
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Derives the durable approval-stream key from the exact graph lineage identity. */
 async function storageKey(candidate: ProceduralGraph): Promise<string> {
   return `procedural-policy-approval:v1:${await sha256([
     APPROVAL_SCHEMA_VERSION,
@@ -177,6 +268,7 @@ async function storageKey(candidate: ProceduralGraph): Promise<string> {
   ])}`;
 }
 
+/** Snapshots an untrusted decision object by exact own data-property keys before semantic validation. */
 function exactRecord(input: unknown, keys: readonly string[]): Record<string, unknown> {
   requireApproval(input !== null && typeof input === "object" && !Array.isArray(input), "independent procedural policy decision is malformed");
   const proto = Object.getPrototypeOf(input);
@@ -200,6 +292,7 @@ function exactRecord(input: unknown, keys: readonly string[]): Record<string, un
   return record;
 }
 
+/** Converts an authority result into an immutable, canonical trusted decision snapshot. */
 function snapshotDecision(input: unknown): TrustedProceduralPolicyDecision {
   const value = exactRecord(input, [
     "schemaVersion",
@@ -240,6 +333,7 @@ function snapshotDecision(input: unknown): TrustedProceduralPolicyDecision {
   });
 }
 
+/** Confirms that an independently supplied decision binds every field of the exact decision request. */
 function decisionMatchesRequest(
   decision: TrustedProceduralPolicyDecision,
   request: ProceduralPolicyDecisionRequest,
@@ -256,6 +350,7 @@ function decisionMatchesRequest(
     && decision.expectedApprovalVersion === request.expectedApprovalVersion;
 }
 
+/** Builds immutable approval-event hash material without including the event digest itself. */
 function eventHashMaterial(
   candidate: ProceduralGraph,
   event: Omit<ProceduralPolicyApprovalEvent, "eventDigest">,
@@ -282,6 +377,7 @@ function eventHashMaterial(
   ];
 }
 
+/** Freezes a verified mutable record into an admitted process-local Policy / Approval snapshot. */
 function frozenSnapshot(approval: MutableApproval): ProceduralPolicyApprovalSnapshot {
   const snapshot = Object.freeze({
     schemaVersion: approval.schemaVersion,
@@ -302,66 +398,82 @@ function frozenSnapshot(approval: MutableApproval): ProceduralPolicyApprovalSnap
   return snapshot;
 }
 
+/** Verifies the complete retained approval chain, canonical shape, state machine, and cryptographic links. */
 async function verifyStoredApproval(
   input: unknown,
   candidate: ProceduralGraph,
 ): Promise<MutableApproval> {
-  requireApproval(input !== null && typeof input === "object" && !Array.isArray(input), "durable procedural policy approval integrity check failed");
-  const approval = input as MutableApproval;
-  requireApproval(approval.schemaVersion === APPROVAL_SCHEMA_VERSION, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.tenantId === candidate.tenantId, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.taskType === candidate.taskType, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.graphId === candidate.graphId, "durable procedural policy approval integrity check failed");
-  requireApproval(Number.isSafeInteger(approval.version) && approval.version >= 1, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.version <= MAX_PROCEDURAL_POLICY_APPROVAL_EVENTS, "durable procedural policy approval integrity check failed");
-  requireApproval(Array.isArray(approval.events) && approval.events.length === approval.version, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.activationAuthorized === false, "durable procedural policy approval integrity check failed");
+  const integrityMessage = "durable procedural policy approval integrity check failed";
+  requireCanonicalApprovalShape(input, integrityMessage);
+  const approval = input;
+  requireApproval(approval.schemaVersion === APPROVAL_SCHEMA_VERSION, integrityMessage);
+  requireApproval(approval.tenantId === candidate.tenantId, integrityMessage);
+  requireApproval(approval.taskType === candidate.taskType, integrityMessage);
+  requireApproval(approval.graphId === candidate.graphId, integrityMessage);
+  requireApproval(Number.isSafeInteger(approval.version) && approval.version >= 1, integrityMessage);
+  requireApproval(approval.version <= MAX_PROCEDURAL_POLICY_APPROVAL_EVENTS, integrityMessage);
+  requireApproval(approval.events.length === approval.version, integrityMessage);
+  requireApproval(approval.activationAuthorized === false, integrityMessage);
 
   let priorEventDigest: string | null = null;
   let expectedStatus: MutableApproval["status"] | null = null;
   const decisions = new Set<string>();
   for (let index = 0; index < approval.events.length; index += 1) {
     const event = approval.events[index];
-    requireApproval(event !== null && typeof event === "object", "durable procedural policy approval integrity check failed");
-    requireApproval(event.schemaVersion === EVENT_SCHEMA_VERSION, "durable procedural policy approval integrity check failed");
-    requireApproval(event.version === index + 1, "durable procedural policy approval integrity check failed");
-    requireApproval(IDENTITY.test(event.decisionId), "durable procedural policy approval integrity check failed");
-    requireApproval(!decisions.has(event.decisionId), "durable procedural policy approval integrity check failed");
+    requireApproval(event.schemaVersion === EVENT_SCHEMA_VERSION, integrityMessage);
+    requireApproval(event.version === index + 1, integrityMessage);
+    requireApproval(isCanonicalIdentity(event.decisionId), integrityMessage);
+    requireApproval(!decisions.has(event.decisionId), integrityMessage);
     decisions.add(event.decisionId);
-    requireApproval(event.action === "approve_for_pilot" || event.action === "revoke", "durable procedural policy approval integrity check failed");
-    requireApproval(IDENTITY.test(event.policyVersion), "durable procedural policy approval integrity check failed");
-    requireApproval(SHA256.test(event.candidateDigest), "durable procedural policy approval integrity check failed");
-    requireApproval(Number.isSafeInteger(event.historyVersion) && event.historyVersion >= 1, "durable procedural policy approval integrity check failed");
-    requireApproval(SHA256.test(event.historyHeadEventDigest), "durable procedural policy approval integrity check failed");
-    requireApproval(SHA256.test(event.envelopeDigest), "durable procedural policy approval integrity check failed");
-    requireApproval(SHA256.test(event.handoffDigest), "durable procedural policy approval integrity check failed");
-    requireApproval(IDENTITY.test(event.signerKeyId), "durable procedural policy approval integrity check failed");
-    requireApproval(event.expectedApprovalVersion === index, "durable procedural policy approval integrity check failed");
-    requireApproval(event.activationAuthorized === false, "durable procedural policy approval integrity check failed");
-    requireApproval(event.priorEventDigest === priorEventDigest, "durable procedural policy approval integrity check failed");
-    requireApproval(SHA256.test(event.eventDigest), "durable procedural policy approval integrity check failed");
-    requireApproval(event.eventDigest === await sha256(eventHashMaterial(candidate, event)), "durable procedural policy approval integrity check failed");
+    requireApproval(event.action === "approve_for_pilot" || event.action === "revoke", integrityMessage);
+    requireApproval(isCanonicalIdentity(event.policyVersion), integrityMessage);
+    requireApproval(isCanonicalDigest(event.candidateDigest), integrityMessage);
+    requireApproval(Number.isSafeInteger(event.historyVersion) && event.historyVersion >= 1, integrityMessage);
+    requireApproval(isCanonicalDigest(event.historyHeadEventDigest), integrityMessage);
+    requireApproval(isCanonicalDigest(event.envelopeDigest), integrityMessage);
+    requireApproval(isCanonicalDigest(event.handoffDigest), integrityMessage);
+    requireApproval(isCanonicalIdentity(event.signerKeyId), integrityMessage);
+    requireApproval(event.expectedApprovalVersion === index, integrityMessage);
+    requireApproval(event.activationAuthorized === false, integrityMessage);
+    requireApproval(event.priorEventDigest === priorEventDigest, integrityMessage);
+    requireApproval(isCanonicalDigest(event.eventDigest), integrityMessage);
+    requireApproval(event.eventDigest === await sha256(eventHashMaterial(candidate, event)), integrityMessage);
     if (event.action === "approve_for_pilot") {
-      requireApproval(expectedStatus !== "approved_for_pilot", "durable procedural policy approval integrity check failed");
+      requireApproval(expectedStatus !== "approved_for_pilot", integrityMessage);
       expectedStatus = "approved_for_pilot";
     } else {
-      requireApproval(expectedStatus === "approved_for_pilot", "durable procedural policy approval integrity check failed");
+      requireApproval(expectedStatus === "approved_for_pilot", integrityMessage);
       expectedStatus = "revoked";
     }
-    requireApproval(event.status === expectedStatus, "durable procedural policy approval integrity check failed");
+    requireApproval(event.status === expectedStatus, integrityMessage);
     priorEventDigest = event.eventDigest;
   }
   const latest = approval.events.at(-1);
-  requireApproval(latest !== undefined, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.status === expectedStatus, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.candidateDigest === latest.candidateDigest, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.historyVersion === latest.historyVersion, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.historyHeadEventDigest === latest.historyHeadEventDigest, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.policyVersion === latest.policyVersion, "durable procedural policy approval integrity check failed");
-  requireApproval(approval.headEventDigest === latest.eventDigest, "durable procedural policy approval integrity check failed");
+  requireApproval(latest !== undefined, integrityMessage);
+  requireApproval(approval.status === expectedStatus, integrityMessage);
+  requireApproval(approval.candidateDigest === latest.candidateDigest, integrityMessage);
+  requireApproval(approval.historyVersion === latest.historyVersion, integrityMessage);
+  requireApproval(approval.historyHeadEventDigest === latest.historyHeadEventDigest, integrityMessage);
+  requireApproval(approval.policyVersion === latest.policyVersion, integrityMessage);
+  requireApproval(approval.headEventDigest === latest.eventDigest, integrityMessage);
   return approval;
 }
 
+/** Requires transaction-local state to equal the complete approval structure verified before entry. */
+function requireCurrentApprovalCas(
+  current: unknown,
+  verified: MutableApproval | undefined,
+): void {
+  const casMessage = "expected approval version lost the CAS race";
+  if (verified === undefined) {
+    requireApproval(current === undefined, casMessage);
+    return;
+  }
+  requireCanonicalApprovalShape(current, casMessage);
+  requireApproval(sameCanonicalApproval(current, verified), casMessage);
+}
+
+/** Binds a fresh State / Checkpoint snapshot to the exact policy-decision request and CAS position. */
 function requestFrom(
   candidate: ProceduralGraph,
   history: ProceduralEvaluationHistorySnapshot,
@@ -392,6 +504,7 @@ function requestFrom(
   });
 }
 
+/** Resolves and snapshots the independent Policy / Approval decision for one exact request. */
 function resolveDecision(
   authority: ProceduralPolicyDecisionAuthority,
   request: ProceduralPolicyDecisionRequest,
@@ -408,6 +521,7 @@ function resolveDecision(
   return decision;
 }
 
+/** Confirms that a retained decision idempotently replays the exact independently supplied semantics. */
 function replayMatches(
   event: ProceduralPolicyApprovalEvent,
   decision: TrustedProceduralPolicyDecision,
@@ -430,6 +544,7 @@ function replayMatches(
  * owner, and publication/activation must perform their own fresh cross-authority checks.
  */
 export class DurableProceduralPolicyApprovalRepository {
+  /** Composes the repository from bounded durable storage and an independently owned decision authority. */
   constructor(
     private readonly storage: ApprovalStorage,
     private readonly authority: ProceduralPolicyDecisionAuthority,
@@ -442,16 +557,16 @@ export class DurableProceduralPolicyApprovalRepository {
    */
   async read(candidate: ProceduralGraph): Promise<ProceduralPolicyApprovalSnapshot | null> {
     assertProceduralGraph(candidate);
-    const retained = await this.storage.get<MutableApproval>(await storageKey(candidate));
+    const retained = await this.storage.get<unknown>(await storageKey(candidate));
     if (retained === undefined) return null;
     return frozenSnapshot(await verifyStoredApproval(retained, candidate));
   }
 
   /**
-   * Resolves an independent exact policy decision and atomically appends approval or revocation under
-   * monotonic CAS. The State / Checkpoint snapshot must carry fresh process-local read provenance, but
-   * this transaction cannot prove that a separate State / Checkpoint object has not advanced afterward;
-   * publication/activation therefore must re-read and compare the approved history identity.
+   * Resolves an independent exact policy decision and appends approval or revocation under monotonic CAS.
+   * Retained-chain verification and next-event hashing finish before the Durable Object transaction; the
+   * atomic section performs only a current-state reread, complete canonical optimistic revalidation, and
+   * at most one write or exact-replay return. State / Checkpoint remains independently authoritative.
    * @param candidate Locally admitted graph proposed for a pilot approval or revocation decision.
    * @param history Fresh repository-verified State / Checkpoint snapshot for the same graph lineage.
    * @param expectedApprovalVersion Exact Policy / Approval version observed before this append attempt.
@@ -474,71 +589,79 @@ export class DurableProceduralPolicyApprovalRepository {
       requireApproval(latest.decisionReason === "validation_non_regression", "latest procedural evaluation is not eligible for approval");
     }
     const key = await storageKey(candidate);
+    const retained = await this.storage.get<unknown>(key);
+    const approval = retained === undefined
+      ? undefined
+      : await verifyStoredApproval(retained, candidate);
 
-    return this.storage.transaction(async (transaction: ApprovalTransaction) => {
-      const retained = await transaction.get<MutableApproval>(key);
-      let approval: MutableApproval | undefined;
-      if (retained !== undefined) {
-        approval = await verifyStoredApproval(retained, candidate);
-        const replay = approval.events.find((event) => event.decisionId === decision.decisionId);
-        if (replay !== undefined) {
-          requireApproval(replayMatches(replay, decision), "policy decision replay names different semantics");
+    if (approval === undefined) {
+      requireApproval(expectedVersion === 0, "expected approval version lost the CAS race");
+    } else {
+      const replay = approval.events.find((event) => event.decisionId === decision.decisionId);
+      if (replay !== undefined) {
+        requireApproval(replayMatches(replay, decision), "policy decision replay names different semantics");
+        return this.storage.transaction(async (transaction: ApprovalTransaction) => {
+          const current = await transaction.get<unknown>(key);
+          requireCurrentApprovalCas(current, approval);
           return {
             kind: "replay" as const,
             event: Object.freeze({ ...replay }),
             snapshot: frozenSnapshot(approval),
           };
-        }
-        requireApproval(approval.version === expectedVersion, "expected approval version lost the CAS race");
-      } else {
-        requireApproval(expectedVersion === 0, "expected approval version lost the CAS race");
+        });
       }
+      requireApproval(approval.version === expectedVersion, "expected approval version lost the CAS race");
+    }
 
-      requireApproval((approval?.events.length ?? 0) < MAX_PROCEDURAL_POLICY_APPROVAL_EVENTS, "durable procedural policy approval capacity is exhausted");
-      const priorStatus = approval?.status ?? null;
-      if (decision.action === "approve_for_pilot") {
-        requireApproval(priorStatus !== "approved_for_pilot", "procedural graph is already approved for pilot");
-      } else {
-        requireApproval(priorStatus === "approved_for_pilot", "procedural graph is not approved for pilot");
-      }
-      const status = decision.action === "approve_for_pilot" ? "approved_for_pilot" as const : "revoked" as const;
-      const withoutDigest: Omit<ProceduralPolicyApprovalEvent, "eventDigest"> = {
-        schemaVersion: EVENT_SCHEMA_VERSION,
-        version: expectedVersion + 1,
-        decisionId: decision.decisionId,
-        action: decision.action,
-        policyVersion: decision.policyVersion,
-        candidateDigest: decision.candidateDigest,
-        historyVersion: decision.historyVersion,
-        historyHeadEventDigest: decision.historyHeadEventDigest,
-        envelopeDigest: decision.envelopeDigest,
-        handoffDigest: decision.handoffDigest,
-        signerKeyId: decision.signerKeyId,
-        expectedApprovalVersion: decision.expectedApprovalVersion,
-        status,
-        activationAuthorized: false,
-        priorEventDigest: approval?.headEventDigest ?? null,
-      };
-      const event = Object.freeze({
-        ...withoutDigest,
-        eventDigest: await sha256(eventHashMaterial(candidate, withoutDigest)),
-      });
-      const events = [...(approval?.events ?? []), event];
-      const next: MutableApproval = {
-        schemaVersion: APPROVAL_SCHEMA_VERSION,
-        tenantId: candidate.tenantId,
-        taskType: candidate.taskType,
-        graphId: candidate.graphId,
-        version: event.version,
-        status,
-        candidateDigest: decision.candidateDigest,
-        historyVersion: decision.historyVersion,
-        historyHeadEventDigest: decision.historyHeadEventDigest,
-        policyVersion: decision.policyVersion,
-        headEventDigest: event.eventDigest,
-        activationAuthorized: false,
-        events,
-      };
+    requireApproval((approval?.events.length ?? 0) < MAX_PROCEDURAL_POLICY_APPROVAL_EVENTS, "durable procedural policy approval capacity is exhausted");
+    const priorStatus = approval?.status ?? null;
+    if (decision.action === "approve_for_pilot") {
+      requireApproval(priorStatus !== "approved_for_pilot", "procedural graph is already approved for pilot");
+    } else {
+      requireApproval(priorStatus === "approved_for_pilot", "procedural graph is not approved for pilot");
+    }
+    const status = decision.action === "approve_for_pilot" ? "approved_for_pilot" as const : "revoked" as const;
+    const withoutDigest: Omit<ProceduralPolicyApprovalEvent, "eventDigest"> = {
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      version: expectedVersion + 1,
+      decisionId: decision.decisionId,
+      action: decision.action,
+      policyVersion: decision.policyVersion,
+      candidateDigest: decision.candidateDigest,
+      historyVersion: decision.historyVersion,
+      historyHeadEventDigest: decision.historyHeadEventDigest,
+      envelopeDigest: decision.envelopeDigest,
+      handoffDigest: decision.handoffDigest,
+      signerKeyId: decision.signerKeyId,
+      expectedApprovalVersion: decision.expectedApprovalVersion,
+      status,
+      activationAuthorized: false,
+      priorEventDigest: approval?.headEventDigest ?? null,
+    };
+    const event = Object.freeze({
+      ...withoutDigest,
+      eventDigest: await sha256(eventHashMaterial(candidate, withoutDigest)),
+    });
+    const events = [...(approval?.events ?? []), event];
+    const next: MutableApproval = {
+      schemaVersion: APPROVAL_SCHEMA_VERSION,
+      tenantId: candidate.tenantId,
+      taskType: candidate.taskType,
+      graphId: candidate.graphId,
+      version: event.version,
+      status,
+      candidateDigest: decision.candidateDigest,
+      historyVersion: decision.historyVersion,
+      historyHeadEventDigest: decision.historyHeadEventDigest,
+      policyVersion: decision.policyVersion,
+      headEventDigest: event.eventDigest,
+      activationAuthorized: false,
+      events,
+    };
+
+    return this.storage.transaction(async (transaction: ApprovalTransaction) => {
+      const current = await transaction.get<unknown>(key);
+      requireCurrentApprovalCas(current, approval);
       await transaction.put(key, next);
       return {
         kind: "accepted" as const,
