@@ -108,7 +108,9 @@ describe("protected procedural documentation authority", () => {
     for (const currentSection of [adrSection, trdSection, baselineSection, adoptionSection]) {
       expect(currentSection).toContain("Protected #714");
       expect(currentSection).toMatch(/before .*transaction|before the storage transaction/u);
-      expect(currentSection).toMatch(/complete .*retained structure|complete current retained structure/u);
+      expect(currentSection).toMatch(
+        /complete .*retained structure|complete current retained structure|complete equality with the preverified structure/u,
+      );
       expect(currentSection).toMatch(/handoff[- ]freshness/u);
       expect(currentSection).toMatch(/canonical lowercase 64-hex/u);
       expect(currentSection).not.toContain("activationAuthorized:true");
