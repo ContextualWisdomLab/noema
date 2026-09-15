@@ -109,7 +109,7 @@ describe("protected procedural documentation authority", () => {
       expect(currentSection).toContain("Protected #714");
       expect(currentSection).toMatch(/before .*transaction|before the storage transaction/u);
       expect(currentSection).toMatch(/complete .*retained structure|complete current retained structure/u);
-      expect(currentSection).toMatch(/handoff freshness/u);
+      expect(currentSection).toMatch(/handoff[- ]freshness/u);
       expect(currentSection).toMatch(/canonical lowercase 64-hex/u);
       expect(currentSection).not.toContain("activationAuthorized:true");
       expect(currentSection).not.toContain("publicationAuthorized:true");
