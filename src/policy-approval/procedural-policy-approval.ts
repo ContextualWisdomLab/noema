@@ -141,6 +141,7 @@ export interface ProceduralPolicyApprovalAppendResult {
 
 /** Raised when procedural Policy / Approval provenance, semantics, or CAS state fails closed. */
 export class ProceduralPolicyApprovalConflictError extends Error {
+  /** Creates a fail-closed Policy / Approval conflict with a stable diagnostic message. */
   constructor(message: string) {
     super(message);
     this.name = "ProceduralPolicyApprovalConflictError";
@@ -168,24 +169,29 @@ type ApprovalTransaction = Pick<DurableObjectTransaction, "get" | "put">;
 
 const admittedApprovalSnapshots = new WeakSet<object>();
 
+/** Raises the canonical Policy / Approval conflict used by all fail-closed guards. */
 function rejectApproval(message: string): never {
   throw new ProceduralPolicyApprovalConflictError(message);
 }
 
+/** Requires a Policy / Approval invariant and fails closed with the supplied diagnostic when false. */
 function requireApproval(condition: boolean, message: string): asserts condition {
   if (!condition) rejectApproval(message);
 }
 
+/** Admits a decision or request identity only when it is already a canonical bounded string. */
 function requireIdentity(value: unknown, label: string): string {
   requireApproval(typeof value === "string" && IDENTITY.test(value), `${label} is not canonical`);
   return value;
 }
 
+/** Admits a decision or request digest only when it is already a canonical lowercase SHA-256 string. */
 function requireDigest(value: unknown, label: string): string {
   requireApproval(typeof value === "string" && SHA256.test(value), `${label} is not canonical`);
   return value;
 }
 
+/** Admits a bounded safe integer version used by approval history and optimistic CAS. */
 function requireVersion(value: unknown, label: string): number {
   requireApproval(
     typeof value === "number"
@@ -245,12 +251,14 @@ function sameCanonicalApproval(current: MutableApproval, verified: MutableApprov
   });
 }
 
+/** Computes the canonical lowercase SHA-256 digest for one JSON-stable hash material value. */
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Derives the durable approval-stream key from the exact graph lineage identity. */
 async function storageKey(candidate: ProceduralGraph): Promise<string> {
   return `procedural-policy-approval:v1:${await sha256([
     APPROVAL_SCHEMA_VERSION,
@@ -260,6 +268,7 @@ async function storageKey(candidate: ProceduralGraph): Promise<string> {
   ])}`;
 }
 
+/** Snapshots an untrusted decision object by exact own data-property keys before semantic validation. */
 function exactRecord(input: unknown, keys: readonly string[]): Record<string, unknown> {
   requireApproval(input !== null && typeof input === "object" && !Array.isArray(input), "independent procedural policy decision is malformed");
   const proto = Object.getPrototypeOf(input);
@@ -283,6 +292,7 @@ function exactRecord(input: unknown, keys: readonly string[]): Record<string, un
   return record;
 }
 
+/** Converts an authority result into an immutable, canonical trusted decision snapshot. */
 function snapshotDecision(input: unknown): TrustedProceduralPolicyDecision {
   const value = exactRecord(input, [
     "schemaVersion",
@@ -323,6 +333,7 @@ function snapshotDecision(input: unknown): TrustedProceduralPolicyDecision {
   });
 }
 
+/** Confirms that an independently supplied decision binds every field of the exact decision request. */
 function decisionMatchesRequest(
   decision: TrustedProceduralPolicyDecision,
   request: ProceduralPolicyDecisionRequest,
@@ -339,6 +350,7 @@ function decisionMatchesRequest(
     && decision.expectedApprovalVersion === request.expectedApprovalVersion;
 }
 
+/** Builds immutable approval-event hash material without including the event digest itself. */
 function eventHashMaterial(
   candidate: ProceduralGraph,
   event: Omit<ProceduralPolicyApprovalEvent, "eventDigest">,
@@ -365,6 +377,7 @@ function eventHashMaterial(
   ];
 }
 
+/** Freezes a verified mutable record into an admitted process-local Policy / Approval snapshot. */
 function frozenSnapshot(approval: MutableApproval): ProceduralPolicyApprovalSnapshot {
   const snapshot = Object.freeze({
     schemaVersion: approval.schemaVersion,
@@ -385,6 +398,7 @@ function frozenSnapshot(approval: MutableApproval): ProceduralPolicyApprovalSnap
   return snapshot;
 }
 
+/** Verifies the complete retained approval chain, canonical shape, state machine, and cryptographic links. */
 async function verifyStoredApproval(
   input: unknown,
   candidate: ProceduralGraph,
@@ -459,6 +473,7 @@ function requireCurrentApprovalCas(
   requireApproval(sameCanonicalApproval(current, verified), casMessage);
 }
 
+/** Binds a fresh State / Checkpoint snapshot to the exact policy-decision request and CAS position. */
 function requestFrom(
   candidate: ProceduralGraph,
   history: ProceduralEvaluationHistorySnapshot,
@@ -489,6 +504,7 @@ function requestFrom(
   });
 }
 
+/** Resolves and snapshots the independent Policy / Approval decision for one exact request. */
 function resolveDecision(
   authority: ProceduralPolicyDecisionAuthority,
   request: ProceduralPolicyDecisionRequest,
@@ -505,6 +521,7 @@ function resolveDecision(
   return decision;
 }
 
+/** Confirms that a retained decision idempotently replays the exact independently supplied semantics. */
 function replayMatches(
   event: ProceduralPolicyApprovalEvent,
   decision: TrustedProceduralPolicyDecision,
@@ -527,6 +544,7 @@ function replayMatches(
  * owner, and publication/activation must perform their own fresh cross-authority checks.
  */
 export class DurableProceduralPolicyApprovalRepository {
+  /** Composes the repository from bounded durable storage and an independently owned decision authority. */
   constructor(
     private readonly storage: ApprovalStorage,
     private readonly authority: ProceduralPolicyDecisionAuthority,
