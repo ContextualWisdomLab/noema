@@ -3,6 +3,28 @@ import { describe, expect, it } from "vitest";
 
 const document = (path: string): string => readFileSync(path, "utf8");
 
+const section = (source: string, heading: string): string => {
+  const lines = source.split("\n");
+  const start = lines.indexOf(heading);
+  if (start < 0) {
+    throw new Error(`Missing documentation section: ${heading}`);
+  }
+  const headingMatch = /^(#+)\s/u.exec(heading);
+  if (!headingMatch) {
+    throw new Error(`Invalid documentation heading: ${heading}`);
+  }
+  const level = headingMatch[1].length;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const nextHeading = /^(#+)\s/u.exec(lines[index]);
+    if (nextHeading && nextHeading[1].length <= level) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end).join("\n");
+};
+
 describe("protected procedural documentation authority", () => {
   it("classifies the merged workflow-backed current-state ACL as protected source", () => {
     const architecture = document("ARCHITECTURE.md");
@@ -46,6 +68,7 @@ describe("protected procedural documentation authority", () => {
     const adoption = document("docs/doctoring/procedural_graph_adoption.md");
 
     expect(adoption).toContain("#597 is merged on protected `main`");
+    expect(adoption).toContain("#714 is merged on protected `main`");
     expect(adoption).toContain("bounded durable evaluation/rejection history");
     expect(adoption).toContain("Policy / Approval remains a separate bounded-context authority");
     expect(adoption).not.toContain("Reuse existing execution/state authorities before adding persistence");
@@ -56,11 +79,41 @@ describe("protected procedural documentation authority", () => {
     const adr = document("docs/adr/0017-procedural-graph-guidance.md");
 
     expect(adr).toContain("Protected #597 adds bounded durable evaluation/rejection history");
+    expect(adr).toContain("Protected #714 hardens that same State / Checkpoint");
     expect(adr).toContain("Protected #599 adds a provenance-preserving verified read boundary");
     expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
     expect(adr).not.toContain("later State/Checkpoint adapter owns authenticated retention");
     expect(adr).not.toContain("durable graph/rejection history and promotion/revocation remain separate work");
     expect(adr).not.toContain("There is still no production graph/trajectory store, signed receipt verifier");
+  });
+
+  it("pins protected #714 minimal-transaction authority to local procedural-history sections", () => {
+    const adrSection = section(
+      document("docs/adr/0017-procedural-graph-guidance.md"),
+      "## Offline evidence screening",
+    );
+    const trdSection = section(
+      document("docs/TRD.md"),
+      "### 2.4 Protected procedural graph advisory runtime",
+    );
+    const baselineSection = section(
+      document("docs/product-technical-gap-baseline.md"),
+      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714",
+    );
+    const adoptionSection = section(
+      document("docs/doctoring/procedural_graph_adoption.md"),
+      "## CWL decisions, not claims made by the paper",
+    );
+
+    for (const currentSection of [adrSection, trdSection, baselineSection, adoptionSection]) {
+      expect(currentSection).toContain("Protected #714");
+      expect(currentSection).toMatch(/before .*transaction|before the storage transaction/u);
+      expect(currentSection).toMatch(/complete .*retained structure|complete current retained structure/u);
+      expect(currentSection).toMatch(/handoff freshness/u);
+      expect(currentSection).toMatch(/canonical lowercase 64-hex/u);
+      expect(currentSection).not.toContain("activationAuthorized:true");
+      expect(currentSection).not.toContain("publicationAuthorized:true");
+    }
   });
 
   it("classifies procedural Policy / Approval CAS as protected source without granting activation", () => {
