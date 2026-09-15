@@ -19,20 +19,23 @@ Required invariants are:
 5. selected runs must be `pull_request` runs bound to that exact source head and must carry a positive safe-integer `run_attempt`;
 6. job pages are fully paginated from `actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100`, bounded to at most 2,000 retained jobs, and every retained workflow job must carry the same exact positive `run_attempt` as its selected run; the run-wide `filter=all` endpoint can include predecessor attempts and is therefore non-authoritative for current-attempt runner identity;
 7. runner assignment is observed only from a positive `runner_id` or a non-empty `runner_name` on a job whose `run_attempt` matches its selected run; `started_at` is not runner-assignment authority because GitHub may populate it while a job is still queued without runner identity;
-8. a `waiting`, `pending`, or `requested` current-attempt job remains non-passing `PENDING` because those states do not by themselves isolate runner allocation;
-9. a queued current-attempt job in a run where another **current-attempt** job has already received a runner remains non-passing `PENDING`, because the queued job may be waiting on an explicit `jobs.<job_id>.needs` dependency rather than runner capacity; predecessor-attempt assignment must not suppress current-attempt stall classification;
-10. the bounded grace may produce `runner_assignment_stalled` only when the workflow run itself remains `queued`, the current-attempt job remains `queued`, and no job in that selected **current attempt** has assignment evidence;
-11. an assigned current-attempt job may produce runner-assignment `PASS` even if its later workflow/test conclusion is `failure`, because those are separate evidence classes.
+8. a GitHub job whose exact state is `status=completed`, `conclusion=skipped` and which has no runner identity is recorded as `runner_assignment_not_required`; a conditional skip is neither positive assignment evidence nor a runner-allocation failure;
+9. a `waiting`, `pending`, or `requested` current-attempt job remains non-passing `PENDING` because those states do not by themselves isolate runner allocation;
+10. a queued current-attempt job in a run where another **current-attempt** job has already received a runner remains non-passing `PENDING`, because the queued job may be waiting on an explicit `jobs.<job_id>.needs` dependency rather than runner capacity; predecessor-attempt assignment must not suppress current-attempt stall classification;
+11. the bounded grace may produce `runner_assignment_stalled` only when the workflow run itself remains `queued`, the current-attempt job remains `queued`, and no job in that selected **current attempt** has assignment evidence;
+12. an assigned current-attempt job may produce runner-assignment `PASS` even if its later workflow/test conclusion is `failure`, because those are separate evidence classes.
 
 The default runner-allocation grace is five minutes and may be bounded by `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS`; the evaluator rejects values above thirty minutes rather than allowing a true isolated queue condition to remain indefinitely pending.
 
 This classifier is intentionally conservative because the GitHub workflow-job REST representation does not expose a durable repository-consumable timestamp meaning “this job became eligible for runner allocation.” A workflow run's `created_at` is therefore not a trustworthy age for every downstream job, and a job's `started_at` is not runner-assignment authority. The evaluator uses run age only after the selected current-attempt evidence isolates the top-level queued runner-allocation boundary described above.
 
-### Pre-run waits are not runner stalls
+### Pre-run waits and conditional skips are not runner stalls
 
 GitHub distinguishes several reasons a job may not yet have reached a runner. In particular, **deployment protection rules** on an environment can leave a deployment job in a waiting state; GitHub documents that a job that references an environment is not sent to a runner until the environment's protection rules pass. Likewise, workflow syntax permits a job to declare `jobs.<job_id>.needs`, so downstream work waits for its prerequisite jobs before it can run.
 
-Those states remain operationally non-passing, but they are not evidence that GitHub failed to allocate a runner. The audit therefore reports them as `PENDING` without `runner_assignment_stalled`. This does **not** convert them to success: required Checks, approvals, environment protection, and later job conclusions still retain their own authority.
+A conditionally skipped job is a different terminal case: GitHub has decided that the job will not execute, so absence of runner identity is expected. The audit records this as `runner_assignment_not_required`. That record does not count as positive assignment evidence for any other job and cannot satisfy a required Check that expects execution.
+
+Waiting/dependency states remain operationally non-passing, but they are not evidence that GitHub failed to allocate a runner. The audit therefore reports them as `PENDING` without `runner_assignment_stalled`. This does **not** convert them to success: required Checks, approvals, environment protection, and later job conclusions still retain their own authority.
 
 ## Operator contract
 
@@ -76,11 +79,11 @@ The report records repository, expected head, selected run IDs, observation time
 
 A `runner_assignment_stalled` result supports the narrow hypothesis **“the selected current-head workflow run and current-attempt job remained at an isolated queued boundary without observable current-attempt runner assignment beyond the configured grace interval.”** It does not by itself identify why. Possible causes remain materially distinct and require separate evidence, including GitHub-hosted runner capacity, repository/organization Actions policy, runner-group restrictions, billing/spending controls, concurrency saturation, enterprise policy, or a GitHub service incident.
 
-A `PENDING` result for environment protection, `needs` dependency waiting, or other pre-run uncertainty means only that runner allocation has **not been isolated as the failing boundary**. It is not a health PASS and cannot satisfy a required Check.
+A `PENDING` result for environment protection, `needs` dependency waiting, or other pre-run uncertainty means only that runner allocation has **not been isolated as the failing boundary**. It is not a health PASS and cannot satisfy a required Check. A `runner_assignment_not_required` check means only that GitHub conditionally skipped that specific job before runner execution; it says nothing about sibling queued jobs or the overall required workflow conclusion.
 
 Conversely, an observed current-attempt runner assignment falsifies the hypothesis that the specific selected job is still blocked at runner allocation. A later failing step must be investigated at that later boundary rather than described as a runner-assignment incident. Assignment from a predecessor attempt is not evidence about the current attempt.
 
-This separation matters for issue #30 because historical Noema runs exhibited queued jobs without logs, while later runs demonstrably received GitHub-hosted runners. Repository evidence therefore needs to preserve **attempt identity and assignment state** independently from **job conclusion**, **dependency/protection waiting**, and any organization-level causal claim.
+This separation matters for issue #30 because historical Noema runs exhibited queued jobs without logs, while later runs demonstrably received GitHub-hosted runners. Repository evidence therefore needs to preserve **attempt identity and assignment state** independently from **job conclusion**, **conditional skip**, **dependency/protection waiting**, and any organization-level causal claim.
 
 ## Security and privacy
 
@@ -94,9 +97,10 @@ The audit is diagnostic evidence. A passing assignment audit cannot satisfy bran
 
 The repository-owned slice is acceptable when:
 
-- realistic tests reproduce an isolated current-attempt runner stall, a fresh queue, deployment/environment waiting, downstream dependency waiting, assigned-but-failed jobs, predecessor-attempt contamination, head mismatch, malformed evidence, pagination, and bounded selection;
+- realistic tests reproduce an isolated current-attempt runner stall, a fresh queue, deployment/environment waiting, downstream dependency waiting, conditionally skipped jobs, assigned-but-failed jobs, predecessor-attempt contamination, head mismatch, malformed evidence, pagination, and bounded selection;
 - every selected run and retained workflow job carries the same exact positive `run_attempt`, and predecessor-attempt jobs cannot contribute runner identity or suppress current-attempt stall classification;
 - queued `started_at` timestamps without runner identity remain unassigned, while a positive `runner_id` or a non-empty `runner_name` on a matching current-attempt job is assignment evidence;
+- `status=completed` plus `conclusion=skipped` without runner identity is `runner_assignment_not_required`, never `runner_assignment_not_observed`, and never positive assignment evidence for sibling jobs;
 - the production entrypoint succeeds with an owner-only delegated token capability file and fails closed when only ambient `GH_TOKEN` is present;
 - environment-protected and dependency-blocked jobs remain nonzero `PENDING` and are not mislabeled as runner-allocation stalls;
 - the pure evaluator and bounded source collector are GREEN;

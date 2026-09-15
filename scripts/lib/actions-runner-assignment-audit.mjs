@@ -68,16 +68,19 @@ function invalidEvidence(failureDetail) {
  * Evaluate bounded GitHub Actions runner-assignment evidence.
  *
  * The evaluator answers only whether each selected pull-request workflow job
- * obtained a runner. A later test, security, or workflow conclusion remains a
- * separate evidence class. GitHub may populate `started_at` while a queued job
- * still has runner_id=0 and no runner_name, so timestamps are not assignment
- * authority. Every retained job must carry the same positive `run_attempt` as
- * its parent workflow run; predecessor-attempt runner identity cannot satisfy or
- * alter current-attempt assignment evidence. Freshly queued jobs remain
- * non-passing `PENDING`. A grace-window stall is emitted only when both the
- * workflow run and workflow job remain queued with no runner identity observed
- * anywhere in the selected current attempt; protection/dependency waits stay
- * non-passing without being mislabeled as a runner-allocation failure.
+ * obtained a runner when execution required one. GitHub conditionally skipped
+ * jobs are recorded explicitly as `runner_assignment_not_required`; they are
+ * neither positive assignment evidence nor runner-allocation failures. A later
+ * test, security, or workflow conclusion remains a separate evidence class.
+ * GitHub may populate `started_at` while a queued job still has runner_id=0 and
+ * no runner_name, so timestamps are not assignment authority. Every retained job
+ * must carry the same positive `run_attempt` as its parent workflow run;
+ * predecessor-attempt runner identity cannot satisfy or alter current-attempt
+ * assignment evidence. Freshly queued jobs remain non-passing `PENDING`. A
+ * grace-window stall is emitted only when both the workflow run and workflow job
+ * remain queued with no runner identity observed anywhere in the selected current
+ * attempt; protection/dependency waits stay non-passing without being mislabeled
+ * as a runner-allocation failure.
  *
  * The input is a ContextualWisdomLab-owned evidence contract. GitHub's generic
  * REST names (`id`, `name`, `event`, `status`, `conclusion`, `jobs`) are accepted
@@ -273,6 +276,19 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       }
 
       const jobStatus = boundedName(workflowJob.workflow_job_status).toLowerCase();
+      const jobConclusion = boundedName(workflowJob.workflow_job_conclusion).toLowerCase();
+      if (jobStatus === "completed" && jobConclusion === "skipped") {
+        assignmentChecks.push(
+          assignmentCheck(
+            "runner_assignment_not_required",
+            true,
+            "GitHub conditionally skipped this job before runner execution; no runner assignment was required and this is not positive assignment evidence.",
+            jobContext,
+          ),
+        );
+        continue;
+      }
+
       if (!pendingJobStatuses.has(jobStatus)) {
         assignmentFailures.push(
           assignmentFailure(

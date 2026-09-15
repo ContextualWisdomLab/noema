@@ -26,6 +26,7 @@ describe("runner-assignment operator documentation contract", () => {
       "byte-canonical",
       "PENDING",
       "runner_assignment_stalled",
+      "runner_assignment_not_required",
       "deployment protection rules",
       "jobs.<job_id>.needs",
       "GH_HOST=github.com",
@@ -48,6 +49,7 @@ describe("runner-assignment operator documentation contract", () => {
     expect(doctoring).toContain("predecessor-attempt assignment must not suppress current-attempt stall classification");
     expect(doctoring).toContain("`started_at` is not runner-assignment authority");
     expect(doctoring).toContain("positive `runner_id` or a non-empty `runner_name`");
+    expect(doctoring).toContain("`status=completed` plus `conclusion=skipped`");
     expect(doctoring).not.toContain("job pages are fully paginated with `per_page=100` and `filter=all`");
     expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
     expect(doctoring).not.toContain("export GH_TOKEN=");
