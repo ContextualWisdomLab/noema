@@ -25,6 +25,31 @@ const section = (source: string, heading: string): string => {
   return lines.slice(start + 1, end).join("\n");
 };
 
+const documentationBlocksContaining = (source: string, marker: string): string[] => {
+  const lines = source.split("\n");
+  const blocks: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes(marker)) continue;
+
+    if (lines[index].trimStart().startsWith("|")) {
+      blocks.push(lines[index]);
+      continue;
+    }
+
+    let start = index;
+    while (start > 0 && lines[start - 1].trim() !== "") start -= 1;
+
+    let end = index + 1;
+    while (end < lines.length && lines[end].trim() !== "") end += 1;
+
+    const block = lines.slice(start, end).join("\n");
+    if (!blocks.includes(block)) blocks.push(block);
+  }
+
+  return blocks;
+};
+
 describe("protected procedural documentation authority", () => {
   it("classifies the merged workflow-backed current-state ACL as protected source", () => {
     const architecture = document("ARCHITECTURE.md");
@@ -170,13 +195,20 @@ describe("protected procedural documentation authority", () => {
       adoptionSection,
       traceabilitySection,
     ]) {
-      expect(currentSection).toContain("#719");
-      expect(currentSection).toMatch(/before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u);
-      expect(currentSection).toMatch(/complete current retained|complete .*retained.*structure/u);
-      expect(currentSection).toMatch(/canonical string|without coercion|non-coercing/u);
-      expect(currentSection).toContain("activationAuthorized:false");
-      expect(currentSection).not.toContain("activationAuthorized:true");
-      expect(currentSection).not.toContain("publicationAuthorized:true");
+      const protected719Blocks = documentationBlocksContaining(currentSection, "#719");
+      expect(protected719Blocks.length).toBeGreaterThan(0);
+
+      const authorityBlock = protected719Blocks.find((block) => (
+        /before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u.test(block)
+        && /complete current retained|complete .*retained.*structure/u.test(block)
+        && /canonical string|without coercion|non-coercing/u.test(block)
+        && /activationAuthorized:\s*false/u.test(block)
+      ));
+
+      expect(authorityBlock).toBeDefined();
+      const exact719Block = authorityBlock ?? "";
+      expect(exact719Block).not.toMatch(/activationAuthorized:\s*true/u);
+      expect(exact719Block).not.toMatch(/publicationAuthorized:\s*true/u);
     }
 
     expect(adrSection).toContain("ProceduralPolicyApprovalConflictError");
