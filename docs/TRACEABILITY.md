@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Protected-main branch-point reference for this refresh: `34351665ee2963002234f61fc92432a48471cc9c`. This is a snapshot anchor, not evergreen current authority; live protected `main` must be refetched before any merge, release, deployment, or acquisition claim.
+Protected-main branch-point reference for this refresh: `4433c3009d4c6bc900bf5c8346f75b07185ff985`. This is a snapshot anchor, not evergreen current authority; live protected `main` must be refetched before any merge, release, deployment, or acquisition claim.
 
 Noema's execution rule is:
 
