@@ -157,6 +157,10 @@ describe("protected procedural documentation authority", () => {
       document("docs/doctoring/procedural_graph_adoption.md"),
       "## CWL decisions, not claims made by the paper",
     );
+    const traceabilitySection = section(
+      document("docs/TRACEABILITY.md"),
+      "## 13. Procedural graph advisory traceability",
+    );
 
     for (const currentSection of [
       adrSection,
@@ -164,6 +168,7 @@ describe("protected procedural documentation authority", () => {
       trdSection,
       baselineSection,
       adoptionSection,
+      traceabilitySection,
     ]) {
       expect(currentSection).toContain("#719");
       expect(currentSection).toMatch(/before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u);
