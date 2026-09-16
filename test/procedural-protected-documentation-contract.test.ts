@@ -33,7 +33,7 @@ const documentationBlocksContaining = (source: string, marker: string): string[]
     if (!lines[index].includes(marker)) continue;
 
     if (lines[index].trimStart().startsWith("|")) {
-      blocks.push(lines[index]);
+      blocks.push(lines[index].replace(/\s+/gu, " ").trim());
       continue;
     }
 
@@ -43,7 +43,7 @@ const documentationBlocksContaining = (source: string, marker: string): string[]
     let end = index + 1;
     while (end < lines.length && lines[end].trim() !== "") end += 1;
 
-    const block = lines.slice(start, end).join("\n");
+    const block = lines.slice(start, end).join("\n").replace(/\s+/gu, " ").trim();
     if (!blocks.includes(block)) blocks.push(block);
   }
 
