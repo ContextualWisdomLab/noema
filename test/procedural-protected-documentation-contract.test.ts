@@ -135,4 +135,21 @@ describe("protected procedural documentation authority", () => {
     expect(adoption).toContain("explicit revocation");
     expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
   });
+
+  it("pins protected #719 Policy / Approval transaction authority to the ADR section", () => {
+    const adrSection = section(
+      document("docs/adr/0017-procedural-graph-guidance.md"),
+      "## Offline evidence screening",
+    );
+
+    expect(adrSection).toContain("Protected #719 hardens that Policy / Approval ledger");
+    expect(adrSection).toContain("before `DurableObjectStorage.transaction()`");
+    expect(adrSection).toContain("complete current retained structure");
+    expect(adrSection).toContain("Object.is");
+    expect(adrSection).toContain("canonical strings before regex or hash use");
+    expect(adrSection).toContain("ProceduralPolicyApprovalConflictError");
+    expect(adrSection).toContain("activationAuthorized:false");
+    expect(adrSection).not.toContain("activationAuthorized:true");
+    expect(adrSection).not.toContain("publicationAuthorized:true");
+  });
 });
