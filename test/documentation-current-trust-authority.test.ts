@@ -52,7 +52,10 @@ describe("current protected trust authority documentation", () => {
       "#597 is merged on protected `main` as the State / Checkpoint durable-history slice;",
     );
     expect(adoption).toContain(
-      "#601 is merged on protected `main` as the Noema Policy / Approval CAS slice.",
+      "#601 is merged on protected `main` as the Noema Policy / Approval CAS slice",
+    );
+    expect(adoption).toContain(
+      "#719 is merged on protected `main` as that same Policy / Approval owner's",
     );
     expect(adoption).not.toContain(
       "Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries.",
