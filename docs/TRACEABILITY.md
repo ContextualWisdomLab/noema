@@ -49,7 +49,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Delegated GitHub credential capability | AGENTS secret policy + closed issue #111 | `scripts/lib/delegated-github-token.mjs`, maintainer/reviewer workflow ingress | token-capability and workflow-ingress tests covering `NOEMA_MAINTAINER_TOKEN_PATH`, owner-only `0600`, symlink/race/size/content rejection, minimal child env | live App installation/key-custody/rotation/permission evidence under #29/#227 | Capability-file policy alignment is protected; external identity evidence remains separate |
 | Distributed rate/replay state | Architecture data boundary | Durable Object rate/replay state | concurrency/alarm/replay tests | deployed binding/storage evidence | Implemented family |
 | Exact head + current live base | ADR-0003 | CI and evidence collectors | exact-checkout/live-base/predecessor separation tests | current PR and protected-main runs | Implemented family; each run must re-prove freshness |
-| Evidence channel separation | ADR-0001 | checks/statuses/reviews/scanners/readiness scripts | collision/stale/predecessor/synthetic evidence tests | current GitHub evidence | Implemented family |
+| Evidence channel separation | ADR-0001 | CI and evidence collectors | collision/stale/predecessor/synthetic evidence tests | current GitHub evidence | Implemented family |
 | Safe repository writes | ADR-0004/0008 | bounded conditional ref/blob/PR operations | stale/ref/lease/cleanup tests | concurrent-writer exercise | Implemented/proposed depending on surface |
 | Work-conserving continuation | ADR-0002/0009 | scheduler contract and repository-owned execution policy | continuation/remediation contracts | actual multi-lane run evidence | Process contract; external scheduler state remains separate |
 | Canonical documentation graph | this repository revision | PRD/TRD/Architecture/ADRs/UML/ERD/Test Strategy/Operability/Traceability | documentation architecture/fitness contracts | protected-main operational evidence remains separate by family | Code-current by revision; protected authority depends on whether the revision is integrated |
@@ -207,3 +207,43 @@ exact admitted source/artifact identity
 ```
 
 The compact projection is latency-oriented Noema State / Checkpoint authority; it does not replace the audit log. The full audit path proves retained prefix continuity and catches truncation/reordering/tamper. A genuinely new `active` append must re-read current Policy / Approval and owner evidence. An exact transition already committed is historical evidence and may replay after later authority drift only when its stored request/event/head/tail bindings verify. A replay or projection result never grants AppGuardrail scanner truth, quarantine execution truth, Egress policy truth, Keyverse secret identity, contextual-orchestrator provider routing, or consumer-product domain truth to Noema.
+
+## 13. Procedural graph advisory traceability
+
+```text
+strict tenant/task/graph input
+→ canonical immutable graph + local structure/content digest
+→ module-admitted execution-pinned session
+→ caller acquires fresh authenticated same-execution lifecycle snapshot
+→ running-only bounded directed neighborhood or explicit suppression/abstention
+→ paired held-out baseline/candidate/context evidence
+→ leakage/completeness/score/safety/non-regression screening
+→ process-local admitted candidate decision, activationAuthorized: false
+→ exact evaluation-receipt identities + canonical evaluation envelope
+→ separately trusted P-256 signed evaluator handoff verification
+→ stable signed-claim handoff identity + expiry-at-consumption
+→ bounded durable evaluation/rejection history under State / Checkpoint
+→ protected #714 State / Checkpoint pretransaction retained-chain verification, complete transaction-local revalidation, handoff-freshness recheck, and non-coercing digest admission
+→ protected #601 Noema Policy / Approval approval/revocation CAS, activationAuthorized: false
+→ protected #719 Policy / Approval pretransaction retained-chain verification, complete transaction-local revalidation, and non-coercing identity/digest admission, activationAuthorized: false
+→ protected #603 publication preflight, publicationAuthorized:false, activationAuthorized:false
+→ later live trust selection + current-lifecycle revocation + immutable released graph contract + actual graph publication/canary/rollback evidence
+→ immutable release and production outcome evidence owned by their canonical owners
+```
+
+Protected signed-handoff verification authenticates the supplied evaluator assertion against the public key and signer key id selected by the composition root, binds it to the exact evaluation envelope and bounded validity interval, rejects noncanonical signature transport, and re-checks expiry when process-local evidence is consumed. The stable handoff identity is derived from the signed claim semantics rather than the ECDSA signature instance. Protected #597 then retains bounded durable evaluation/rejection history under State / Checkpoint, binding admitted graph/evaluation/authenticated signed-claim identities and minimized rejection evidence with monotonic CAS, exact replay, digest-chain integrity, duplicate-handoff refusal, restart reconstruction, and fail-closed bounded capacity. Protected #714 keeps complete retained-chain cryptographic verification and next-event SHA-256 outside the short storage transaction, requires the transaction-local current retained structure to equal the exact preverified canonical structure, rechecks evaluator-handoff freshness before durable authority, and rejects non-canonical retained digest scalars instead of coercing them into cryptographic authority.
+
+Neither the verified handoff nor the retained State / Checkpoint history is Policy / Approval by itself. Protected #601 separately consumes the current admitted history position plus an independently supplied exact policy decision and records append-only approval/revocation evidence bound to graph, evaluation history, evaluator handoff and expected approval version. `approve_for_pilot` requires the latest evaluation to remain eligible with validation non-regression; `revoke` requires an already approved prior state and may bind a newer authenticated regression history. Exact replay is idempotent, stale writers fail monotonic approval-version CAS, and every event/snapshot remains `activationAuthorized:false`. Protected #719 hardens that same ledger by keeping complete retained approval-chain verification and immutable next-event SHA-256 derivation before `DurableObjectStorage.transaction()`, then requiring append/replay to re-read canonical retained approval state and compare the complete current structure with the exact preverified structure before exact replay return or one durable write. Runtime-untrusted retained identity/digest values must already be canonical strings before regex/hash use; coercible non-string lookalikes fail closed rather than gaining authority through JavaScript coercion. These transaction/type hardenings do not add publication, activation, release, provider-routing, security/quarantine, outbound, credential, or foreign-domain authority.
+
+Protected #603 then performs the Noema-owned publication preflight by reading current State / Checkpoint and Policy / Approval twice, proving a stable overlapping read window, rejecting a revoked current approval, and requiring exact candidate/history/evaluator/signer/approval identity agreement. Its result is only a process-local admitted receipt with `publicationAuthorized:false` and `activationAuthorized:false`. It does not establish live signer trust, graph publication or activation. Noema does not discover or custody Keyverse credentials, prove that a caller-cached non-workflow lifecycle snapshot is current, grant tools, publish a cross-language contract, or own product-domain outcome truth. `context-graph-contracts` owns any released cross-service schema; `enterprise-architecture-core` owns enterprise adoption/decision records; `contextual-orchestrator` owns model discovery/routing; Keyverse/owner composition owns identity/key custody and live signer selection; the consuming product owns graph content and outcome truth. Any actual publication/activation path must consume the exact admitted #603 preflight together with current lifecycle/revocation and owner evidence rather than treating `eligibleForApproval`, an authenticated handoff, retained history, a supplied `running` snapshot, a prior CAS success, or the preflight receipt as indefinitely current publication authority.
+
+## 14. Update rule
+
+After every material product, governance, persistence, stack, release, or operational change:
+
+1. refetch protected main, open PRs/issues, live rulesets, exact-head runs, reviews, and release state;
+2. separate protected, active-PR, external, planned, and superseded evidence;
+3. update the single canonical graph on its current owner branch;
+4. remove stale owner tables and obsolete SHAs rather than accumulating them;
+5. keep transient check conclusions out of timeless claims unless explicitly observation-scoped;
+6. convert any newly discovered executable defect to its real source/test/API/operator owner before considering the documentation refresh complete.
