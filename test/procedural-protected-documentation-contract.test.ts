@@ -199,9 +199,13 @@ describe("protected procedural documentation authority", () => {
       expect(protected719Blocks.length).toBeGreaterThan(0);
 
       const authorityBlock = protected719Blocks.find((block) => (
-        /before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u.test(block)
+        /retained approval-chain (?:cryptographic )?verification/u.test(block)
+        && /next-event SHA-256/u.test(block)
+        && /before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u.test(block)
         && /complete current retained|complete .*retained.*structure/u.test(block)
         && /canonical string|without coercion|non-coercing/u.test(block)
+        && /exact replay return/u.test(block)
+        && /one durable write/u.test(block)
         && /activationAuthorized:\s*false/u.test(block)
       ));
 
