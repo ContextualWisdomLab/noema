@@ -98,7 +98,7 @@ describe("protected procedural documentation authority", () => {
     );
     const baselineSection = section(
       document("docs/product-technical-gap-baseline.md"),
-      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714",
+      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
     );
     const adoptionSection = section(
       document("docs/doctoring/procedural_graph_adoption.md"),
@@ -136,20 +136,46 @@ describe("protected procedural documentation authority", () => {
     expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
   });
 
-  it("pins protected #719 Policy / Approval transaction authority to the ADR section", () => {
+  it("pins protected #719 Policy / Approval transaction authority across canonical procedural sections", () => {
     const adrSection = section(
       document("docs/adr/0017-procedural-graph-guidance.md"),
       "## Offline evidence screening",
     );
+    const architectureSection = section(
+      document("ARCHITECTURE.md"),
+      "### 4.1 Protected procedural graph guidance",
+    );
+    const trdSection = section(
+      document("docs/TRD.md"),
+      "### 2.4 Protected procedural graph advisory runtime",
+    );
+    const baselineSection = section(
+      document("docs/product-technical-gap-baseline.md"),
+      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
+    );
+    const adoptionSection = section(
+      document("docs/doctoring/procedural_graph_adoption.md"),
+      "## CWL decisions, not claims made by the paper",
+    );
 
-    expect(adrSection).toContain("Protected #719 hardens that Policy / Approval ledger");
-    expect(adrSection).toContain("before `DurableObjectStorage.transaction()`");
-    expect(adrSection).toContain("complete current retained structure");
-    expect(adrSection).toContain("Object.is");
-    expect(adrSection).toContain("canonical strings before regex or hash use");
+    for (const currentSection of [
+      adrSection,
+      architectureSection,
+      trdSection,
+      baselineSection,
+      adoptionSection,
+    ]) {
+      expect(currentSection).toContain("#719");
+      expect(currentSection).toMatch(/before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u);
+      expect(currentSection).toMatch(/complete current retained|complete .*retained.*structure/u);
+      expect(currentSection).toMatch(/canonical string|without coercion|non-coercing/u);
+      expect(currentSection).toContain("activationAuthorized:false");
+      expect(currentSection).not.toContain("activationAuthorized:true");
+      expect(currentSection).not.toContain("publicationAuthorized:true");
+    }
+
     expect(adrSection).toContain("ProceduralPolicyApprovalConflictError");
-    expect(adrSection).toContain("activationAuthorized:false");
-    expect(adrSection).not.toContain("activationAuthorized:true");
-    expect(adrSection).not.toContain("publicationAuthorized:true");
+    expect(baselineSection).toContain("ProceduralPolicyApprovalConflictError");
+    expect(adoptionSection).toContain("ProceduralPolicyApprovalConflictError");
   });
 });
