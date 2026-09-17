@@ -25,6 +25,31 @@ const section = (source: string, heading: string): string => {
   return lines.slice(start + 1, end).join("\n");
 };
 
+const documentationBlocksContaining = (source: string, marker: string): string[] => {
+  const lines = source.split("\n");
+  const blocks: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes(marker)) continue;
+
+    if (lines[index].trimStart().startsWith("|")) {
+      blocks.push(lines[index].replace(/\s+/gu, " ").trim());
+      continue;
+    }
+
+    let start = index;
+    while (start > 0 && lines[start - 1].trim() !== "") start -= 1;
+
+    let end = index + 1;
+    while (end < lines.length && lines[end].trim() !== "") end += 1;
+
+    const block = lines.slice(start, end).join("\n").replace(/\s+/gu, " ").trim();
+    if (!blocks.includes(block)) blocks.push(block);
+  }
+
+  return blocks;
+};
+
 describe("protected procedural documentation authority", () => {
   it("classifies the merged workflow-backed current-state ACL as protected source", () => {
     const architecture = document("ARCHITECTURE.md");
@@ -98,7 +123,7 @@ describe("protected procedural documentation authority", () => {
     );
     const baselineSection = section(
       document("docs/product-technical-gap-baseline.md"),
-      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714",
+      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
     );
     const adoptionSection = section(
       document("docs/doctoring/procedural_graph_adoption.md"),
@@ -134,5 +159,64 @@ describe("protected procedural documentation authority", () => {
     expect(adoption).toContain("monotonic approval-version CAS");
     expect(adoption).toContain("explicit revocation");
     expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
+  });
+
+  it("pins protected #719 Policy / Approval transaction authority across canonical procedural sections", () => {
+    const adrSection = section(
+      document("docs/adr/0017-procedural-graph-guidance.md"),
+      "## Offline evidence screening",
+    );
+    const architectureSection = section(
+      document("ARCHITECTURE.md"),
+      "### 4.1 Protected procedural graph guidance",
+    );
+    const trdSection = section(
+      document("docs/TRD.md"),
+      "### 2.4 Protected procedural graph advisory runtime",
+    );
+    const baselineSection = section(
+      document("docs/product-technical-gap-baseline.md"),
+      "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
+    );
+    const adoptionSection = section(
+      document("docs/doctoring/procedural_graph_adoption.md"),
+      "## CWL decisions, not claims made by the paper",
+    );
+    const traceabilitySection = section(
+      document("docs/TRACEABILITY.md"),
+      "## 13. Procedural graph advisory traceability",
+    );
+
+    for (const currentSection of [
+      adrSection,
+      architectureSection,
+      trdSection,
+      baselineSection,
+      adoptionSection,
+      traceabilitySection,
+    ]) {
+      const protected719Blocks = documentationBlocksContaining(currentSection, "#719");
+      expect(protected719Blocks.length).toBeGreaterThan(0);
+
+      const authorityBlock = protected719Blocks.find((block) => (
+        /retained approval-chain (?:cryptographic )?verification/u.test(block)
+        && /next-event SHA-256/u.test(block)
+        && /before .*transaction|before `DurableObjectStorage\.transaction\(\)`/u.test(block)
+        && /complete current retained|complete .*retained.*structure/u.test(block)
+        && /canonical string|without coercion|non-coercing/u.test(block)
+        && /exact replay return/u.test(block)
+        && /one durable write/u.test(block)
+        && /activationAuthorized:\s*false/u.test(block)
+      ));
+
+      expect(authorityBlock).toBeDefined();
+      const exact719Block = authorityBlock ?? "";
+      expect(exact719Block).not.toMatch(/activationAuthorized:\s*true/u);
+      expect(exact719Block).not.toMatch(/publicationAuthorized:\s*true/u);
+    }
+
+    expect(adrSection).toContain("ProceduralPolicyApprovalConflictError");
+    expect(baselineSection).toContain("ProceduralPolicyApprovalConflictError");
+    expect(adoptionSection).toContain("ProceduralPolicyApprovalConflictError");
   });
 });

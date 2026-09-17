@@ -177,6 +177,26 @@ as `score_regression`, but only from an already-approved prior state. Exact deci
 replay is idempotent and stale approval writers lose the monotonic CAS race. Every
 Policy / Approval event and snapshot remains `activationAuthorized:false`.
 
+Protected #719 hardens that Policy / Approval ledger without widening authority.
+Complete retained approval-chain cryptographic verification and immutable next-event
+SHA-256 derivation occur before `DurableObjectStorage.transaction()`. Append and exact
+replay then re-read the current retained approval state inside the short transaction,
+require canonical root/event/dense-array structured-clone shape, and compare the
+complete current retained structure with the exact structure verified before the
+transaction using canonical field-by-field equality with `Object.is` semantics. The
+transaction performs only exact replay return or one durable write. Runtime-untrusted
+retained identity and digest values must already be canonical strings before regex or
+hash use; JavaScript coercion is not authority, and coercible non-string lookalikes
+such as `BigInt` fail closed as `ProceduralPolicyApprovalConflictError`. Protected
+regressions cover transaction-active digest instrumentation, a legal interleaving
+winner, post-verification internal event drift, JSON-invisible unknown fields on append
+and replay, sparse or compensating arrays, coercible non-string digest/identity values,
+and event-array cardinality drift. Exact decision replay, approve/revoke state-machine
+rules, history binding, capacity, stale-writer rejection and
+`activationAuthorized:false` remain unchanged. This source/test evidence does not
+prove deployed Durable Object contention, restart, recovery, buyer-path p95, heap,
+release, publication, or activation behavior.
+
 This protected approval ledger is still point-in-time evidence, not publication or
 activation authority. The State / Checkpoint object may advance after the approval
 transaction, so publication/activation must independently re-read current history and
@@ -197,15 +217,15 @@ precondition evidence only and does not publish or activate a graph. A later pub
 must atomically/CAS-bind the exact receipt to its own operation plus immutable released
 external graph-contract and signer-trust inputs. Existing execution lifecycle and
 cancellation authority stay in Agent Runtime and Workflow / Task Execution rather than
-becoming graph-publication truth. ADR-0017 remains `Proposed` after #603 and #652 source
-integration until release/deployment/shadow/canary evidence satisfies the separate
-acceptance boundaries.
+becoming graph-publication truth. ADR-0017 remains `Proposed` after #603, #652, #714,
+and #719 source integration until release/deployment/shadow/canary evidence satisfies
+the separate acceptance boundaries.
 
 ## CWL ownership and rollout
 
 | Owner | Planned responsibility; not a claim of deployed integration |
 | --- | --- |
-| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL with protected #652 response bound, bounded State / Checkpoint evaluation/rejection history hardened by protected #714 complete revalidation/freshness/type admission, provenance-preserving history reads, protected #601 Policy / Approval CAS, and protected #603 publication-time preflight; graph publication/activation remains separate work |
+| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL with protected #652 response bound, bounded State / Checkpoint evaluation/rejection history hardened by protected #714 complete revalidation/freshness/type admission, provenance-preserving history reads, protected #601 Policy / Approval CAS hardened by protected #719 pretransaction verification/complete revalidation/non-coercing identity admission, and protected #603 publication-time preflight; graph publication/activation remains separate work |
 | context-graph-contracts | Released language-neutral schemas, digest rules, conformance fixtures |
 | enterprise-architecture-core | Capability/owner map, versioned adoption matrix and evidence classes |
 | contextual-orchestrator | Existing gateway routing for later guide/solver/refiner calls; no client-side provider fallback |
@@ -226,10 +246,11 @@ acceptance boundaries.
    evolved graph under matched conditions. Measure task success, sequence errors,
    duplicate effects, tokens/cost, and latency separately; do not invent gains.
 4. Reuse protected signed evaluator verification, State / Checkpoint durable rejection
-   history, verified snapshot provenance, and #601 Policy / Approval CAS as prerequisites.
-   Protected #603 adds fresh cross-authority reconciliation; sanitized trajectory
-   extraction, offline candidate generation, actual graph publication and recovery
-   remain separate work and must not create duplicate truth.
+   history, verified snapshot provenance, and the #601 Policy / Approval CAS hardened
+   by protected #719 as prerequisites. Protected #603 adds fresh cross-authority
+   reconciliation; sanitized trajectory extraction, offline candidate generation,
+   actual graph publication and recovery remain separate work and must not create
+   duplicate truth.
 5. Enable opt-in canaries for other products only after their own conformance and
    rollback evidence. Accounting postings, billing, employment assessment, data
    deletion and deployment retain their independent high-risk approval controls.
@@ -262,13 +283,15 @@ that preflight is deliberately not an atomic publisher and carries no publicatio
 activation authority. Protected #594 provides signed evaluator-handoff verification,
 #597 provides bounded durable evaluation/rejection history, protected #714 hardens
 that history's transaction/type/freshness boundary, #599 provides repository-
-verified read provenance, #601 provides the Policy / Approval CAS ledger, and #652
-bounds the private current Workflow / Task response retained before Agent Runtime
-admission; none of those source slices is release, deployment, graph publication, or
-activation authority. There is also no evidence yet that graph guidance improves CWL
-tasks. The owning root product/technical baseline must retain these gaps without
-replacing historical results. Do not mark ADR-0017 Accepted, publish a release, or
-advertise organization-wide activation from source integration or tracking issues.
+verified read provenance, #601 provides the Policy / Approval CAS ledger, protected
+#719 hardens that ledger's pretransaction verification, complete transaction-local
+revalidation and non-coercing identity/digest admission, and #652 bounds the private
+current Workflow / Task response retained before Agent Runtime admission; none of
+those source slices is release, deployment, graph publication, or activation authority.
+There is also no evidence yet that graph guidance improves CWL tasks. The owning root
+product/technical baseline must retain these gaps without replacing historical results.
+Do not mark ADR-0017 Accepted, publish a release, or advertise organization-wide
+activation from source integration or tracking issues.
 
 ## References
 
