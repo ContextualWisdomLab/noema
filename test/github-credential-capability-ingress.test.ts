@@ -183,12 +183,16 @@ describe("GitHub credential capability ingress", () => {
     }
   });
 
-  it("documents short-lived GitHub App bootstrap into an owner-only capability file", () => {
+  it("documents short-lived GitHub App bootstrap into owner-only capability files", () => {
     const agents = readFileSync("AGENTS.md", "utf8");
     expect(agents).toContain("short-lived GitHub App installation token");
     expect(agents).toContain("owner-only capability file");
     expect(agents).toContain("bootstrap transport");
-    expect(agents).toContain("runtime script reads only the capability-file path");
+    expect(agents).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(agents).toContain("NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN_PATH");
+    expect(agents).toContain("Metadata: read");
+    expect(agents).toContain("no App write or");
+    expect(agents).toContain("Administration permission");
     expect(agents).not.toContain(
       "If any script ever needs a real secret, source it from the KV, not the environment.",
     );
