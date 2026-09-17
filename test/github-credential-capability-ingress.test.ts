@@ -18,13 +18,38 @@ import {
 const temporaryDirectories: string[] = [];
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 const delegatedCredentialScripts = [
-  "scripts/actions-runner-assignment-audit.mjs",
-  "scripts/hourly-commercial-readiness.mjs",
-  "scripts/main-governance-audit.mjs",
-  "scripts/maintainer-app-readiness.mjs",
-  "scripts/production-environment-governance-audit.mjs",
-  "scripts/workflow-registry-live-audit.mjs",
-  "scripts/workflow-registry-live-disable.mjs",
+  {
+    path: "scripts/actions-runner-assignment-audit.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/hourly-commercial-readiness.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/main-governance-audit.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/maintainer-app-readiness.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/private-vulnerability-reporting-audit.mjs",
+    capabilityPath: "NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN_PATH",
+  },
+  {
+    path: "scripts/production-environment-governance-audit.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/workflow-registry-live-audit.mjs",
+    capabilityPath: "NOEMA_MAINTAINER_TOKEN_PATH",
+  },
+  {
+    path: "scripts/workflow-registry-live-disable.mjs",
+    capabilityPath: null,
+  },
 ];
 
 function temporaryDirectory() {
@@ -143,15 +168,18 @@ describe("GitHub credential capability ingress", () => {
   });
 
   it("keeps every delegated GitHub bearer consumer on explicit capability-path authority", () => {
-    for (const scriptPath of delegatedCredentialScripts) {
-      const script = readFileSync(scriptPath, "utf8");
-      if (scriptPath === "scripts/workflow-registry-live-disable.mjs") {
+    for (const scriptCase of delegatedCredentialScripts) {
+      const script = readFileSync(scriptCase.path, "utf8");
+      if (scriptCase.path === "scripts/workflow-registry-live-disable.mjs") {
         expect(script).toContain("delegatedGithubTokenPath(process.env)");
       } else {
-        expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+        expect(script).toContain(scriptCase.capabilityPath);
       }
       expect(script).toContain("readDelegatedGithubToken");
       expect(script).not.toContain("process.env.GH_TOKEN");
+      expect(script).not.toMatch(
+        /process\.env\.NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN(?!_PATH)/,
+      );
     }
   });
 
