@@ -69,12 +69,16 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   produced by the pinned App-token action may exist in one credential-bootstrap
   step environment as **bootstrap transport** only. That step must create a fresh
   private directory under `umask 077`, write the token to an **owner-only capability file**,
-  unset the secret environment value, and remove the directory on exit. The
-  runtime script reads only the capability-file path (`NOEMA_MAINTAINER_TOKEN_PATH`)
-  and loads the bearer through the shared bounded/no-follow reader. This
-  capability file is the ephemeral Actions credential-registry boundary; it is
-  not permission to pass long-lived provider keys, App private keys, PATs, model
-  credentials, or arbitrary secrets through runtime script environments.
+  unset the secret environment value, and remove the directory on exit. Runtime scripts normally
+  read only the general capability-file path (`NOEMA_MAINTAINER_TOKEN_PATH`) and load the bearer
+  through the shared bounded/no-follow reader. The read-only private-vulnerability-reporting audit
+  may instead use the dedicated capability-file path
+  (`NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN_PATH`) only when the pinned App-token producer
+  scopes the installation token to this repository with **`Metadata: read`** and no App write or
+  Administration permission. The same owner-only file, raw-environment unset, shared reader, and
+  prompt cleanup requirements apply. These capability files are the ephemeral Actions
+  credential-registry boundary; this exception is not permission to pass long-lived provider keys,
+  App private keys, PATs, model credentials, or arbitrary secrets through runtime script environments.
 
 ### LLM gateway (all Noema LLM jobs, reusable by naruon)
 - Noema is a multi-purpose bot, not only a review bot. It also runs as a
