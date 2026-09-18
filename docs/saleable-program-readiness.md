@@ -9,7 +9,7 @@
 ## 구체적 판정식 (코어)
 - `Release-Ready`는 아래 3개 조건이 모두 true일 때만 true다.
   - `기술게이트_PASS`:
-    - `npm run release:verify:strict` PASS
+    - protected production CD가 exact immutable release와 같은 실행에서 수집한 fresh private-reporting receipt를 사용해 `release:verify:strict` PASS
     - (CI 증빙: `npm run typecheck`, `npm run test`, `npm run security:scan` PASS)
   - `KPI_증빙_PASS`:
     - `exchange-30d.ndjson` 존재 및 `/exchange` 이벤트 30일 구간 충족
@@ -48,7 +48,7 @@
 
 ## 판정 공식 (배포 승인 기준)
 - `Release-Ready = pass(기술게이트) AND pass(문서/운영 패키지) AND pass(증빙완료) AND pass(파일럿실적)`
-- `pass(기술게이트) = npm run release:verify:strict` 성공
+- `pass(기술게이트) = protected production CD의 exact immutable-release receipt-bound release:verify:strict 성공`
 - `pass(문서/운영 패키지) = Week3 산출물 6개 섹션 모두 존재`  
   (`api-spec`, `api-stability-contract`, `onboarding`, `runbook`, `observability-kpi`, `deployment-guide`)
 - `pass(증빙완료) =` `npm run kpi:verify:strict` + `noema-smoke-evidence.json` + `noema-kpi-evidence.json` + `exchange-30d.ndjson.provenance.json` 동시 보유
@@ -63,7 +63,7 @@
 - [ ] 배포·문제 대응 Runbook 최신화 및 장애 대응 실전 훈련 1회 이상
 
 ## 자동 검증(매일 1회, 배포 전 필수)
-- `npm run release:verify:strict`(프로덕션 문턱), `npm run release:verify`(개발 편의)
+- 프로덕션 기술 문턱은 protected CD의 receipt-bound `release:verify:strict`; 개발·pre-tag source 검증은 `npm run release:verify`. 수동 strict 진단은 `docs/deployment-guide.md`의 `GITHUB_REPOSITORY` + receipt path + expected source SHA 계약을 따른다.
 - `npm run readiness:audit` (기술·보안·KPI strict·smoke(환경변수 설정 시)·파일럿 증빙 한 번 점검)
 - `node scripts/check-kpi.mjs exchange-30d.ndjson 0.02 300`
 - `node scripts/evaluate-observability-alerts.mjs exchange-30d.ndjson`
@@ -155,11 +155,11 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 
 ## Blocker 목록
 
-- [ ] `exchange-30d.ndjson`(또는 동등 파이프라인 출력) 및 production provenance 미보유로 `release:verify:strict`의 KPI pass가 불가함  
+- [ ] `exchange-30d.ndjson`(또는 동등 파이프라인 출력) 및 production provenance 미보유로 protected CD `release:verify:strict`의 KPI pass가 불가함  
 - [ ] production 파일럿 증빙 완료 행 미보유로 `파일럿_PASS`가 불가함
 
 ## 다음 액션 플랜
-- [ ] [판매 가능 Goal 등록서](./saleable-program-goal-registry.md) 판정식 기반으로 `release:verify:strict` 미해결 항목 재평가
+- [ ] [판매 가능 Goal 등록서](./saleable-program-goal-registry.md) 판정식 기반으로 protected CD `release:verify:strict` 미해결 항목 재평가
 - [ ] 운영에서 30일 로그 파이프라인 생성 (Logpush/외부 아카이브) 및 `exchange-30d.ndjson`/provenance 산출
 - [ ] 다음 실행서열로 KPI 증빙 확보: `NOEMA_KPI_SOURCE_KIND=production NOEMA_KPI_SOURCE_ID=<출처 라벨> npm run kpi:collect` + `NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify:strict`
 - [ ] 산출된 30일 로그로 `npm run kpi:verify` PASS 증빙 확보
@@ -168,4 +168,4 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 
 ## 연동 지연 정책
 - 코드 리뷰 봇/리뷰어 지연은 Goal 완성률 산정에서 `risk`로만 기록하고 `blocker`로 처리하지 않는다.
-- `release:verify:strict` 실행 실패는 지표/리스크 근거를 우선 기록하고, `exchange-30d.ndjson` 및 production provenance 확보로 재시도한다.
+- protected CD `release:verify:strict` 실행 실패는 지표/리스크 근거를 우선 기록하고, `exchange-30d.ndjson` 및 production provenance 확보로 재평가한다.
