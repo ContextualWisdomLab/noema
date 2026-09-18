@@ -18,16 +18,22 @@ function markdownSection(markdown: string, heading: string): string {
 }
 
 function expectNoAuthorityPromotion(section: string): void {
-  const promotionVerb =
-    "(?:does\\s+)?(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves)(?:\\s+as)?|is";
+  const normalized = section.replace(/[`*_]/g, " ");
+  const sentences = normalized.split(/(?<=[.!?])\s+/u);
   const authorityClass =
-    "(?:repository\\s+Administration\\s+authority|current\\s+(?:operational\\s+)?setting(?:\\s+state|\\s+authority)?|immutable\\s+release(?:\\s+authority|\\s+evidence)?|deployment(?:\\s+authority|\\s+evidence)?|external\\s+reporter\\s+visibility(?:\\s+evidence)?|staffing(?:\\s+coverage|\\s+evidence|\\s+authority)?|notification(?:\\s+evidence|\\s+authority)?|private-case\\s+handling(?:\\s+evidence|\\s+authority)?)";
-  const positivePromotion = new RegExp(
-    `#722(?:\\s+merge|\\s+integration)?[^.]{0,120}?\\b(?:${promotionVerb})\\b(?!\\s+(?:no|not|neither)\\b)[^.]{0,120}?\\b${authorityClass}\\b`,
-    "i",
-  );
+    /\b(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)\b/i;
+  const promotionVerb =
+    /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|is)\b/i;
+  const denialOrFutureGate =
+    /\b(?:no|not|neither|without|cannot|can't|pending|before|until|unless|requires?|required|must)\b/i;
 
-  expect(section).not.toMatch(positivePromotion);
+  for (const sentence of sentences) {
+    if (!authorityClass.test(sentence) || !promotionVerb.test(sentence)) {
+      continue;
+    }
+
+    expect(sentence).toMatch(denialOrFutureGate);
+  }
 }
 
 describe("protected #722 private-reporting documentation authority", () => {
