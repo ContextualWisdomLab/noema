@@ -10,7 +10,9 @@ const NO_AUTHORITY_PROMOTION =
 const AUTHORITY_CLASS =
   /\b(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)\b/i;
 const PROMOTION_VERB =
-  /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|is)\b/i;
+  /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves)\b/i;
+const SOURCE_INTEGRATION_SUBJECT =
+  /\b(?:#722\s+merge|this\s+merge|the\s+merge|protected\s+integration|source\s+integration|protected\s+source(?:\s+integration)?)\b/i;
 const DENIAL_OR_FUTURE_GATE =
   /\b(?:no|not|neither|without|cannot|can't|pending|before|after|until|unless|only\s+after|requires?|required|must)\b/i;
 
@@ -35,12 +37,17 @@ function authorityClauses(text: string): string[] {
 }
 
 function hasForbiddenAuthorityPromotion(text: string): boolean {
-  return authorityClauses(text).some(
-    (clause) =>
+  return authorityClauses(text).some((clause) => {
+    const explicitPromotion = PROMOTION_VERB.test(clause);
+    const sourceIntegrationIsPromotion =
+      SOURCE_INTEGRATION_SUBJECT.test(clause) && /\bis\b/i.test(clause);
+
+    return (
       AUTHORITY_CLASS.test(clause) &&
-      PROMOTION_VERB.test(clause) &&
-      !DENIAL_OR_FUTURE_GATE.test(clause),
-  );
+      (explicitPromotion || sourceIntegrationIsPromotion) &&
+      !DENIAL_OR_FUTURE_GATE.test(clause)
+    );
+  });
 }
 
 function expectNoAuthorityPromotion(section: string): void {
@@ -97,6 +104,7 @@ describe("protected #722 private-reporting documentation authority", () => {
   it("rejects positive authority promotion even when another clause is denied or gated", () => {
     const forbidden = [
       "This merge establishes deployment authority.",
+      "This merge is deployment authority.",
       "The protected integration provides current operational setting authority.",
       "The #722 merge confers repository Administration authority.",
       "The merge proves external reporter visibility evidence.",
@@ -114,6 +122,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge does not establish current setting state.",
       "This merge provides no deployment evidence.",
       "Deployment authority remains pending until a fresh protected-main PASS.",
+      "Deployment authority is a separate control and evidence class.",
       "A fresh protected-main PASS is required before current setting authority is restored.",
       "Current setting authority is restored only after a fresh protected-main PASS.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
