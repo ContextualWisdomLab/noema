@@ -10,12 +10,14 @@ const NO_AUTHORITY_PROMOTION =
 const AUTHORITY_CLASS_SOURCE =
   String.raw`(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
 const AUTHORITY_CLASS = new RegExp(String.raw`\b${AUTHORITY_CLASS_SOURCE}\b`, "i");
+const AUTHORITY_SUBJECT_SOURCE =
+  String.raw`(?:(?:the|a|an|this|that|these|those|such|its|their|our|your)\s+)?${AUTHORITY_CLASS_SOURCE}`;
 const NEW_ASSERTION_SUBJECT = new RegExp(
-  String.raw`^(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_CLASS_SOURCE}\b)`,
+  String.raw`^(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_SUBJECT_SOURCE}\b)`,
   "i",
 );
 const BARE_AUTHORITY_LIST_ITEM = new RegExp(
-  String.raw`^(?:or\s+|and\s+)?${AUTHORITY_CLASS_SOURCE}(?:\s+(?:or|and)\s+${AUTHORITY_CLASS_SOURCE})*[.!?]?$`,
+  String.raw`^(?:or\s+|and\s+)?${AUTHORITY_SUBJECT_SOURCE}(?:\s+(?:or|and)\s+${AUTHORITY_SUBJECT_SOURCE})*[.!?]?$`,
   "i",
 );
 const NEGATIVE_LIST_INTRODUCER =
@@ -100,7 +102,7 @@ function splitCommaAssertions(segment: string): string[] {
 
 function splitAndAssertions(segment: string): string[] {
   const andBoundary = new RegExp(
-    String.raw`\s+and\s+(?=(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_CLASS_SOURCE}\b))`,
+    String.raw`\s+and\s+(?=(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_SUBJECT_SOURCE}\b))`,
     "iu",
   );
   const parts = segment.split(andBoundary);
@@ -211,7 +213,10 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge establishes deployment authority until a later release.",
       "This merge establishes deployment authority after review.",
       "This merge does not establish current setting state, deployment authority follows from this merge.",
+      "This merge does not establish current setting state, the deployment authority follows from this merge.",
+      "This merge does not establish current setting state, its deployment authority follows from this merge.",
       "No staffing evidence exists and deployment authority follows from this merge.",
+      "This merge does not establish current setting state and the deployment authority follows from this merge.",
       "The #722 merge grants no repository Administration authority, but deployment authority follows from this merge.",
       "This merge does not establish current setting state, it demonstrates deployment authority.",
       "The #722 merge grants no repository Administration authority, deployment authority follows from this merge.",
@@ -228,6 +233,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence.",
       "The #722 merge grants no repository Administration authority and deployment authority.",
+      "The #722 merge grants no repository Administration authority and the deployment authority.",
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
       "No external reporter visibility evidence exists.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
