@@ -37,6 +37,7 @@ const FUTURE_AUTHORITY_GATE =
 const EXPLICIT_SEPARATE_CLASSIFICATION =
   /\b(?:is|are|remains?|remain)\s+(?:an?\s+)?(?:separate|independent)\b[^.!?;]*\b(?:control|evidence|authority)(?:\s+class(?:es)?)?\b/i;
 
+/** Extracts one Markdown section so authority assertions are evaluated within their stated scope. */
 function markdownSection(markdown: string, heading: string): string {
   const marker = `## ${heading}`;
   const start = markdown.indexOf(marker);
@@ -47,6 +48,7 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
+/** Recognizes only explicit negation, future gates, or separate evidence-class boundaries. */
 function hasExplicitAuthorityBoundary(clause: string): boolean {
   return (
     DIRECT_AUTHORITY_NEGATION.test(clause) ||
@@ -55,6 +57,7 @@ function hasExplicitAuthorityBoundary(clause: string): boolean {
   );
 }
 
+/** Detects an authority-bearing tail that must not inherit a boundary from the preceding clause. */
 function shouldSplitMaskedAuthorityTail(current: string, tail: string): boolean {
   return (
     hasExplicitAuthorityBoundary(current) &&
@@ -63,6 +66,7 @@ function shouldSplitMaskedAuthorityTail(current: string, tail: string): boolean 
   );
 }
 
+/** Isolates authority assertions inside parentheses before broader clause classification. */
 function splitParentheticalAssertions(segment: string): string[] {
   const clauses: string[] = [];
   let cursor = 0;
@@ -97,6 +101,7 @@ function splitParentheticalAssertions(segment: string): string[] {
   return clauses;
 }
 
+/** Splits comma-linked assertions while preserving directly negated authority noun lists. */
 function splitCommaAssertions(segment: string): string[] {
   const parts = segment.split(/,\s*/u);
   if (parts.length === 1) {
@@ -133,6 +138,7 @@ function splitCommaAssertions(segment: string): string[] {
   return clauses.filter(Boolean);
 }
 
+/** Splits and/or assertions when a new authority proposition would otherwise inherit another clause's boundary. */
 function splitCoordinatedAssertions(
   segment: string,
   conjunction: "and" | "or",
@@ -181,6 +187,7 @@ function splitCoordinatedAssertions(
   return clauses;
 }
 
+/** Normalizes documentation text into authority-relevant clauses for fail-closed classification. */
 function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
@@ -193,6 +200,7 @@ function authorityClauses(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Flags any covered authority claim that lacks an explicit limiting boundary. */
 function hasForbiddenAuthorityPromotion(text: string): boolean {
   return authorityClauses(text).some((clause) => {
     if (!AUTHORITY_CLASS.test(clause)) {
@@ -203,6 +211,7 @@ function hasForbiddenAuthorityPromotion(text: string): boolean {
   });
 }
 
+/** Asserts that a documentation section contains no unbounded covered authority claim. */
 function expectNoAuthorityPromotion(section: string): void {
   expect(hasForbiddenAuthorityPromotion(section)).toBe(false);
 }
