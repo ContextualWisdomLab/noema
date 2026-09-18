@@ -66,15 +66,15 @@ function shouldSplitMaskedAuthorityTail(current: string, tail: string): boolean 
   );
 }
 
-/** Isolates authority assertions inside parentheses before broader clause classification. */
+/** Isolates parenthetical or bracketed assertions when their own boundary could mask surrounding authority. */
 function splitParentheticalAssertions(segment: string): string[] {
   const clauses: string[] = [];
   let cursor = 0;
   let split = false;
 
-  for (const match of segment.matchAll(/\(([^()]*)\)/gu)) {
-    const inner = (match[1] ?? "").trim();
-    if (!AUTHORITY_CLASS.test(inner)) {
+  for (const match of segment.matchAll(/\(([^()]*)\)|\[([^\[\]]*)\]/gu)) {
+    const inner = (match[1] ?? match[2] ?? "").trim();
+    if (!AUTHORITY_CLASS.test(inner) && !hasExplicitAuthorityBoundary(inner)) {
       continue;
     }
 
@@ -123,7 +123,7 @@ function splitCommaAssertions(segment: string): string[] {
 
     if (
       NEW_ASSERTION_SUBJECT.test(trimmed) ||
-      (AUTHORITY_CLASS.test(trimmed) && hasExplicitAuthorityBoundary(trimmed)) ||
+      hasExplicitAuthorityBoundary(trimmed) ||
       shouldSplitMaskedAuthorityTail(current, trimmed)
     ) {
       clauses.push(current);
@@ -170,7 +170,7 @@ function splitCoordinatedAssertions(
 
     if (
       NEW_ASSERTION_SUBJECT.test(part) ||
-      (AUTHORITY_CLASS.test(part) && hasExplicitAuthorityBoundary(part)) ||
+      hasExplicitAuthorityBoundary(part) ||
       shouldSplitMaskedAuthorityTail(current, part)
     ) {
       clauses.push(current);
@@ -312,6 +312,12 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge establishes deployment authority, does not provide staffing evidence.",
       "This merge establishes deployment authority and does not provide staffing evidence.",
       "This merge establishes deployment authority or does not provide staffing evidence.",
+      "This merge establishes deployment authority and does not alter routing.",
+      "This merge establishes deployment authority, does not alter routing.",
+      "This merge establishes deployment authority and tests remain pending.",
+      "This merge establishes deployment authority (tests remain pending).",
+      "This merge establishes deployment authority [tests remain pending].",
+      "This merge establishes deployment authority and documentation is a separate evidence class.",
       "Not only does this merge establish deployment authority.",
       "Not merely does this merge demonstrate deployment authority.",
       "No doubt this merge establishes deployment authority.",
@@ -345,6 +351,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge does not establish current setting state thereby leaving deployment authority pending.",
       "This merge does not establish current setting state (deployment authority remains pending).",
       "This merge provides no deployment evidence (staffing remains pending).",
+      "Deployment authority remains pending and tests do not run yet.",
     ];
 
     for (const statement of forbidden) {
