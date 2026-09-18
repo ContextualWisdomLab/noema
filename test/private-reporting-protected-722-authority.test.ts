@@ -30,7 +30,7 @@ function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
     .split(
-      /(?<=[.!?;:])\s+|[,;:]\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|and)\b)/iu,
+      /(?<=[.!?;:])\s+|[,;:]\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|and|because|although|though|since|while)\b)/iu,
     )
     .map((clause) => clause.trim())
     .filter(Boolean);
@@ -123,6 +123,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge provides no deployment evidence.",
       "Deployment authority remains pending until a fresh protected-main PASS.",
       "Deployment authority is a separate control and evidence class.",
+      "This merge is protected source integration because deployment authority is a separate control and evidence class.",
       "A fresh protected-main PASS is required before current setting authority is restored.",
       "Current setting authority is restored only after a fresh protected-main PASS.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
