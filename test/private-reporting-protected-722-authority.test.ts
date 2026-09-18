@@ -27,7 +27,7 @@ const BARE_AUTHORITY_LIST_PREFIX = new RegExp(
 const NEGATIVE_LIST_INTRODUCER =
   /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const STRONG_CLAUSE_BOUNDARY =
-  /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that|thereby|therefore|thus|hence|consequently)\b)/iu;
+  /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that|if|unless|when|whenever|once|as|provided|thereby|therefore|thus|hence|consequently)\b)/iu;
 const DIRECT_AUTHORITY_NEGATION = new RegExp(
   String.raw`^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\s+(?=${AUTHORITY_SUBJECT_SOURCE}\b)|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b`,
   "i",
@@ -311,6 +311,11 @@ describe("protected #722 private-reporting documentation authority", () => {
       "Not only does this merge establish deployment authority.",
       "Not merely does this merge demonstrate deployment authority.",
       "No doubt this merge establishes deployment authority.",
+      "This merge establishes deployment authority if it does not provide staffing evidence.",
+      "This merge establishes deployment authority as staffing evidence is a separate evidence class.",
+      "This merge establishes deployment authority when staffing remains pending.",
+      "This merge establishes deployment authority unless staffing remains pending.",
+      "This merge establishes deployment authority provided staffing remains pending.",
     ];
 
     const allowed = [
