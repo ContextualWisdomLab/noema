@@ -21,7 +21,8 @@ describe("protected #722 private-reporting documentation authority", () => {
       expect(document).toContain(PROTECTED_MERGE);
       expect(document).toContain("Metadata: read");
       expect(document).toContain("Administration: write");
-      expect(document).toContain("fresh protected-main");
+      expect(document).toContain("protected-main");
+      expect(document).toContain("fresh PASS");
     }
 
     expect(runbook).toContain(FAILED_PROTECTED_SOURCE);
