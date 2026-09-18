@@ -20,6 +20,10 @@ const BARE_AUTHORITY_LIST_ITEM = new RegExp(
   String.raw`^(?:or\s+|and\s+)?${AUTHORITY_SUBJECT_SOURCE}(?:\s+(?:or|and)\s+${AUTHORITY_SUBJECT_SOURCE})*[.!?]?$`,
   "i",
 );
+const BARE_AUTHORITY_LIST_PREFIX = new RegExp(
+  String.raw`^${AUTHORITY_SUBJECT_SOURCE}(?=\s*(?:[,.;!?]|$|\band\b|\bor\b))`,
+  "i",
+);
 const NEGATIVE_LIST_INTRODUCER =
   /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const STRONG_CLAUSE_BOUNDARY =
@@ -92,8 +96,12 @@ function splitCommaAssertions(segment: string): string[] {
   return clauses.filter(Boolean);
 }
 
-function splitAndAssertions(segment: string): string[] {
-  const parts = segment.split(/\s+and\s+/iu);
+function splitCoordinatedAssertions(
+  segment: string,
+  conjunction: "and" | "or",
+): string[] {
+  const boundary = conjunction === "and" ? /\s+and\s+/iu : /\s+or\s+/iu;
+  const parts = segment.split(boundary);
   if (parts.length === 1) {
     return parts;
   }
@@ -108,8 +116,12 @@ function splitAndAssertions(segment: string): string[] {
     }
 
     const negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
-    if (negativeListActive && BARE_AUTHORITY_LIST_ITEM.test(part)) {
-      current = `${current} and ${part}`;
+    if (
+      negativeListActive &&
+      (BARE_AUTHORITY_LIST_ITEM.test(part) ||
+        BARE_AUTHORITY_LIST_PREFIX.test(part))
+    ) {
+      current = `${current} ${conjunction} ${part}`;
       continue;
     }
 
@@ -122,7 +134,7 @@ function splitAndAssertions(segment: string): string[] {
       continue;
     }
 
-    current = `${current} and ${part}`;
+    current = `${current} ${conjunction} ${part}`;
   }
 
   if (current) {
@@ -136,7 +148,8 @@ function authorityClauses(text: string): string[] {
     .replace(/[`*_]/g, " ")
     .split(STRONG_CLAUSE_BOUNDARY)
     .flatMap(splitCommaAssertions)
-    .flatMap(splitAndAssertions)
+    .flatMap((segment) => splitCoordinatedAssertions(segment, "and"))
+    .flatMap((segment) => splitCoordinatedAssertions(segment, "or"))
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -238,6 +251,8 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge does not establish current setting state, establishes deployment authority.",
       "The #722 merge grants no repository Administration authority and establishes deployment authority.",
       "The #722 merge grants no repository Administration authority, establishes deployment authority.",
+      "This merge does not establish current setting state or establishes deployment authority.",
+      "The #722 merge grants no repository Administration authority or establishes deployment authority.",
     ];
 
     const allowed = [
@@ -253,6 +268,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority and deployment authority.",
       "The #722 merge grants no repository Administration authority and the deployment authority.",
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
+      "The #722 merge grants no repository Administration authority or deployment authority.",
       "No external reporter visibility evidence exists.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
     ];
