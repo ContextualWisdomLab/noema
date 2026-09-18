@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const STATE_SUBJECT_SOURCE =
   String.raw`(?:the\s+)?(?:live\s+(?:private-vulnerability-reporting\s+)?setting|private\s+vulnerability\s+reporting(?:\s+setting)?)`;
+const SETTING_STATE_PREDICATE_SOURCE =
+  String.raw`(?:(?:is|remains?|was|were|becomes?|became)\s+(?:(?:currently|now|still)\s+)?|(?:has|have|had)\s+been\s+(?:(?:currently|now|still)\s+)?|continues?\s+(?:to\s+be\s+)?(?:(?:currently|now|still)\s+)?|as\s+|to\s+be\s+)(?:enabled|disabled)`;
 const POSITIVE_SETTING_STATE_SOURCE =
-  String.raw`\b${STATE_SUBJECT_SOURCE}\b[^.!?;]{0,120}?\b(?:is|remains?|was|were|becomes?|became|as|to\s+be)\s+(?:currently\s+)?(?:enabled|disabled)\b`;
+  String.raw`\b${STATE_SUBJECT_SOURCE}\b[^.!?;]{0,120}?\b${SETTING_STATE_PREDICATE_SOURCE}\b`;
 const DIRECT_SETTING_NEGATION_PREFIX = new RegExp(
   String.raw`(?:\b(?:does|do|did|can|will|would|shall|should|could)\s+not\s+(?:prove|confirm|demonstrate|show|establish|indicate)\s+(?:that\s+)?(?:\(\s*|\[\s*)?|\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|establish|establishes|indicate|indicates)\s+no\s+(?:\(\s*|\[\s*)?|\bno\s+)$`,
   "i",
@@ -60,6 +62,10 @@ describe("protected #722 current private-reporting setting authority", () => {
       "Protected integration demonstrates the private vulnerability reporting setting remains enabled.",
       "The merge establishes the private vulnerability reporting setting as enabled.",
       "Source integration shows private vulnerability reporting to be enabled.",
+      "This merge proves private vulnerability reporting is still enabled.",
+      "This merge confirms private vulnerability reporting is now disabled.",
+      "This merge demonstrates private vulnerability reporting has been enabled.",
+      "This merge shows private vulnerability reporting continues to be enabled.",
       "This merge does not prove deployment authority, but private vulnerability reporting is enabled.",
       "This merge does not prove deployment authority, private vulnerability reporting is enabled.",
       "This merge does not prove deployment authority and the live setting is currently enabled.",
@@ -72,6 +78,8 @@ describe("protected #722 current private-reporting setting authority", () => {
     const allowed = [
       "This merge does not prove the live setting is currently enabled.",
       "This merge does not establish that private vulnerability reporting is enabled.",
+      "This merge does not prove private vulnerability reporting has been enabled.",
+      "This merge does not prove private vulnerability reporting continues to be enabled.",
       "This merge does not prove (private vulnerability reporting is enabled).",
       "This merge does not establish [the live setting is currently enabled].",
       "No live setting is currently enabled by this source-integration evidence.",
