@@ -166,9 +166,41 @@ jobs:
             exit 1
           fi
 
+      - name: Mint repository-scoped private-reporting read token
+        id: private_reporting_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_GITHUB_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-metadata: read
+
+      - name: Collect exact-release private vulnerability reporting evidence
+        env:
+          NOEMA_AUDIT_REPOSITORY: ${{ github.repository }}
+          NOEMA_AUDIT_SOURCE_SHA: ${{ steps.identity.outputs.commit_sha }}
+          DELEGATED_PRIVATE_REPORTING_TOKEN: ${{ steps.private_reporting_app.outputs.token }}
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_AUDIT_PATH: ${{ runner.temp }}/private-vulnerability-reporting-audit.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-private-reporting-token.XXXXXX")"
+          trap 'rm -rf "$token_dir"' EXIT
+          token_path="$token_dir/github-token"
+          printf '%s' "$DELEGATED_PRIVATE_REPORTING_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_PRIVATE_REPORTING_TOKEN
+          export NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN_PATH="$token_path"
+          npm run security:private-reporting-audit
+
       - name: Verify strict release and 30-day KPI quality
         run: npm run release:verify:strict
         env:
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH: ${{ runner.temp }}/private-vulnerability-reporting-audit.json
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA: ${{ steps.identity.outputs.commit_sha }}
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES: "30"
           NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
           NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
@@ -304,6 +336,7 @@ jobs:
             ${{ runner.temp }}/deployment-status-before.json
             ${{ runner.temp }}/deployment-status-after.json
             ${{ runner.temp }}/deployment-result.json
+            ${{ runner.temp }}/private-vulnerability-reporting-audit.json
             ${{ runner.temp }}/release-view.json
             ${{ runner.temp }}/release-source/release-evidence.json
             noema-kpi-evidence.json
