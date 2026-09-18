@@ -22,12 +22,12 @@ describe("protected #722 private-reporting documentation authority", () => {
       expect(document).toContain("Metadata: read");
       expect(document).toContain("Administration: write");
       expect(document).toContain("protected-main");
-      expect(document).toContain("fresh PASS");
     }
 
     expect(runbook).toContain(FAILED_PROTECTED_SOURCE);
     expect(runbook).toContain("run #29 remains dated historical PASS evidence");
     expect(runbook).toContain("run #30 remains the newer fail-closed collection RED");
+    expect(runbook).toContain("must still produce a fresh PASS");
     expect(runbook).toContain(
       "does **not** prove the live setting is currently enabled",
     );
@@ -39,7 +39,8 @@ describe("protected #722 private-reporting documentation authority", () => {
     expect(doctoring).toContain("Source integration, setting observation, external reporter visibility, staffing, private-case exercise, immutable release, deployment and acquisition evidence remain separate authority classes.");
     expect(doctoring).toContain("No PAT");
     expect(doctoring).toContain("GitHub-verified normal merge");
-    expect(doctoring).not.toContain("current operational setting authority is restored");
+    expect(doctoring).toContain("must return PASS before current operational setting authority is restored");
+    expect(doctoring).not.toContain("current operational setting authority is restored.");
   });
 
   it("keeps the credential path narrow and makes the operational follow-up explicit", () => {
