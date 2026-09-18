@@ -10,9 +10,9 @@ const NO_AUTHORITY_PROMOTION =
 const AUTHORITY_CLASS =
   /\b(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)\b/i;
 const DIRECT_AUTHORITY_NEGATION =
-  /(?:^|\b)(?:no\b|(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b)/i;
+  /^(?:(?:because|although|though|while|since)\s+)?no\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const FUTURE_AUTHORITY_GATE =
-  /\b(?:(?:is|are|remains?|remain)\s+pending\b|only\s+after\b|until\b|unless\b|(?:required|requires?|must)\b[^.!?;]*\bbefore\b|before\b[^.!?;]*\b(?:restore|restored|authorize|authorized|establish|established)\b)/i;
+  /\b(?:(?:is|are|remains?|remain)\s+(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|only\s+after\b|(?:required|requires?|must)\b[^.!?;]*\bbefore\b)/i;
 const EXPLICIT_SEPARATE_CLASSIFICATION =
   /\b(?:is|are|remains?|remain)\s+(?:an?\s+)?(?:separate|independent)\b[^.!?;]*\b(?:control|evidence|authority)(?:\s+class(?:es)?)?\b/i;
 
@@ -123,6 +123,9 @@ describe("protected #722 private-reporting documentation authority", () => {
       "No staffing evidence exists; this merge establishes deployment authority.",
       "No staffing evidence exists and this merge provides current setting authority.",
       "This merge establishes deployment authority without release evidence.",
+      "This merge establishes deployment authority with no staffing evidence.",
+      "This merge establishes deployment authority until a later release.",
+      "This merge establishes deployment authority after review.",
     ];
 
     const allowed = [
@@ -136,6 +139,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
       "No external reporter visibility evidence exists.",
+      "Current setting authority remains unavailable until a fresh protected-main PASS.",
     ];
 
     for (const statement of forbidden) {
