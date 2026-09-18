@@ -10,11 +10,18 @@ const NO_AUTHORITY_PROMOTION =
 const AUTHORITY_CLASS_SOURCE =
   String.raw`(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
 const AUTHORITY_CLASS = new RegExp(String.raw`\b${AUTHORITY_CLASS_SOURCE}\b`, "i");
-const ASSERTED_AUTHORITY_START = String.raw`${AUTHORITY_CLASS_SOURCE}\s+\p{L}`;
-const CLAUSE_BOUNDARY = new RegExp(
-  String.raw`(?<=[.!?;:])\s+|;\s*|,\s*(?=(?:but|yet|whereas|because|although|though|since|while|which|that|this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${ASSERTED_AUTHORITY_START}))|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while)\b)|\s+(?=and\s+(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${ASSERTED_AUTHORITY_START}))`,
-  "iu",
+const NEW_ASSERTION_SUBJECT = new RegExp(
+  String.raw`^(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_CLASS_SOURCE}\b)`,
+  "i",
 );
+const BARE_AUTHORITY_LIST_ITEM = new RegExp(
+  String.raw`^(?:or\s+|and\s+)?${AUTHORITY_CLASS_SOURCE}(?:\s+(?:or|and)\s+${AUTHORITY_CLASS_SOURCE})*[.!?]?$`,
+  "i",
+);
+const NEGATIVE_LIST_INTRODUCER =
+  /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
+const STRONG_CLAUSE_BOUNDARY =
+  /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that)\b)/iu;
 const DIRECT_AUTHORITY_NEGATION =
   /^(?:(?:because|although|though|while|since)\s+)?no\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const FUTURE_AUTHORITY_GATE =
@@ -32,10 +39,83 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
+function mergeNegativeAuthorityListParts(parts: string[], joiner: string): string[] {
+  const clauses: string[] = [];
+  let current = parts[0]?.trim() ?? "";
+  let negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
+
+  for (const rawPart of parts.slice(1)) {
+    const part = rawPart.trim();
+    if (!part) {
+      continue;
+    }
+
+    if (negativeListActive && BARE_AUTHORITY_LIST_ITEM.test(part)) {
+      current = `${current}${joiner}${part}`;
+      continue;
+    }
+
+    clauses.push(current);
+    current = part;
+    negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
+  }
+
+  if (current) {
+    clauses.push(current);
+  }
+  return clauses;
+}
+
+function splitCommaAssertions(segment: string): string[] {
+  const parts = segment.split(/,\s*/u);
+  if (parts.length === 1) {
+    return parts;
+  }
+
+  const clauses: string[] = [];
+  let buffer: string[] = [parts[0]];
+
+  for (const part of parts.slice(1)) {
+    const current = buffer.join(", ").trim();
+    const negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
+    const trimmed = part.trim();
+
+    if (negativeListActive && BARE_AUTHORITY_LIST_ITEM.test(trimmed)) {
+      buffer.push(trimmed);
+      continue;
+    }
+
+    if (NEW_ASSERTION_SUBJECT.test(trimmed)) {
+      clauses.push(current);
+      buffer = [trimmed];
+      continue;
+    }
+
+    buffer.push(trimmed);
+  }
+
+  clauses.push(buffer.join(", ").trim());
+  return clauses.filter(Boolean);
+}
+
+function splitAndAssertions(segment: string): string[] {
+  const andBoundary = new RegExp(
+    String.raw`\s+and\s+(?=(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_CLASS_SOURCE}\b))`,
+    "iu",
+  );
+  const parts = segment.split(andBoundary);
+  if (parts.length === 1) {
+    return parts;
+  }
+  return mergeNegativeAuthorityListParts(parts, " and ");
+}
+
 function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
-    .split(CLAUSE_BOUNDARY)
+    .split(STRONG_CLAUSE_BOUNDARY)
+    .flatMap(splitCommaAssertions)
+    .flatMap(splitAndAssertions)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -134,6 +214,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "No staffing evidence exists and deployment authority follows from this merge.",
       "The #722 merge grants no repository Administration authority, but deployment authority follows from this merge.",
       "This merge does not establish current setting state, it demonstrates deployment authority.",
+      "The #722 merge grants no repository Administration authority, deployment authority follows from this merge.",
     ];
 
     const allowed = [
@@ -146,6 +227,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "Current setting authority is restored only after a fresh protected-main PASS.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence.",
+      "The #722 merge grants no repository Administration authority and deployment authority.",
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
       "No external reporter visibility evidence exists.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
