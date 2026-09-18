@@ -65,5 +65,6 @@ Review process 지연은 blocker가 아니라 risk note다.
 
 - PR #4: main acquisition readiness gate
 - PR #6: stacked manifest validation follow-up
-- Evidence path를 채운 뒤 `release:verify:strict`, `readiness:audit`, `acquisition:manifest`, `acquisition:audit`를 순서대로 통과시킨다.
-- 구매자 reliance는 위 네 gate가 모두 통과한 뒤에만 허용한다.
+- Evidence path를 채운 뒤 보호된 production CD의 exact immutable-release gate(`release:verify:strict` 포함)를 통과시키고, 이어 `readiness:audit`, `acquisition:manifest`, `acquisition:audit`를 순서대로 검증한다.
+- 운영자가 strict gate를 수동으로 진단해야 하는 경우에는 receipt 없이 명령을 재현하지 않고 `docs/deployment-guide.md`의 qualified manual procedure를 따른다.
+- 구매자 reliance는 보호된 strict gate와 세 buyer gate가 모두 통과한 뒤에만 허용한다.
