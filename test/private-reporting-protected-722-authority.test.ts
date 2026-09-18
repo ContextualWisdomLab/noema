@@ -28,7 +28,7 @@ function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
     .split(
-      /(?<=[.!?;])\s+|,\s+(?=(?:but|and|yet|while|whereas)\b)|\s+(?=(?:but|yet|whereas)\b)/iu,
+      /(?<=[.!?;:])\s+|[,;:]\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|and)\b)/iu,
     )
     .map((clause) => clause.trim())
     .filter(Boolean);
@@ -104,6 +104,10 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The merge serves private-case handling evidence.",
       "No external reporter visibility evidence exists, but this merge establishes deployment authority.",
       "Staffing remains pending, yet this merge provides current setting authority.",
+      "Although no external reporter visibility evidence exists, this merge establishes deployment authority.",
+      "No external reporter visibility evidence exists: this merge establishes deployment authority.",
+      "No staffing evidence exists; this merge establishes deployment authority.",
+      "No staffing evidence exists and this merge provides current setting authority.",
     ];
 
     const allowed = [
@@ -112,6 +116,8 @@ describe("protected #722 private-reporting documentation authority", () => {
       "Deployment authority remains pending until a fresh protected-main PASS.",
       "A fresh protected-main PASS is required before current setting authority is restored.",
       "Current setting authority is restored only after a fresh protected-main PASS.",
+      "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
+      "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
     ];
 
     for (const statement of forbidden) {
