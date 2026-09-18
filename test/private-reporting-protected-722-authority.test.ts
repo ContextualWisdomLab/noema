@@ -40,7 +40,7 @@ describe("protected #722 private-reporting documentation authority", () => {
     expect(doctoring).toContain("No PAT");
     expect(doctoring).toContain("GitHub-verified normal merge");
     expect(doctoring).toContain("must return PASS before current operational setting authority is restored");
-    expect(doctoring).not.toContain("current operational setting authority is restored.");
+    expect(doctoring).not.toContain("current operational setting authority is restored by source integration");
   });
 
   it("keeps the credential path narrow and makes the operational follow-up explicit", () => {
