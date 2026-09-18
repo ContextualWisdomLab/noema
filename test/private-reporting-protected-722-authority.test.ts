@@ -28,8 +28,10 @@ const NEGATIVE_LIST_INTRODUCER =
   /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const STRONG_CLAUSE_BOUNDARY =
   /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that|thereby|therefore|thus|hence|consequently)\b)/iu;
-const DIRECT_AUTHORITY_NEGATION =
-  /^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
+const DIRECT_AUTHORITY_NEGATION = new RegExp(
+  String.raw`^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\s+(?=${AUTHORITY_SUBJECT_SOURCE}\b)|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b`,
+  "i",
+);
 const FUTURE_AUTHORITY_GATE =
   /\b(?:(?:is|are|remains?|remain)\s+(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|(?:leave|leaves|leaving|keep|keeps|keeping)\b[^.!?;]*\b(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|only\s+after\b|(?:required|requires?|must)\b[^.!?;]*\bbefore\b)/i;
 const EXPLICIT_SEPARATE_CLASSIFICATION =
@@ -292,6 +294,9 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge does not establish current setting state therefore establishes deployment authority.",
       "This merge does not establish current setting state (deployment authority follows from this merge).",
       "This merge establishes deployment authority (staffing remains pending).",
+      "Not only does this merge establish deployment authority.",
+      "Not merely does this merge demonstrate deployment authority.",
+      "No doubt this merge establishes deployment authority.",
     ];
 
     const allowed = [
@@ -309,6 +314,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
       "The #722 merge grants no repository Administration authority or deployment authority.",
       "No external reporter visibility evidence exists.",
+      "Not deployment authority, but source integration only.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
       "This merge does not establish current setting state thereby leaving deployment authority pending.",
       "This merge does not establish current setting state (deployment authority remains pending).",
