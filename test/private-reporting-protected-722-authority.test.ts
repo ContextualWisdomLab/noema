@@ -27,11 +27,11 @@ const BARE_AUTHORITY_LIST_PREFIX = new RegExp(
 const NEGATIVE_LIST_INTRODUCER =
   /\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const STRONG_CLAUSE_BOUNDARY =
-  /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that)\b)/iu;
+  /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that|thereby|therefore|thus|hence|consequently)\b)/iu;
 const DIRECT_AUTHORITY_NEGATION =
-  /^(?:(?:because|although|though|while|since)\s+)?no\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
+  /^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const FUTURE_AUTHORITY_GATE =
-  /\b(?:(?:is|are|remains?|remain)\s+(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|only\s+after\b|(?:required|requires?|must)\b[^.!?;]*\bbefore\b)/i;
+  /\b(?:(?:is|are|remains?|remain)\s+(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|(?:leave|leaves|leaving|keep|keeps|keeping)\b[^.!?;]*\b(?:pending|unavailable|unrestored|unestablished|unauthorized)\b|only\s+after\b|(?:required|requires?|must)\b[^.!?;]*\bbefore\b)/i;
 const EXPLICIT_SEPARATE_CLASSIFICATION =
   /\b(?:is|are|remains?|remain)\s+(?:an?\s+)?(?:separate|independent)\b[^.!?;]*\b(?:control|evidence|authority)(?:\s+class(?:es)?)?\b/i;
 
@@ -59,6 +59,40 @@ function shouldSplitMaskedAuthorityTail(current: string, tail: string): boolean 
     AUTHORITY_CLASS.test(tail) &&
     !BARE_AUTHORITY_LIST_ITEM.test(tail)
   );
+}
+
+function splitParentheticalAssertions(segment: string): string[] {
+  const clauses: string[] = [];
+  let cursor = 0;
+  let split = false;
+
+  for (const match of segment.matchAll(/\(([^()]*)\)/gu)) {
+    const inner = (match[1] ?? "").trim();
+    if (!AUTHORITY_CLASS.test(inner)) {
+      continue;
+    }
+
+    const index = match.index ?? 0;
+    const before = segment.slice(cursor, index).trim();
+    if (before) {
+      clauses.push(before);
+    }
+    if (inner) {
+      clauses.push(inner);
+    }
+    cursor = index + match[0].length;
+    split = true;
+  }
+
+  if (!split) {
+    return [segment];
+  }
+
+  const tail = segment.slice(cursor).trim();
+  if (tail) {
+    clauses.push(tail);
+  }
+  return clauses;
 }
 
 function splitCommaAssertions(segment: string): string[] {
@@ -147,6 +181,7 @@ function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
     .split(STRONG_CLAUSE_BOUNDARY)
+    .flatMap(splitParentheticalAssertions)
     .flatMap(splitCommaAssertions)
     .flatMap((segment) => splitCoordinatedAssertions(segment, "and"))
     .flatMap((segment) => splitCoordinatedAssertions(segment, "or"))
@@ -215,7 +250,7 @@ describe("protected #722 private-reporting documentation authority", () => {
     expect(doctoring).toContain("must return PASS before current operational setting authority is restored");
   });
 
-  it("rejects unqualified authority assertions regardless of promotion predicate", () => {
+  it("rejects unqualified authority assertions regardless of promotion predicate or masking syntax", () => {
     const forbidden = [
       "This merge establishes deployment authority.",
       "This merge is deployment authority.",
@@ -253,6 +288,10 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority, establishes deployment authority.",
       "This merge does not establish current setting state or establishes deployment authority.",
       "The #722 merge grants no repository Administration authority or establishes deployment authority.",
+      "This merge does not establish current setting state thereby establishing deployment authority.",
+      "This merge does not establish current setting state therefore establishes deployment authority.",
+      "This merge does not establish current setting state (deployment authority follows from this merge).",
+      "This merge establishes deployment authority (staffing remains pending).",
     ];
 
     const allowed = [
@@ -271,6 +310,9 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority or deployment authority.",
       "No external reporter visibility evidence exists.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
+      "This merge does not establish current setting state thereby leaving deployment authority pending.",
+      "This merge does not establish current setting state (deployment authority remains pending).",
+      "This merge provides no deployment evidence (staffing remains pending).",
     ];
 
     for (const statement of forbidden) {
