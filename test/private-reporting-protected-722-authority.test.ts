@@ -8,7 +8,7 @@ const NO_AUTHORITY_PROMOTION =
   "The #722 merge also grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence; those remain separate control and evidence classes.";
 
 const AUTHORITY_CLASS_SOURCE =
-  String.raw`(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|release\s+(?:authority|evidence)|deployment(?:\s+authority|\s+evidence)?|acquisition(?:\s+readiness)?\s+(?:authority|evidence)|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
+  String.raw`(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|release\s+(?:authority|evidence)|deployment(?:\s+authority|\s+evidence)?|production\s+(?:KPI(?:\s+(?:evidence|authority))?|evidence|authority)|acquisition(?:\s+readiness)?\s+(?:authority|evidence)|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
 const AUTHORITY_CLASS = new RegExp(String.raw`\b${AUTHORITY_CLASS_SOURCE}\b`, "i");
 const AUTHORITY_SUBJECT_SOURCE =
   String.raw`(?:(?:the|a|an|this|that|these|those|such|its|their|our|your)\s+)?${AUTHORITY_CLASS_SOURCE}`;
@@ -274,6 +274,8 @@ describe("protected #722 private-reporting documentation authority", () => {
       "Deployment authority follows from this merge.",
       "This merge establishes release authority.",
       "This merge proves release evidence.",
+      "This merge proves production KPI evidence.",
+      "This merge establishes production KPI authority.",
       "This merge establishes acquisition authority.",
       "This merge proves acquisition readiness evidence.",
       "The protected integration provides current operational setting authority.",
@@ -333,6 +335,8 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge provides no deployment evidence.",
       "Deployment authority remains pending until a fresh protected-main PASS.",
       "Release authority remains pending until an immutable release.",
+      "Production KPI evidence remains pending until deployed measurement exists.",
+      "Production KPI is a separate evidence class.",
       "Acquisition evidence is a separate evidence class.",
       "Deployment authority is a separate control and evidence class.",
       "This merge is protected source integration because deployment authority is a separate control and evidence class.",
