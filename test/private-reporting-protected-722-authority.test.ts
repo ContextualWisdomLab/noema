@@ -29,7 +29,7 @@ const NEGATIVE_LIST_INTRODUCER =
 const STRONG_CLAUSE_BOUNDARY =
   /(?<=[.!?;:])\s+|;\s*|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while|which|that|if|unless|when|whenever|once|as|provided|thereby|therefore|thus|hence|consequently)\b)/iu;
 const DIRECT_AUTHORITY_NEGATION = new RegExp(
-  String.raw`^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\s+(?=${AUTHORITY_SUBJECT_SOURCE}\b)|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b`,
+  String.raw`^(?:(?:because|although|though|while|since)\s+)?(?:no|not)\s+(?=${AUTHORITY_SUBJECT_SOURCE}\b)|\b(?:does|do|did|is|are|was|were|can|will|would|shall|should|could|must|may|might|need)\s+not\b|\b(?:doesn't|don't|didn't|isn't|aren't|wasn't|weren't|can't|cannot|won't|wouldn't|shan't|shouldn't|couldn't|mustn't|mightn't|needn't)\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b`,
   "i",
 );
 const FUTURE_AUTHORITY_GATE =
@@ -335,6 +335,12 @@ describe("protected #722 private-reporting documentation authority", () => {
 
     const allowed = [
       "The #722 merge does not establish current setting state.",
+      "This merge cannot establish deployment authority.",
+      "This merge can't establish deployment authority.",
+      "This merge doesn't establish deployment authority.",
+      "This merge must not establish deployment authority.",
+      "This merge may not establish deployment authority.",
+      "This merge won't establish release authority.",
       "This merge provides no deployment evidence.",
       "Deployment authority remains pending until a fresh protected-main PASS.",
       "Release authority remains pending until an immutable release.",
