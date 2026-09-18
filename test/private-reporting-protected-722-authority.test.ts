@@ -7,8 +7,14 @@ const FAILED_PROTECTED_SOURCE = "f38962869307a45b3b6e65692b2acbabb075e0eb";
 const NO_AUTHORITY_PROMOTION =
   "The #722 merge also grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence; those remain separate control and evidence classes.";
 
-const AUTHORITY_CLASS =
-  /\b(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)\b/i;
+const AUTHORITY_CLASS_SOURCE =
+  String.raw`(?:repository\s+Administration\s+authority|current\s+(?:operational\s+)?setting(?:\s+state|\s+authority)?|immutable\s+release(?:\s+authority|\s+evidence)?|deployment(?:\s+authority|\s+evidence)?|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
+const AUTHORITY_CLASS = new RegExp(String.raw`\b${AUTHORITY_CLASS_SOURCE}\b`, "i");
+const ASSERTED_AUTHORITY_START = String.raw`${AUTHORITY_CLASS_SOURCE}\s+\p{L}`;
+const CLAUSE_BOUNDARY = new RegExp(
+  String.raw`(?<=[.!?;:])\s+|;\s*|,\s*(?=(?:but|yet|whereas|because|although|though|since|while|which|that|this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${ASSERTED_AUTHORITY_START}))|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|because|although|though|since|while)\b)|\s+(?=and\s+(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${ASSERTED_AUTHORITY_START}))`,
+  "iu",
+);
 const DIRECT_AUTHORITY_NEGATION =
   /^(?:(?:because|although|though|while|since)\s+)?no\b|\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves|demonstrate|demonstrates|confirm|confirms|validate|validates|show|shows|indicate|indicates|attest|attests|certify|certifies)\s+no\b/i;
 const FUTURE_AUTHORITY_GATE =
@@ -29,9 +35,7 @@ function markdownSection(markdown: string, heading: string): string {
 function authorityClauses(text: string): string[] {
   return text
     .replace(/[`*_]/g, " ")
-    .split(
-      /(?<=[.!?;:])\s+|;\s*|,\s*(?=(?:but|yet|whereas|and|because|although|though|since|while|this\s+merge|the\s+merge|#722\s+merge)\b)|\s+[—–]\s+|\s+(?=(?:but|yet|whereas|and|because|although|though|since|while)\b)/iu,
-    )
+    .split(CLAUSE_BOUNDARY)
     .map((clause) => clause.trim())
     .filter(Boolean);
 }
@@ -126,6 +130,10 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge establishes deployment authority with no staffing evidence.",
       "This merge establishes deployment authority until a later release.",
       "This merge establishes deployment authority after review.",
+      "This merge does not establish current setting state, deployment authority follows from this merge.",
+      "No staffing evidence exists and deployment authority follows from this merge.",
+      "The #722 merge grants no repository Administration authority, but deployment authority follows from this merge.",
+      "This merge does not establish current setting state, it demonstrates deployment authority.",
     ];
 
     const allowed = [
@@ -137,6 +145,7 @@ describe("protected #722 private-reporting documentation authority", () => {
       "A fresh protected-main PASS is required before current setting authority is restored.",
       "Current setting authority is restored only after a fresh protected-main PASS.",
       "The #722 merge grants no repository Administration authority, immutable release or deployment authority.",
+      "The #722 merge grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence.",
       "The #722 merge grants no repository Administration authority and does not provide deployment evidence.",
       "No external reporter visibility evidence exists.",
       "Current setting authority remains unavailable until a fresh protected-main PASS.",
