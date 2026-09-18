@@ -21,7 +21,7 @@ node -e 'const major=Number(process.versions.node.split(".")[0]); if (!Number.is
 
 1. `main`의 release-ready exact head와 버전을 확인합니다.
 2. `npm ci --legacy-peer-deps=false --install-links=false`를 실행합니다.
-3. `npm run release:verify:strict`를 통과시킵니다.
+3. `npm run release:verify`를 통과시켜 source/package/test/security 기본 게이트를 확인합니다.
 4. semantic-version tag와 immutable GitHub Release, `release-evidence.json`을 생성·검증합니다.
 5. 아래와 같이 production dispatch를 보냅니다.
 
@@ -32,6 +32,10 @@ gh api repos/ContextualWisdomLab/noema/dispatches \
   -F 'client_payload[release_tag]=v0.1.0'
 ```
 
+`release:verify:strict`는 bare pre-publication 명령이 아닙니다. 현재 strict gate에는 production KPI와 함께 **fresh private-vulnerability-reporting receipt authority**가 포함됩니다. 보호된 `cd` 워크플로는 immutable release tag를 checkout하고 exact tag commit을 확인한 뒤 repository-scoped GitHub App의 `Metadata: read` capability로 private-vulnerability-reporting 상태를 같은 job에서 다시 수집합니다. 생성된 receipt의 repository/source SHA/freshness/PASS/enabled/failure-list를 strict verifier가 확인한 뒤에만 배포 단계로 진행합니다. 따라서 운영 문서나 로컬 절차에서 receipt 입력 없이 `npm run release:verify:strict`를 릴리스 생성 전 필수 단계로 실행하지 않습니다.
+
+운영자가 진단 목적으로 strict verifier를 직접 재현해야 할 때는 임의의 과거 PASS를 재사용하지 않습니다. `NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH`에는 현재 실행에서 수집한 receipt를, `NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA`에는 그 receipt를 만든 exact source commit을 지정해야 합니다. 기본 freshness는 30분이며, newest observation이 FAIL이거나 stale/source mismatch이면 strict gate는 실패 폐쇄합니다. 인증 수집 절차와 credential boundary는 `docs/security/private-vulnerability-reporting-audit.md` 및 `docs/doctoring/private_vulnerability_reporting_receipt_authority.md`를 따릅니다.
+
 `cd` 워크플로는 exact release tag를 checkout한 뒤 저장소가 소유하는 direct Cloudflare API client를 사용합니다. `npm run deploy`와 `npm run cloudflare:status`는 이 보호된 워크플로 내부의 구현 명령이며, 운영자가 release/environment gate를 건너뛰기 위한 수동 배포 인터페이스가 아닙니다. 워크플로는 배포 전 상태, direct deployment 결과, 배포 후 active 100% version, smoke 결과와 KPI 증거를 `deployment-evidence.json` 및 관련 attestation에 결합합니다.
 
 Direct deploy client는 `repository_dispatch`의 default-branch `GITHUB_SHA`를 source authority로 사용하지 않습니다. 앞선 immutable-release 검증 단계가 출력한 exact tag commit을 `NOEMA_DEPLOY_SOURCE_SHA`로 전달하고, 실제 checkout HEAD와 일치하지 않으면 Cloudflare 호출 전에 실패합니다. Release 조회 결과와 배포 전후 Cloudflare status/result처럼 실행 중 생성되는 증거는 `$RUNNER_TEMP`에 두어 source checkout을 오염시키지 않습니다. 따라서 checkout 자체의 예상 밖 변경·untracked source가 생기면 기존 clean-source 검증이 그대로 배포를 차단합니다.
@@ -40,6 +44,9 @@ GitHub Actions variables:
 - `NOEMA_EXCHANGE_URL`: 배포된 `/exchange` URL
 - `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND`: 승인된 30일 NDJSON 로그 수집 경로
 - `NOEMA_KPI_SOURCE_ID`: 비밀이 아닌 운영 로그 출처 라벨(예: `cloudflare-logpush:noema-production`)
+- `NOEMA_GITHUB_APP_CLIENT_ID`: private-vulnerability-reporting read capability를 발급하는 repository-scoped GitHub App client ID
+
+GitHub Actions secret `NOEMA_GITHUB_APP_PRIVATE_KEY`는 pinned App-token action이 short-lived installation token을 발급하는 bootstrap 입력으로만 사용합니다. 발급된 bearer는 같은 단계에서 owner-only capability file로 옮기고 raw 환경값을 제거한 뒤 read-only audit이 소비하며, release receipt에는 bearer를 기록하지 않습니다.
 
 Cloudflare bearer는 일반 스크립트 환경변수로 전달하지 않습니다. 워크플로의 bootstrap 단계에서 secret을 owner-only 임시 capability file로 옮긴 뒤 환경의 원문 secret을 제거하고, direct deployment/status client에는 비밀이 아닌 `NOEMA_CLOUDFLARE_API_TOKEN_PATH`만 전달합니다. 배포 시퀀스 종료 후 capability file은 `always()` cleanup에서 제거합니다.
 
