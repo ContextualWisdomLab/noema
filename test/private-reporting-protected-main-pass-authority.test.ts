@@ -70,11 +70,29 @@ function splitAuthorityTransitions(segment: string): string[] {
   return clauses;
 }
 
+/** Isolates only parenthetical or bracketed authority asides that can mask another assertion's polarity. */
+function isolateAuthorityAsides(segment: string): string {
+  return segment.replace(
+    /\(([^()]*)\)|\[([^\[\]]*)\]/gu,
+    (match, parenthesized: string | undefined, bracketed: string | undefined) => {
+      const content = (parenthesized ?? bracketed ?? "").trim();
+      if (
+        BROADER_AUTHORITY.test(content)
+        && (PROMOTION_PREDICATE.test(content) || NON_PROMOTION_BOUNDARY.test(content))
+      ) {
+        return `; ${content};`;
+      }
+      return match;
+    },
+  );
+}
+
 /** Rejects any positive promotion from the setting receipt into a separately owned authority class. */
 function hasForbiddenBroaderAuthorityPromotion(text: string): boolean {
-  const clauses = text
-    .replace(/[`*_]/g, " ")
-    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?:and|or)\s+/iu)
+  const clauses = isolateAuthorityAsides(text.replace(/[`*_]/g, " "))
+    .split(
+      /(?<=[.!?;])\s+|;\s*|,\s*|\s+(?:and|or)\s+|\s+(?:—|–|-)\s+/iu,
+    )
     .flatMap(splitAuthorityTransitions)
     .map((clause) => clause.trim())
     .filter(Boolean);
@@ -176,6 +194,11 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS establishes deployment authority as staffing evidence remains pending.",
       "This PASS establishes deployment authority provided staffing evidence remains pending.",
       "This PASS establishes deployment authority since staffing evidence remains pending.",
+      "This PASS establishes deployment authority (staffing evidence remains pending).",
+      "This PASS establishes deployment authority [staffing evidence remains pending].",
+      "This PASS establishes deployment authority — staffing evidence remains pending.",
+      "This PASS establishes (deployment authority).",
+      "This PASS (establishes deployment authority).",
     ];
     const allowed = [
       "This PASS does not establish external reporter visibility evidence.",
@@ -190,6 +213,9 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS does not establish staffing evidence while deployment authority remains pending.",
       "This PASS does not establish staffing evidence as deployment authority remains pending.",
       "This PASS does not establish staffing evidence thereby does not establish deployment authority.",
+      "This PASS does not establish deployment authority (staffing evidence remains pending).",
+      "This PASS does not establish deployment authority [staffing evidence remains pending].",
+      "This PASS does not establish deployment authority — staffing evidence remains pending.",
       "Production KPI evidence remains pending.",
       "Acquisition evidence is a separate evidence class.",
     ];
