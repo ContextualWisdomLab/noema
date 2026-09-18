@@ -8,7 +8,7 @@ const SETTING_STATE_PREDICATE_SOURCE =
 const POSITIVE_SETTING_STATE_SOURCE =
   String.raw`\b${STATE_SUBJECT_SOURCE}\b[^.!?;]{0,120}?\b${SETTING_STATE_PREDICATE_SOURCE}\b`;
 const DIRECT_SETTING_NEGATION_PREFIX = new RegExp(
-  String.raw`(?:\b(?:does|do|did|can|will|would|shall|should|could)\s+not\s+(?:prove|confirm|demonstrate|show|establish|indicate)\s+(?:that\s+)?(?:\(\s*|\[\s*)?|\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|establish|establishes|indicate|indicates)\s+no\s+(?:\(\s*|\[\s*)?|\bno\s+)$`,
+  String.raw`(?:(?:\b(?:does|do|did|can|will|would|shall|should|could|must|may|might|need)\s+not|\b(?:doesn't|don't|didn't|can't|cannot|won't|wouldn't|shan't|shouldn't|couldn't|mustn't|mightn't|needn't))\s+(?:prove|confirm|demonstrate|show|establish|indicate)\s+(?:that\s+)?(?:\(\s*|\[\s*)?|\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|establish|establishes|indicate|indicates)\s+no\s+(?:\(\s*|\[\s*)?|\bno\s+)$`,
   "i",
 );
 
@@ -74,6 +74,8 @@ describe("protected #722 current private-reporting setting authority", () => {
       "This merge does not prove deployment authority [the live setting is currently enabled].",
       "This merge does not prove the live setting is enabled (private vulnerability reporting is enabled).",
       "This merge does not establish that private vulnerability reporting is enabled [the live setting is enabled].",
+      "This merge cannot prove deployment authority, private vulnerability reporting is enabled.",
+      "This merge doesn't establish deployment authority; the live setting is enabled.",
     ];
     const allowed = [
       "This merge does not prove the live setting is currently enabled.",
@@ -82,6 +84,12 @@ describe("protected #722 current private-reporting setting authority", () => {
       "This merge does not prove private vulnerability reporting continues to be enabled.",
       "This merge does not prove (private vulnerability reporting is enabled).",
       "This merge does not establish [the live setting is currently enabled].",
+      "This merge cannot prove private vulnerability reporting is enabled.",
+      "This merge can't confirm the live setting is enabled.",
+      "This merge doesn't establish that private vulnerability reporting is enabled.",
+      "This merge won't demonstrate private vulnerability reporting has been enabled.",
+      "This merge must not show the live setting is disabled.",
+      "This merge may not indicate private vulnerability reporting continues to be enabled.",
       "No live setting is currently enabled by this source-integration evidence.",
       "The protected merge is source integration only; the live setting state requires a fresh protected-main PASS.",
       "GitHub documents the private vulnerability reporting status endpoint separately from mutation authority.",
