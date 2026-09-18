@@ -7,8 +7,31 @@ const FAILED_PROTECTED_SOURCE = "f38962869307a45b3b6e65692b2acbabb075e0eb";
 const NO_AUTHORITY_PROMOTION =
   "The #722 merge also grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence; those remain separate control and evidence classes.";
 
+function markdownSection(markdown: string, heading: string): string {
+  const marker = `## ${heading}`;
+  const start = markdown.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const bodyStart = start + marker.length;
+  const nextHeading = markdown.indexOf("\n## ", bodyStart);
+  return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
+}
+
+function expectNoAuthorityPromotion(section: string): void {
+  const promotionVerb =
+    "(?:does\\s+)?(?:grant|grants|confer|confers|provide|provides|establish|establishes|create|creates|authorize|authorizes|constitute|constitutes|prove|proves|satisfy|satisfies|restore|restores|become|becomes|serve|serves)(?:\\s+as)?|is";
+  const authorityClass =
+    "(?:repository\\s+Administration\\s+authority|current\\s+(?:operational\\s+)?setting(?:\\s+state|\\s+authority)?|immutable\\s+release(?:\\s+authority|\\s+evidence)?|deployment(?:\\s+authority|\\s+evidence)?|external\\s+reporter\\s+visibility(?:\\s+evidence)?|staffing(?:\\s+coverage|\\s+evidence|\\s+authority)?|notification(?:\\s+evidence|\\s+authority)?|private-case\\s+handling(?:\\s+evidence|\\s+authority)?)";
+  const positivePromotion = new RegExp(
+    `#722(?:\\s+merge|\\s+integration)?[^.]{0,120}?\\b(?:${promotionVerb})\\b(?!\\s+(?:no|not|neither)\\b)[^.]{0,120}?\\b${authorityClass}\\b`,
+    "i",
+  );
+
+  expect(section).not.toMatch(positivePromotion);
+}
+
 describe("protected #722 private-reporting documentation authority", () => {
-  it("records the authenticated read repair without promoting source integration to current setting PASS", () => {
+  it("records the authenticated read repair without promoting source integration to another authority class", () => {
     const runbook = readFileSync(
       "docs/security/private-vulnerability-reporting-audit.md",
       "utf8",
@@ -33,23 +56,25 @@ describe("protected #722 private-reporting documentation authority", () => {
     expect(runbook).toContain(
       "does **not** prove the live setting is currently enabled",
     );
-    expect(runbook).toContain(NO_AUTHORITY_PROMOTION);
-    expect(runbook).not.toContain(
-      "protected #722 integration proves private vulnerability reporting is enabled",
+
+    const integrationSection = markdownSection(
+      runbook,
+      "2026-09-18 protected integration authority",
     );
-    expect(runbook).not.toContain("#722 grants repository Administration authority");
-    expect(runbook).not.toContain("#722 grants immutable release authority");
-    expect(runbook).not.toContain("#722 grants deployment authority");
-    expect(runbook).not.toContain("#722 proves external reporter visibility");
-    expect(runbook).not.toContain("#722 proves staffing coverage");
-    expect(runbook).not.toContain("#722 proves private-case handling");
+    expect(integrationSection).toContain(NO_AUTHORITY_PROMOTION);
+    expect(integrationSection).toContain(
+      "This merge proves protected source integration of the authenticated collection path.",
+    );
+    expect(integrationSection).toContain(
+      "those remain separate control and evidence classes",
+    );
+    expectNoAuthorityPromotion(integrationSection);
 
     expect(doctoring).toContain("Status: Protected source integration record; operational setting evidence remains pending.");
     expect(doctoring).toContain("Source integration, setting observation, external reporter visibility, staffing, private-case exercise, immutable release, deployment and acquisition evidence remain separate authority classes.");
     expect(doctoring).toContain("No PAT");
     expect(doctoring).toContain("GitHub-verified normal merge");
     expect(doctoring).toContain("must return PASS before current operational setting authority is restored");
-    expect(doctoring).not.toContain("current operational setting authority is restored by source integration");
   });
 
   it("keeps the credential path narrow and makes the operational follow-up explicit", () => {
