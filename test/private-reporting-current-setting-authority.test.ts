@@ -9,8 +9,10 @@ const POSITIVE_SETTING_STATE = new RegExp(
 );
 const DIRECT_NEGATION =
   /\b(?:does|do|did|is|are|was|were|can|cannot|can't|will|would|shall|should|could)\s+not\b|\b(?:prove|proves|confirm|confirms|demonstrate|demonstrates|show|shows|establish|establishes|indicate|indicates)\s+no\b/i;
-const STATE_CLAUSE_BOUNDARY =
-  /(?<=[.!?;:])\s+|;\s*|,\s*(?=(?:but|yet|and|or|therefore|thus|hence|consequently)\b)|\s+(?=(?:but|yet|whereas|because|although|though|since|while|therefore|thus|hence|consequently)\b)/iu;
+const STATE_CLAUSE_BOUNDARY = new RegExp(
+  String.raw`(?<=[.!?;:])\s+|;\s*|,\s*(?=(?:(?:but|yet|and|or|therefore|thus|hence|consequently)\b|${STATE_SUBJECT_SOURCE}\b))|\s+(?=(?:(?:but|yet|whereas|because|although|though|since|while|therefore|thus|hence|consequently)\b|(?:and|or)\s+${STATE_SUBJECT_SOURCE}\b))`,
+  "iu",
+);
 
 function markdownSection(markdown: string, heading: string): string {
   const marker = `## ${heading}`;
@@ -56,6 +58,9 @@ describe("protected #722 current private-reporting setting authority", () => {
       "The merge establishes the private vulnerability reporting setting as enabled.",
       "Source integration shows private vulnerability reporting to be enabled.",
       "This merge does not prove deployment authority, but private vulnerability reporting is enabled.",
+      "This merge does not prove deployment authority, private vulnerability reporting is enabled.",
+      "This merge does not prove deployment authority and the live setting is currently enabled.",
+      "This merge does not prove deployment authority or private vulnerability reporting is disabled.",
     ];
     const allowed = [
       "This merge does not prove the live setting is currently enabled.",
