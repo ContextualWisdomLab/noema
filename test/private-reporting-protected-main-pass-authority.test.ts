@@ -9,6 +9,17 @@ const ARTIFACT_DIGEST =
   "sha256:5538ae29cc4f5032a8aca79c23064b72fa1d879fba32a92fbb462f0bf601a152";
 const GENERATED_AT = "2026-09-18T12:45:48.831Z";
 
+const BROADER_AUTHORITY_SOURCE = String.raw`(?:external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+(?:coverage|evidence|authority))?|notification(?:\s+(?:evidence|authority))?|private-case\s+handling(?:\s+(?:evidence|authority))?|immutable\s+release(?:\s+(?:evidence|authority))?|deployment(?:\s+(?:evidence|authority))?|production\s+KPI(?:\s+(?:evidence|authority))?|acquisition(?:\s+readiness)?(?:\s+(?:evidence|authority))?)`;
+const BROADER_AUTHORITY = new RegExp(String.raw`\b${BROADER_AUTHORITY_SOURCE}\b`, "i");
+const PROMOTION_PREDICATE_SOURCE = String.raw`(?:establish(?:es|ed|ing)?|provid(?:e|es|ed|ing)|prov(?:e|es|ed|ing)|grant(?:s|ed|ing)?|confer(?:s|red|ring)?|constitut(?:e|es|ed|ing)|restor(?:e|es|ed|ing)|satisf(?:y|ies|ied|ying)|demonstrat(?:e|es|ed|ing)|confirm(?:s|ed|ing)?|validat(?:e|es|ed|ing)|show(?:s|ed|ing)?|serv(?:e|es|ed|ing)(?:\s+as)?)`;
+const PROMOTION_PREDICATE = new RegExp(String.raw`\b${PROMOTION_PREDICATE_SOURCE}\b`, "i");
+const DIRECT_NEGATED_PROMOTION = new RegExp(
+  String.raw`\b(?:(?:does|do|did|can|will|would|shall|should|could|must|may|might|need)\s+not|(?:doesn't|don't|didn't|can't|cannot|won't|wouldn't|shan't|shouldn't|couldn't|mustn't|mightn't|needn't))\s+${PROMOTION_PREDICATE_SOURCE}\b|\b${PROMOTION_PREDICATE_SOURCE}\s+no\b`,
+  "i",
+);
+const NON_PROMOTION_BOUNDARY =
+  /\b(?:is|are|remains?|remain)\s+(?:(?:an?\s+)?(?:separate|independent)\b|(?:pending|unavailable|unrestored|unestablished|unauthorized)\b)/i;
+
 /** Isolates the dated operational-PASS section so later evidence classes cannot satisfy its assertions accidentally. */
 function markdownSection(markdown: string, heading: string): string {
   const marker = `## ${heading}`;
@@ -18,6 +29,22 @@ function markdownSection(markdown: string, heading: string): string {
   const bodyStart = start + marker.length;
   const nextHeading = markdown.indexOf("\n## ", bodyStart);
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
+}
+
+/** Rejects any positive promotion from the setting receipt into a separately owned authority class. */
+function hasForbiddenBroaderAuthorityPromotion(text: string): boolean {
+  const clauses = text
+    .replace(/[`*_]/g, " ")
+    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?=(?:but|yet|whereas|although|though|because)\b)/iu)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+
+  return clauses.some((clause) => (
+    BROADER_AUTHORITY.test(clause)
+    && PROMOTION_PREDICATE.test(clause)
+    && !DIRECT_NEGATED_PROMOTION.test(clause)
+    && !NON_PROMOTION_BOUNDARY.test(clause)
+  ));
 }
 
 describe("protected-main private-reporting PASS authority", () => {
@@ -75,6 +102,38 @@ describe("protected-main private-reporting PASS authority", () => {
       "stale-receipt/freshness policy",
     ]) {
       expect(section).toContain(boundary);
+    }
+    expect(hasForbiddenBroaderAuthorityPromotion(section)).toBe(false);
+  });
+
+  it("rejects semantic promotion into every broader authority class", () => {
+    const forbidden = [
+      "Run #31 establishes external reporter visibility evidence.",
+      "This PASS provides staffing evidence.",
+      "Run #31 proves notification evidence.",
+      "This receipt establishes private-case handling evidence.",
+      "Run #31 grants immutable release authority.",
+      "Run #31 establishes deployment authority.",
+      "This PASS demonstrates production KPI evidence.",
+      "This PASS provides acquisition evidence.",
+      "This PASS does not establish staffing evidence, but establishes deployment authority.",
+    ];
+    const allowed = [
+      "This PASS does not establish external reporter visibility evidence.",
+      "This PASS does not provide staffing evidence.",
+      "Notification evidence remains pending.",
+      "Private-case handling evidence is a separate evidence class.",
+      "This PASS cannot establish immutable release authority.",
+      "This PASS does not establish deployment authority.",
+      "Production KPI evidence remains pending.",
+      "Acquisition evidence is a separate evidence class.",
+    ];
+
+    for (const statement of forbidden) {
+      expect(hasForbiddenBroaderAuthorityPromotion(statement), statement).toBe(true);
+    }
+    for (const statement of allowed) {
+      expect(hasForbiddenBroaderAuthorityPromotion(statement), statement).toBe(false);
     }
   });
 
