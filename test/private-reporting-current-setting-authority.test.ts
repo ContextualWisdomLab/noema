@@ -10,6 +10,7 @@ const DIRECT_SETTING_NEGATION_PREFIX = new RegExp(
   "i",
 );
 
+/** Extracts one Markdown section so authority checks do not leak across headings. */
 function markdownSection(markdown: string, heading: string): string {
   const marker = `## ${heading}`;
   const start = markdown.indexOf(marker);
@@ -20,6 +21,7 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
+/** Rejects live setting-state assertions unless that exact proposition is directly negated. */
 function hasForbiddenCurrentSettingClaim(text: string): boolean {
   const normalized = text.replace(/[`*_]/g, " ");
   const assertions = normalized.matchAll(
