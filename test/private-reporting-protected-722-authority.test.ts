@@ -118,6 +118,7 @@ function splitCommaAssertions(segment: string): string[] {
 
     if (
       NEW_ASSERTION_SUBJECT.test(trimmed) ||
+      (AUTHORITY_CLASS.test(trimmed) && hasExplicitAuthorityBoundary(trimmed)) ||
       shouldSplitMaskedAuthorityTail(current, trimmed)
     ) {
       clauses.push(current);
@@ -163,6 +164,7 @@ function splitCoordinatedAssertions(
 
     if (
       NEW_ASSERTION_SUBJECT.test(part) ||
+      (AUTHORITY_CLASS.test(part) && hasExplicitAuthorityBoundary(part)) ||
       shouldSplitMaskedAuthorityTail(current, part)
     ) {
       clauses.push(current);
@@ -294,6 +296,9 @@ describe("protected #722 private-reporting documentation authority", () => {
       "This merge does not establish current setting state therefore establishes deployment authority.",
       "This merge does not establish current setting state (deployment authority follows from this merge).",
       "This merge establishes deployment authority (staffing remains pending).",
+      "This merge establishes deployment authority, does not provide staffing evidence.",
+      "This merge establishes deployment authority and does not provide staffing evidence.",
+      "This merge establishes deployment authority or does not provide staffing evidence.",
       "Not only does this merge establish deployment authority.",
       "Not merely does this merge demonstrate deployment authority.",
       "No doubt this merge establishes deployment authority.",
