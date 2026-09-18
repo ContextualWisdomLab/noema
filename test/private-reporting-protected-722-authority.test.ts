@@ -41,31 +41,20 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
-function mergeNegativeAuthorityListParts(parts: string[], joiner: string): string[] {
-  const clauses: string[] = [];
-  let current = parts[0]?.trim() ?? "";
-  let negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
+function hasExplicitAuthorityBoundary(clause: string): boolean {
+  return (
+    DIRECT_AUTHORITY_NEGATION.test(clause) ||
+    FUTURE_AUTHORITY_GATE.test(clause) ||
+    EXPLICIT_SEPARATE_CLASSIFICATION.test(clause)
+  );
+}
 
-  for (const rawPart of parts.slice(1)) {
-    const part = rawPart.trim();
-    if (!part) {
-      continue;
-    }
-
-    if (negativeListActive && BARE_AUTHORITY_LIST_ITEM.test(part)) {
-      current = `${current}${joiner}${part}`;
-      continue;
-    }
-
-    clauses.push(current);
-    current = part;
-    negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
-  }
-
-  if (current) {
-    clauses.push(current);
-  }
-  return clauses;
+function shouldSplitMaskedAuthorityTail(current: string, tail: string): boolean {
+  return (
+    hasExplicitAuthorityBoundary(current) &&
+    AUTHORITY_CLASS.test(tail) &&
+    !BARE_AUTHORITY_LIST_ITEM.test(tail)
+  );
 }
 
 function splitCommaAssertions(segment: string): string[] {
@@ -87,7 +76,10 @@ function splitCommaAssertions(segment: string): string[] {
       continue;
     }
 
-    if (NEW_ASSERTION_SUBJECT.test(trimmed)) {
+    if (
+      NEW_ASSERTION_SUBJECT.test(trimmed) ||
+      shouldSplitMaskedAuthorityTail(current, trimmed)
+    ) {
       clauses.push(current);
       buffer = [trimmed];
       continue;
@@ -101,15 +93,42 @@ function splitCommaAssertions(segment: string): string[] {
 }
 
 function splitAndAssertions(segment: string): string[] {
-  const andBoundary = new RegExp(
-    String.raw`\s+and\s+(?=(?:this\s+merge|the\s+merge|#722\s+merge|it\b|they\b|${AUTHORITY_SUBJECT_SOURCE}\b))`,
-    "iu",
-  );
-  const parts = segment.split(andBoundary);
+  const parts = segment.split(/\s+and\s+/iu);
   if (parts.length === 1) {
     return parts;
   }
-  return mergeNegativeAuthorityListParts(parts, " and ");
+
+  const clauses: string[] = [];
+  let current = parts[0]?.trim() ?? "";
+
+  for (const rawPart of parts.slice(1)) {
+    const part = rawPart.trim();
+    if (!part) {
+      continue;
+    }
+
+    const negativeListActive = NEGATIVE_LIST_INTRODUCER.test(current);
+    if (negativeListActive && BARE_AUTHORITY_LIST_ITEM.test(part)) {
+      current = `${current} and ${part}`;
+      continue;
+    }
+
+    if (
+      NEW_ASSERTION_SUBJECT.test(part) ||
+      shouldSplitMaskedAuthorityTail(current, part)
+    ) {
+      clauses.push(current);
+      current = part;
+      continue;
+    }
+
+    current = `${current} and ${part}`;
+  }
+
+  if (current) {
+    clauses.push(current);
+  }
+  return clauses;
 }
 
 function authorityClauses(text: string): string[] {
@@ -128,12 +147,7 @@ function hasForbiddenAuthorityPromotion(text: string): boolean {
       return false;
     }
 
-    const isExplicitBoundary =
-      DIRECT_AUTHORITY_NEGATION.test(clause) ||
-      FUTURE_AUTHORITY_GATE.test(clause) ||
-      EXPLICIT_SEPARATE_CLASSIFICATION.test(clause);
-
-    return !isExplicitBoundary;
+    return !hasExplicitAuthorityBoundary(clause);
   });
 }
 
@@ -220,6 +234,10 @@ describe("protected #722 private-reporting documentation authority", () => {
       "The #722 merge grants no repository Administration authority, but deployment authority follows from this merge.",
       "This merge does not establish current setting state, it demonstrates deployment authority.",
       "The #722 merge grants no repository Administration authority, deployment authority follows from this merge.",
+      "This merge does not establish current setting state and establishes deployment authority.",
+      "This merge does not establish current setting state, establishes deployment authority.",
+      "The #722 merge grants no repository Administration authority and establishes deployment authority.",
+      "The #722 merge grants no repository Administration authority, establishes deployment authority.",
     ];
 
     const allowed = [
