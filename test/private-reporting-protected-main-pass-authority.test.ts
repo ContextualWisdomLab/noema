@@ -19,6 +19,8 @@ const DIRECT_NEGATED_PROMOTION = new RegExp(
 );
 const NON_PROMOTION_BOUNDARY =
   /\b(?:is|are|remains?|remain)\s+(?:(?:an?\s+)?(?:separate|independent)\b|(?:pending|unavailable|unrestored|unestablished|unauthorized)\b)/i;
+const AUTHORITY_TRANSITION =
+  /\b(?:but|yet|whereas|although|though|because|while|if|unless|when|whenever|once|as|provided|since|thereby|therefore|thus|hence|consequently|so)\b/giu;
 
 /** Isolates the dated operational-PASS section so later evidence classes cannot satisfy its assertions accidentally. */
 function markdownSection(markdown: string, heading: string): string {
@@ -31,11 +33,49 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
+/** Splits transition tails only when they carry their own authority promotion or limiting boundary. */
+function splitAuthorityTransitions(segment: string): string[] {
+  const clauses: string[] = [];
+  let cursor = 0;
+
+  for (const match of segment.matchAll(AUTHORITY_TRANSITION)) {
+    const index = match.index ?? 0;
+    if (index <= cursor) {
+      continue;
+    }
+
+    const tail = segment.slice(index).trim();
+    if (
+      !BROADER_AUTHORITY.test(tail)
+      || (!PROMOTION_PREDICATE.test(tail) && !NON_PROMOTION_BOUNDARY.test(tail))
+    ) {
+      continue;
+    }
+
+    const before = segment.slice(cursor, index).trim();
+    if (before) {
+      clauses.push(before);
+    }
+    cursor = index;
+  }
+
+  if (cursor === 0) {
+    return [segment];
+  }
+
+  const tail = segment.slice(cursor).trim();
+  if (tail) {
+    clauses.push(tail);
+  }
+  return clauses;
+}
+
 /** Rejects any positive promotion from the setting receipt into a separately owned authority class. */
 function hasForbiddenBroaderAuthorityPromotion(text: string): boolean {
   const clauses = text
     .replace(/[`*_]/g, " ")
-    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?:and|or)\s+|\s+(?=(?:but|yet|whereas|although|though|because|thereby|therefore|thus|hence|consequently|so)\b)/iu)
+    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?:and|or)\s+/iu)
+    .flatMap(splitAuthorityTransitions)
     .map((clause) => clause.trim())
     .filter(Boolean);
 
@@ -114,6 +154,7 @@ describe("protected-main private-reporting PASS authority", () => {
       "This receipt establishes private-case handling evidence.",
       "Run #31 grants immutable release authority.",
       "Run #31 establishes deployment authority.",
+      "This PASS serves as deployment authority.",
       "This PASS demonstrates production KPI evidence.",
       "This PASS provides acquisition evidence.",
       "This PASS does not establish staffing evidence, but establishes deployment authority.",
@@ -126,6 +167,15 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS does not establish staffing evidence hence establishes deployment authority.",
       "This PASS does not establish staffing evidence consequently establishes deployment authority.",
       "This PASS does not establish staffing evidence so establishes deployment authority.",
+      "This PASS establishes deployment authority while staffing evidence remains pending.",
+      "This PASS establishes deployment authority if staffing evidence remains pending.",
+      "This PASS establishes deployment authority unless staffing evidence remains pending.",
+      "This PASS establishes deployment authority when staffing evidence remains pending.",
+      "This PASS establishes deployment authority whenever staffing evidence remains pending.",
+      "This PASS establishes deployment authority once staffing evidence remains pending.",
+      "This PASS establishes deployment authority as staffing evidence remains pending.",
+      "This PASS establishes deployment authority provided staffing evidence remains pending.",
+      "This PASS establishes deployment authority since staffing evidence remains pending.",
     ];
     const allowed = [
       "This PASS does not establish external reporter visibility evidence.",
@@ -137,6 +187,8 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS does not establish staffing evidence and does not establish deployment authority.",
       "This PASS does not establish staffing evidence or deployment authority.",
       "This PASS does not establish staffing evidence because deployment authority remains pending.",
+      "This PASS does not establish staffing evidence while deployment authority remains pending.",
+      "This PASS does not establish staffing evidence as deployment authority remains pending.",
       "This PASS does not establish staffing evidence thereby does not establish deployment authority.",
       "Production KPI evidence remains pending.",
       "Acquisition evidence is a separate evidence class.",
