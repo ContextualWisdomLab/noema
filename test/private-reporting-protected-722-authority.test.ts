@@ -8,7 +8,7 @@ const NO_AUTHORITY_PROMOTION =
   "The #722 merge also grants no repository Administration authority, immutable release or deployment authority, external reporter visibility evidence, staffing evidence, notification evidence, or private-case handling evidence; those remain separate control and evidence classes.";
 
 const AUTHORITY_CLASS_SOURCE =
-  String.raw`(?:repository\s+Administration\s+authority|(?:(?:current\s+(?:operational\s+)?|operational\s+|live(?:\s+|-))setting)(?:\s+(?:state|authority|evidence))?|immutable\s+release(?:\s+authority|\s+evidence)?|release\s+(?:authority|evidence)|deployment(?:\s+authority|\s+evidence)?|production\s+(?:KPI(?:\s+(?:evidence|authority))?|evidence|authority)|acquisition(?:\s+readiness)?\s+(?:authority|evidence)|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
+  String.raw`(?:repository\s+Administration\s+authority|(?:(?:current\s+(?:operational\s+)?setting)(?:\s+(?:state|authority|evidence))?|(?:operational\s+|live(?:\s+|-))setting\s+(?:state|authority|evidence))|immutable\s+release(?:\s+authority|\s+evidence)?|release\s+(?:authority|evidence)|deployment(?:\s+authority|\s+evidence)?|production\s+(?:KPI\s+(?:evidence|authority)|evidence|authority)|acquisition(?:\s+readiness)?\s+(?:authority|evidence)|external\s+reporter\s+visibility(?:\s+evidence)?|staffing(?:\s+coverage|\s+evidence|\s+authority)?|notification(?:\s+evidence|\s+authority)?|private-case\s+handling(?:\s+evidence|\s+authority)?)`;
 const AUTHORITY_CLASS = new RegExp(String.raw`\b${AUTHORITY_CLASS_SOURCE}\b`, "i");
 const AUTHORITY_SUBJECT_SOURCE =
   String.raw`(?:(?:the|a|an|this|that|these|those|such|its|their|our|your)\s+)?${AUTHORITY_CLASS_SOURCE}`;
@@ -340,10 +340,16 @@ describe("protected #722 private-reporting documentation authority", () => {
       "Release authority remains pending until an immutable release.",
       "Production KPI evidence remains pending until deployed measurement exists.",
       "Production KPI is a separate evidence class.",
+      "This merge cites the production KPI definition.",
+      "This merge links to production KPI documentation.",
+      "The production KPI glossary is updated by this merge.",
       "Acquisition evidence is a separate evidence class.",
       "Live setting authority remains pending until a fresh protected-main PASS.",
       "Operational setting evidence is a separate evidence class.",
       "The #722 merge grants no live setting authority.",
+      "This merge cites the live setting documentation.",
+      "This merge links to the operational setting guide.",
+      "The live-setting glossary is updated by this merge.",
       "Deployment authority is a separate control and evidence class.",
       "This merge is protected source integration because deployment authority is a separate control and evidence class.",
       "A fresh protected-main PASS is required before current setting authority is restored.",
