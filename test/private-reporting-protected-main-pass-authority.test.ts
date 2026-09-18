@@ -35,7 +35,7 @@ function markdownSection(markdown: string, heading: string): string {
 function hasForbiddenBroaderAuthorityPromotion(text: string): boolean {
   const clauses = text
     .replace(/[`*_]/g, " ")
-    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?=(?:but|yet|whereas|although|though|because)\b)/iu)
+    .split(/(?<=[.!?;])\s+|;\s*|,\s*|\s+(?:and|or)\s+|\s+(?=(?:but|yet|whereas|although|though|because)\b)/iu)
     .map((clause) => clause.trim())
     .filter(Boolean);
 
@@ -117,6 +117,9 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS demonstrates production KPI evidence.",
       "This PASS provides acquisition evidence.",
       "This PASS does not establish staffing evidence, but establishes deployment authority.",
+      "This PASS does not establish staffing evidence and establishes deployment authority.",
+      "This PASS does not establish staffing evidence or establishes deployment authority.",
+      "This PASS establishes deployment authority and does not establish staffing evidence.",
     ];
     const allowed = [
       "This PASS does not establish external reporter visibility evidence.",
@@ -125,6 +128,8 @@ describe("protected-main private-reporting PASS authority", () => {
       "Private-case handling evidence is a separate evidence class.",
       "This PASS cannot establish immutable release authority.",
       "This PASS does not establish deployment authority.",
+      "This PASS does not establish staffing evidence and does not establish deployment authority.",
+      "This PASS does not establish staffing evidence or deployment authority.",
       "Production KPI evidence remains pending.",
       "Acquisition evidence is a separate evidence class.",
     ];
