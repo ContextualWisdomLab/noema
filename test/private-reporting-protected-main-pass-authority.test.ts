@@ -95,7 +95,7 @@ function isolateAuthorityAsides(segment: string): string {
 function hasForbiddenBroaderAuthorityPromotion(text: string): boolean {
   const clauses = isolateAuthorityAsides(text.replace(/[`*_]/g, " "))
     .split(
-      /(?<=[.!?;])\s+|;\s*|,\s*|:\s+|\s+(?:and|or)\s+|\s+(?:—|–|-)\s+/iu,
+      /(?<=[.!?;])\s+|;\s*|,\s*|:\s+|\s+(?:and|or)\s+|—|\s+(?:–|-)\s+/iu,
     )
     .flatMap(splitAuthorityTransitions)
     .map((clause) => clause.trim())
@@ -203,6 +203,7 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS establishes deployment authority (staffing evidence remains pending).",
       "This PASS establishes deployment authority [staffing evidence remains pending].",
       "This PASS establishes deployment authority — staffing evidence remains pending.",
+      "This PASS establishes deployment authority—staffing evidence remains pending.",
       "This PASS establishes deployment authority: staffing evidence remains pending.",
       "This PASS establishes (deployment authority).",
       "This PASS (establishes deployment authority).",
@@ -225,6 +226,7 @@ describe("protected-main private-reporting PASS authority", () => {
       "This PASS does not establish deployment authority (staffing evidence remains pending).",
       "This PASS does not establish deployment authority [staffing evidence remains pending].",
       "This PASS does not establish deployment authority — staffing evidence remains pending.",
+      "This PASS does not establish deployment authority—staffing evidence remains pending.",
       "This PASS does not establish deployment authority: staffing evidence remains pending.",
       "Production KPI evidence remains pending.",
       "Acquisition evidence is a separate evidence class.",
