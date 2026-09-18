@@ -21,6 +21,7 @@ const NON_PROMOTION_BOUNDARY =
   /\b(?:is|are|remains?|remain)\s+(?:(?:an?\s+)?(?:separate|independent)\b|(?:pending|unavailable|unrestored|unestablished|unauthorized)\b)/i;
 const AUTHORITY_TRANSITION =
   /\b(?:but|yet|whereas|although|though|because|while|if|unless|when|whenever|once|as|provided|since|thereby|therefore|thus|hence|consequently|so)\b/giu;
+const SERVES_COMPLEMENT = /\bserv(?:e|es|ed|ing)\s*$/iu;
 
 /** Isolates the dated operational-PASS section so later evidence classes cannot satisfy its assertions accidentally. */
 function markdownSection(markdown: string, heading: string): string {
@@ -33,7 +34,7 @@ function markdownSection(markdown: string, heading: string): string {
   return markdown.slice(bodyStart, nextHeading === -1 ? undefined : nextHeading);
 }
 
-/** Splits transition tails only when they carry their own authority promotion or limiting boundary. */
+/** Splits transition tails without breaking the promotion predicate `serves as <authority>`. */
 function splitAuthorityTransitions(segment: string): string[] {
   const clauses: string[] = [];
   let cursor = 0;
@@ -41,6 +42,9 @@ function splitAuthorityTransitions(segment: string): string[] {
   for (const match of segment.matchAll(AUTHORITY_TRANSITION)) {
     const index = match.index ?? 0;
     if (index <= cursor) {
+      continue;
+    }
+    if (match[0].toLowerCase() === "as" && SERVES_COMPLEMENT.test(segment.slice(0, index))) {
       continue;
     }
 
@@ -173,6 +177,8 @@ describe("protected-main private-reporting PASS authority", () => {
       "Run #31 grants immutable release authority.",
       "Run #31 establishes deployment authority.",
       "This PASS serves as deployment authority.",
+      "This PASS serves as deployment authority while staffing evidence remains pending.",
+      "This PASS serves as deployment authority as staffing evidence remains pending.",
       "This PASS demonstrates production KPI evidence.",
       "This PASS provides acquisition evidence.",
       "This PASS does not establish staffing evidence, but establishes deployment authority.",
@@ -208,6 +214,8 @@ describe("protected-main private-reporting PASS authority", () => {
       "Private-case handling evidence is a separate evidence class.",
       "This PASS cannot establish immutable release authority.",
       "This PASS does not establish deployment authority.",
+      "This PASS does not serve as deployment authority while staffing evidence remains pending.",
+      "This PASS does not serve as deployment authority as staffing evidence remains pending.",
       "This PASS does not establish staffing evidence and does not establish deployment authority.",
       "This PASS does not establish staffing evidence or deployment authority.",
       "This PASS does not establish staffing evidence because deployment authority remains pending.",
