@@ -128,4 +128,15 @@ describe("runtime-readiness exact Git ref validation", () => {
     expect(result.failedChecks).not.toContain("allowed_workflow_ref");
     expect(result.failedChecks).not.toContain("allowed_workflow_sha");
   });
+
+  it("preserves the historical one-character workflow filename grammar", async () => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      "ContextualWisdomLab/.github/.github/workflows/a.yml@refs/heads/main";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(true);
+    expect(result.failedChecks).not.toContain("allowed_workflow_ref");
+  });
 });
