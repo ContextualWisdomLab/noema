@@ -27,6 +27,17 @@ describe("Cloudflare toolchain lockfile and validator isolation", () => {
     expect(existsSync(retiredLockfileWorkflowPath)).toBe(false);
   });
 
+  it("uploads regeneration evidence only after the regeneration step was eligible to run", () => {
+    const workflow = readWorkflow(ciWorkflowPath);
+    const uploadStep = workflow.slice(
+      workflow.indexOf("- name: upload regenerated lockfile evidence"),
+      workflow.indexOf("- name: require committed lockfile reproducibility"),
+    );
+
+    expect(uploadStep).toContain("if: always() && steps.regenerate_lockfile.outcome != 'skipped'");
+    expect(uploadStep).toContain("if-no-files-found: error");
+  });
+
   it("prunes builder-only workerd and esbuild from patch-validator dependencies", () => {
     const workflow = readWorkflow(validatorWorkflowPath);
 
