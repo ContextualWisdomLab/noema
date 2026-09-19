@@ -13,8 +13,9 @@ function dateStatus(value) {
 /**
  * Read the first exact metric authority from a pilot entry.
  *
- * Historical metric labels may be wrapped in one pair of backticks; arbitrary
- * label syntax is not interpreted as a regular expression.
+ * The historical regex treated the leading and trailing backticks around a
+ * metric label as independently optional. Preserve that compatibility while
+ * avoiding dynamically constructed regular expressions.
  *
  * @param {string} entry pilot entry text
  * @param {string} name exact metric label
@@ -27,8 +28,8 @@ function metricValue(entry, name) {
 }
 
 /**
- * Count exact occurrences of a metric authority, including its supported
- * backtick-wrapped label form.
+ * Count exact occurrences of a metric authority using the historical optional
+ * backtick grammar.
  *
  * @param {string} entry pilot entry text
  * @param {string} name exact metric label
@@ -73,7 +74,7 @@ function fieldCount(entry, label) {
  *
  * @param {string} entry pilot entry text
  * @param {string} label exact field label
- * @param {boolean} allowBackticks whether one surrounding backtick pair is accepted on the key
+ * @param {boolean} allowBackticks whether independently optional boundary backticks are accepted on the key
  * @param {boolean} allowWhitespaceBeforeColon whether trailing key whitespace before `:` is accepted
  * @returns {string[]} trimmed values for every matching bullet field
  */
@@ -85,10 +86,9 @@ function bulletFieldValues(entry, label, allowBackticks, allowWhitespaceBeforeCo
     if (separator < 0) return [];
     const rawKeySegment = content.slice(0, separator);
     if (!allowWhitespaceBeforeColon && rawKeySegment !== rawKeySegment.trimEnd()) return [];
-    const rawKey = rawKeySegment.trim();
-    const key = allowBackticks && rawKey.startsWith("`") && rawKey.endsWith("`")
-      ? rawKey.slice(1, -1)
-      : rawKey;
+    let key = rawKeySegment.trim();
+    if (allowBackticks && key.startsWith("`")) key = key.slice(1);
+    if (allowBackticks && key.endsWith("`")) key = key.slice(0, -1);
     return key === label ? [content.slice(separator + 1).trim()] : [];
   });
 }
