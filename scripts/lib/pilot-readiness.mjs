@@ -11,29 +11,43 @@ function dateStatus(value) {
 }
 
 function metricValue(entry, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = entry.match(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$`, "m"));
-  return match ? Number(match[1]) : null;
+  const value = bulletFieldValues(entry, name, true)[0];
+  if (value === undefined) return null;
+  return /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : null;
 }
 
 function metricCount(entry, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:`, "gm"))].length;
+  return bulletFieldValues(entry, name, true).length;
 }
 
 function fieldValue(entry, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = entry.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "m"));
-  return match ? match[1].trim() : "";
+  return bulletFieldValues(entry, label, false)[0] ?? "";
 }
 
 function fieldCount(entry, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}\\s*:`, "gm"))].length;
+  return bulletFieldValues(entry, label, false).length;
 }
 
-function hasCheckedLine(entry, labelPattern) {
-  return new RegExp(`^-\\s*\\[x\\]\\s*${labelPattern}\\s*$`, "m").test(entry);
+function bulletFieldValues(entry, label, allowBackticks) {
+  return entry.split("\n").flatMap((line) => {
+    if (!line.startsWith("-")) return [];
+    const content = line.slice(1).trimStart();
+    const separator = content.indexOf(":");
+    if (separator < 0) return [];
+    const rawKey = content.slice(0, separator).trim();
+    const key = allowBackticks && rawKey.startsWith("`") && rawKey.endsWith("`")
+      ? rawKey.slice(1, -1)
+      : rawKey;
+    return key === label ? [content.slice(separator + 1).trim()] : [];
+  });
+}
+
+function hasCheckedLine(entry, labels) {
+  const acceptedLabels = Array.isArray(labels) ? labels : [labels];
+  return entry.split("\n").some((line) => {
+    const content = line.startsWith("-") ? line.slice(1).trimStart() : "";
+    return content.startsWith("[x]") && acceptedLabels.includes(content.slice("[x]".length).trim());
+  });
 }
 
 function isLocalOnlyHostname(host) {
@@ -118,8 +132,8 @@ function evaluatePilotEntry(entry) {
   if (handoverDateStatus === "invalid") failures.push("운영 전환 승인일 required");
   if (handoverDateStatus === "future") failures.push("운영 전환 승인일 must not be in the future");
   if (!hasCheckedLine(entry, "운영 이관 승인")) failures.push("운영 이관 승인 required");
-  if (!hasCheckedLine(entry, "(?:p95 <= 300|p95 < 300)")) failures.push("p95 threshold checkbox required");
-  if (!hasCheckedLine(entry, "실패율 <= 0\\.02")) failures.push("failure-rate threshold checkbox required");
+  if (!hasCheckedLine(entry, ["p95 <= 300", "p95 < 300"])) failures.push("p95 threshold checkbox required");
+  if (!hasCheckedLine(entry, "실패율 <= 0.02")) failures.push("failure-rate threshold checkbox required");
   if (failureRate === null || failureRate > 0.02) failures.push("exchange_failure_rate must be <= 0.02");
   if (p95 === null || p95 >= 300) failures.push("exchange_p95_latency_ms must be < 300");
   if (!evidencePath) failures.push("분석 데이터 경로 required");

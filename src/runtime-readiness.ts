@@ -76,10 +76,6 @@ const privateKeyReadinessCache = new WeakMap<
   PrivateKeyReadinessCacheEntry
 >();
 
-function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
   if (value !== expectedWorkflowRepository) return false;
   const prefix = `${owner}/`;
@@ -99,11 +95,22 @@ function workflowRefName(value: string, repository: string): string | undefined 
   ) {
     return undefined;
   }
-  const escapedRepository = escapeRegularExpression(repository);
-  const workflowRefPattern = new RegExp(
-    `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
-  );
-  return workflowRefPattern.exec(value)?.[1];
+  const prefix = `${repository}/.github/workflows/`;
+  if (!value.startsWith(prefix)) return undefined;
+  const workflowAndRef = value.slice(prefix.length);
+  const at = workflowAndRef.lastIndexOf("@");
+  if (at <= 0 || at === workflowAndRef.length - 1) return undefined;
+  const workflow = workflowAndRef.slice(0, at);
+  if (workflow.length < 6 || workflow.length > 105 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
+    return undefined;
+  }
+  const workflowName = workflow.endsWith(".yaml")
+    ? workflow.slice(0, -5)
+    : workflow.slice(0, -4);
+  if (!workflowName || workflowName.length > 100 || [...workflowName].some((character) => !/[A-Za-z0-9_.-]/.test(character))) {
+    return undefined;
+  }
+  return workflowAndRef.slice(at + 1);
 }
 
 function isExactWorkflowRef(value: string, repository: string): boolean {

@@ -79,12 +79,11 @@ function runCommand(command, args, options = {}) {
     encoding: "utf8",
     env,
   };
-  const result = process.platform === "win32"
-    ? spawnSync(`${command} ${args.join(" ")}`, { ...spawnOptions, shell: true })
-    : spawnSync(command, args, spawnOptions);
+  const executable = process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+  const result = spawnSync(executable, args, spawnOptions);
 
   return {
-    command: `${command} ${args.join(" ")}`,
+    command: `${executable} ${args.join(" ")}`,
     exitCode: result.status ?? 1,
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim(),
