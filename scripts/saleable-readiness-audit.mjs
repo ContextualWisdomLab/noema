@@ -118,14 +118,37 @@ function runCommand(command, args, options = {}) {
   };
 }
 
+/**
+ * Append one deterministic readiness decision to the audit evidence ledger.
+ *
+ * Centralizing writes keeps later PASS/NOT_READY/FAIL classification tied to the
+ * same immutable in-memory check sequence instead of duplicating status logic.
+ *
+ * @param {string} name stable buyer-facing check identity
+ * @param {boolean} pass whether the check satisfied its authority contract
+ * @param {Record<string, unknown>} details bounded diagnostic evidence
+ * @returns {void}
+ */
 function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
+/**
+ * Distinguish an intentionally deferred production-evidence check from a blocker.
+ *
+ * @param {{details?: {status?: string}}} item readiness check candidate
+ * @returns {boolean} true only for an explicit deferred status
+ */
 function isDeferredCheck(item) {
   return item.details?.status === "deferred";
 }
 
+/**
+ * Decide whether scheduled evidence collection may report NOT_READY instead of
+ * failing CI for external production evidence that is not available yet.
+ *
+ * @returns {boolean} true only when the explicit report-only switch is enabled
+ */
 function isReportOnlyMode() {
   return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
 }
@@ -140,10 +163,25 @@ const reportOnlyEvidenceGapNames = new Set([
   "pilot readiness has completed production record",
 ]);
 
+/**
+ * Classify only the reviewed external-evidence gaps as report-only eligible.
+ *
+ * This allowlist prevents source/configuration defects from being downgraded to
+ * NOT_READY merely because scheduled evidence collection runs in report mode.
+ *
+ * @param {{name: string}} item readiness check candidate
+ * @returns {boolean} true only for a named external-evidence gap
+ */
 function isReportOnlyEvidenceGap(item) {
   return reportOnlyEvidenceGapNames.has(item.name);
 }
 
+/**
+ * Emit bounded diagnostics for checks that block saleable readiness.
+ *
+ * @param {Array<{name: string, details?: Record<string, unknown>}>} failures blocking checks in evaluation order
+ * @returns {void}
+ */
 function logBlockingFailures(failures) {
   console.log("Failed checks:");
   failures.forEach((item) => {
