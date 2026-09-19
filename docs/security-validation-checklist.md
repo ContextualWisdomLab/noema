@@ -14,7 +14,7 @@ npm run security:evidence
 - [ ] 공개 변수는 `.github` 워크플로와 실제 배포값 일치 (`ALLOWED_*`)
 - [ ] `npm run release:verify` 통과
 - [ ] `npm run security:scan` 무경고
-- [ ] `npm run release:verify:strict`(운영 배포 전) 결과 pass
+- [ ] protected production CD의 exact immutable-release `release:verify:strict` 결과 pass. Private-reporting authority는 같은 실행에서 수집한 fresh repository/source-matching receipt를 사용하며 bare local strict 실행은 배포 승인 증거가 아니다.
 - [ ] `.github/workflows/ci.yml` 존재 및 실행
 - [ ] 배포 실패/성공 여부와 무관하게 `noema-kpi-evidence.json` 아티팩트가 생성/보관되는지 확인
 - [ ] `exchange-30d.ndjson.provenance.json` 아티팩트가 생성되고 `sourceKind=production`, `sourceId`, `records`, `collectedAt`을 포함하는지 확인

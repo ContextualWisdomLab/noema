@@ -34,7 +34,7 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | Signed release supply chain | `.github/workflows/release-evidence.yml`, `scripts/release-evidence.mjs`, `docs/release-supply-chain.md`, `test/release-evidence.test.ts` | ready; per-tag artifact required |
 | Attested production deployment | `.github/workflows/cd.yml`, `scripts/deployment-evidence.mjs`, `scripts/acquisition-deployment-evidence-audit.mjs`, `docs/deployment-provenance.md` | ready; per-release production artifact required |
 | Production environment governance | `scripts/production-environment-governance-audit.mjs`, `artifacts/acquisition/production-environment-governance.json` | pending live evidence |
-| Release verification | `npm run release:verify:strict` | pending production KPI |
+| Release verification | protected CD의 receipt-bound `release:verify:strict`; `docs/deployment-guide.md` | pending production KPI + fresh exact-release private-reporting receipt |
 | Production evidence preflight | `npm run production:preflight` | pending production inputs |
 | Security scan | `npm run security:scan` | ready |
 | Smoke check | `NOEMA_EXCHANGE_URL=<url> npm run smoke:check` | pending deployed URL |
@@ -114,14 +114,12 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 
 ## Final Gate
 
-20억 매각 readiness는 다음 명령이 모두 통과해야 한다.
+20억 매각 readiness는 다음 evidence가 모두 통과해야 한다.
 
-```bash
-npm run release:verify:strict
-npm run readiness:audit
-npm run acquisition:manifest
-NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
-```
+- protected production CD가 exact immutable release에서 같은 실행 중 수집한 private-reporting receipt를 사용해 `release:verify:strict` PASS. Bare local strict 명령은 final-gate evidence가 아니다. 수동 진단 재현이 필요하면 `docs/deployment-guide.md`의 `GITHUB_REPOSITORY` + receipt path + expected source SHA 계약을 따른다.
+- `npm run readiness:audit` PASS.
+- `npm run acquisition:manifest` PASS.
+- `NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit` PASS.
 
 또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report를 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
 Review process 지연은 이 표에서 blocker가 아니다.
