@@ -46,19 +46,30 @@ const readinessSubprocessEnvironmentKeys = Object.freeze([
   "NOEMA_AUDIT_REPORT_ONLY",
 ]);
 
+const privateReportingStrictEnvironmentKeys = Object.freeze([
+  "GITHUB_REPOSITORY",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES",
+]);
+
 /**
  * Build the least-authority environment for saleable-readiness child commands.
  *
  * Explicit call-site overrides take precedence over the reviewed ambient
- * runtime allowlist. Unrelated credentials, proxy state, and process hooks are
- * intentionally excluded from child authority.
+ * runtime allowlist. Additional keys are opt-in per command so receipt authority
+ * required by strict release verification is not leaked to unrelated children.
+ * Unrelated credentials, proxy state, and process hooks remain excluded.
  *
  * @param {Record<string, unknown>} overrides reviewed per-command environment overrides
+ * @param {readonly string[]} additionalKeys extra environment names authorized for this command only
  * @returns {Record<string, string>} bounded child-process environment
  */
-function createReadinessSubprocessEnvironment(overrides = {}) {
+function createReadinessSubprocessEnvironment(overrides = {}, additionalKeys = []) {
   const env = {};
-  for (const key of readinessSubprocessEnvironmentKeys) {
+  const allowedKeys = new Set([...readinessSubprocessEnvironmentKeys, ...additionalKeys]);
+  for (const key of allowedKeys) {
     const value = Object.prototype.hasOwnProperty.call(overrides, key)
       ? overrides[key]
       : process.env[key];
@@ -69,8 +80,23 @@ function createReadinessSubprocessEnvironment(overrides = {}) {
   return env;
 }
 
+/**
+ * Execute one readiness command through its explicitly bounded child authority.
+ *
+ * `additionalEnvironmentKeys` widens only the selected child process. The caller
+ * must also provide the corresponding override values; this prevents a new
+ * authority class from silently becoming ambient to every readiness command.
+ *
+ * @param {string} command executable name
+ * @param {string[]} args argument vector
+ * @param {{env?: Record<string, unknown>, additionalEnvironmentKeys?: readonly string[]}} options reviewed child authority
+ * @returns {{command: string, exitCode: number, stdout: string, stderr: string, error: string | undefined}} command evidence
+ */
 function runCommand(command, args, options = {}) {
-  const env = createReadinessSubprocessEnvironment(options.env);
+  const env = createReadinessSubprocessEnvironment(
+    options.env,
+    options.additionalEnvironmentKeys ?? [],
+  );
   if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
     delete env.NOEMA_AUDIT_REPORT_ONLY;
   }
@@ -197,7 +223,17 @@ const strict = runCommand("npm", ["run", "release:verify:strict"], {
     NOEMA_KPI_LOG_PATH: kpiLogPath,
     NOEMA_KPI_EVIDENCE_PATH: kpiEvidencePath,
     NOEMA_KPI_PROVENANCE_PATH: kpiProvenancePath,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES,
   },
+  additionalEnvironmentKeys: privateReportingStrictEnvironmentKeys,
 });
 record("npm run release:verify:strict", strict.exitCode === 0, {
   command: strict.command,
