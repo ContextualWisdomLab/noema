@@ -101,7 +101,7 @@ function workflowRefName(value: string, repository: string): string | undefined 
   const at = workflowAndRef.lastIndexOf("@");
   if (at <= 0 || at === workflowAndRef.length - 1) return undefined;
   const workflow = workflowAndRef.slice(0, at);
-  if (workflow.length < 6 || workflow.length > 105 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
+  if (workflow.length > 105 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
     return undefined;
   }
   const workflowName = workflow.endsWith(".yaml")
