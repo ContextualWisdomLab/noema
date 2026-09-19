@@ -32,6 +32,15 @@ describe("pilot readiness authority field grammar", () => {
     expect(result.entries[0].failures).toContain("고객명 required");
   });
 
+  it("does not widen plain field-value grammar to whitespace before the colon", () => {
+    const result = evaluatePilotReadinessText(
+      completedPilot().replace("- 고객명: Acme Security", "- 고객명   : Acme Security"),
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("고객명 required");
+  });
+
   it("continues to accept the historically supported backtick form for metric names", () => {
     const result = evaluatePilotReadinessText(
       completedPilot()
