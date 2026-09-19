@@ -76,10 +76,16 @@ const privateKeyReadinessCache = new WeakMap<
   PrivateKeyReadinessCacheEntry
 >();
 
-function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
+/**
+ * Admit only the canonical organization-owned reusable-workflow repository.
+ *
+ * Owner consistency and exact repository pinning prevent a syntactically valid
+ * sibling repository from becoming credential-exchange workflow authority.
+ *
+ * @param value configured reusable-workflow repository
+ * @param owner configured repository owner
+ * @returns true only for the canonical `.github` repository binding
+ */
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
   if (value !== expectedWorkflowRepository) return false;
   const prefix = `${owner}/`;
@@ -90,6 +96,18 @@ function isTrustedWorkflowRepository(value: string, owner: string): boolean {
     && /^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName);
 }
 
+/**
+ * Extract the exact workflow source ref from the configured reusable-workflow
+ * identity without dynamically constructing a regular expression.
+ *
+ * The workflow filename remains compatible with GitHub's one-to-100-character
+ * name grammar and must end in `.yml` or `.yaml`. The returned ref is validated
+ * separately as either an immutable commit or a trusted named ref.
+ *
+ * @param value full `owner/repo/.github/workflows/file@ref` identity
+ * @param repository exact trusted workflow repository
+ * @returns the ref suffix when the workflow identity grammar is valid
+ */
 function workflowRefName(value: string, repository: string): string | undefined {
   const separator = value.indexOf("@");
   if (
@@ -99,30 +117,76 @@ function workflowRefName(value: string, repository: string): string | undefined 
   ) {
     return undefined;
   }
-  const escapedRepository = escapeRegularExpression(repository);
-  const workflowRefPattern = new RegExp(
-    `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
-  );
-  return workflowRefPattern.exec(value)?.[1];
+  const prefix = `${repository}/.github/workflows/`;
+  if (!value.startsWith(prefix)) return undefined;
+  const workflowAndRef = value.slice(prefix.length);
+  const at = workflowAndRef.lastIndexOf("@");
+  if (at <= 0) return undefined;
+  const workflow = workflowAndRef.slice(0, at);
+  if (workflow.length > 105 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
+    return undefined;
+  }
+  const workflowName = workflow.endsWith(".yaml")
+    ? workflow.slice(0, -5)
+    : workflow.slice(0, -4);
+  if (!workflowName || workflowName.length > 100 || [...workflowName].some((character) => !/[A-Za-z0-9_.-]/.test(character))) {
+    return undefined;
+  }
+  return workflowAndRef.slice(at + 1);
 }
 
+/**
+ * Validate a structurally admitted workflow identity against supported ref authority.
+ *
+ * Only an immutable commit or a Git-compatible trusted named ref may proceed;
+ * arbitrary suffix text cannot satisfy runtime readiness.
+ *
+ * @param value full reusable-workflow identity
+ * @param repository exact trusted workflow repository
+ * @returns true when the extracted ref is supported
+ */
 function isExactWorkflowRef(value: string, repository: string): boolean {
   const refName = workflowRefName(value, repository);
   if (!refName) return false;
   return exactCommitPattern.test(refName) || trustedNamedRefPattern.test(refName);
 }
 
+/**
+ * Extract immutable workflow commit authority without promoting named refs.
+ *
+ * @param value full reusable-workflow identity
+ * @param repository exact trusted workflow repository
+ * @returns canonical lowercase commit SHA when the ref is immutable
+ */
 function immutableWorkflowCommit(value: string, repository: string): string | undefined {
   const refName = workflowRefName(value, repository);
   return refName && exactCommitPattern.test(refName) ? refName : undefined;
 }
 
+/**
+ * Admit positive identifiers only when their decimal text is canonical and safe.
+ *
+ * This rejects coercion, leading-zero aliases, and integers outside JavaScript's
+ * exact range before they can become App installation or application identity.
+ *
+ * @param value candidate decimal identifier
+ * @returns true only for canonical positive safe-integer text
+ */
 function isCanonicalPositiveSafeInteger(value: string | undefined): boolean {
   if (!positiveDecimalPattern.test(value ?? "")) return false;
   const numericValue = Number(value);
   return Number.isSafeInteger(numericValue) && String(numericValue) === value;
 }
 
+/**
+ * Admit only the Durable Object capability shape used by Noema runtime state.
+ *
+ * Structural capability admission does not transfer the Durable Object's domain
+ * truth into Runtime Readiness; it only proves the required namespace methods exist.
+ *
+ * @param value candidate binding
+ * @returns true when the runtime can address and obtain a Durable Object stub
+ */
 function isDurableObjectNamespace(value: unknown): value is DurableObjectNamespace {
   if (!value || (typeof value !== "object" && typeof value !== "function")) {
     return false;
@@ -131,6 +195,15 @@ function isDurableObjectNamespace(value: unknown): value is DurableObjectNamespa
   return typeof candidate.idFromName === "function" && typeof candidate.get === "function";
 }
 
+/**
+ * Prove that the configured PKCS#8 private key is syntactically and cryptographically importable.
+ *
+ * The check performs no signing and no network call; it is a local readiness
+ * boundary that avoids exposing key bytes in failure diagnostics.
+ *
+ * @param value configured PKCS#8 PEM
+ * @returns true when WebCrypto accepts the key for the required signing algorithm
+ */
 async function isImportablePrivateKey(value: string | undefined): Promise<boolean> {
   try {
     const match = privateKeyPattern.exec(value ?? "");

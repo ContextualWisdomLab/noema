@@ -1,5 +1,15 @@
 const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Admit only calendar-valid, non-future date-only evidence.
+ *
+ * Pilot handover/onboarding dates are buyer evidence rather than scheduling
+ * hints, so impossible dates and future-dated claims must fail closed instead
+ * of being normalized by JavaScript's permissive date parser.
+ *
+ * @param {unknown} value candidate YYYY-MM-DD evidence
+ * @returns {"invalid" | "future" | "valid"} bounded authority status
+ */
 function dateStatus(value) {
   const normalized = String(value ?? "").trim();
   if (!dateOnlyRegex.test(normalized)) return "invalid";
@@ -10,32 +20,114 @@ function dateStatus(value) {
   return parsed.getTime() > Date.now() ? "future" : "valid";
 }
 
+/**
+ * Read the first exact metric authority from a pilot entry.
+ *
+ * The historical regex treated the leading and trailing backticks around a
+ * metric label as independently optional. Preserve that compatibility while
+ * avoiding dynamically constructed regular expressions.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} name exact metric label
+ * @returns {number | null} parsed non-negative decimal, or null when absent/invalid
+ */
 function metricValue(entry, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = entry.match(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$`, "m"));
-  return match ? Number(match[1]) : null;
+  const value = bulletFieldValues(entry, name, true)[0];
+  if (value === undefined) return null;
+  return /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : null;
 }
 
+/**
+ * Count exact occurrences of a metric authority using the historical optional
+ * backtick grammar.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} name exact metric label
+ * @returns {number} number of matching bullet fields
+ */
 function metricCount(entry, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:`, "gm"))].length;
+  return bulletFieldValues(entry, name, true).length;
 }
 
+/**
+ * Read the first exact plain-label field value from a pilot entry.
+ *
+ * Plain authority labels intentionally do not inherit metric backtick syntax
+ * or whitespace-before-colon syntax that the historical duplicate counter
+ * accepted.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @returns {string} trimmed value, or an empty string when absent
+ */
 function fieldValue(entry, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = entry.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "m"));
-  return match ? match[1].trim() : "";
+  return bulletFieldValues(entry, label, false, false)[0] ?? "";
 }
 
+/**
+ * Count exact plain-label authority fields without widening their grammar.
+ *
+ * The historical duplicate counter accepts whitespace before the colon, so
+ * this path preserves that behavior even though fieldValue() does not.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @returns {number} number of matching bullet fields
+ */
 function fieldCount(entry, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}\\s*:`, "gm"))].length;
+  return bulletFieldValues(entry, label, false).length;
 }
 
-function hasCheckedLine(entry, labelPattern) {
-  return new RegExp(`^-\\s*\\[x\\]\\s*${labelPattern}\\s*$`, "m").test(entry);
+/**
+ * Extract values from top-level bullet fields using structural exact-label
+ * matching rather than dynamically constructed regular expressions.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @param {boolean} allowBackticks whether independently optional boundary backticks are accepted on the key
+ * @param {boolean} allowWhitespaceBeforeColon whether trailing key whitespace before `:` is accepted
+ * @returns {string[]} trimmed values for every matching bullet field
+ */
+function bulletFieldValues(entry, label, allowBackticks, allowWhitespaceBeforeColon = true) {
+  return entry.split("\n").flatMap((line) => {
+    if (!line.startsWith("-")) return [];
+    const content = line.slice(1).trimStart();
+    const separator = content.indexOf(":");
+    if (separator < 0) return [];
+    const rawKeySegment = content.slice(0, separator);
+    if (!allowWhitespaceBeforeColon && rawKeySegment !== rawKeySegment.trimEnd()) return [];
+    let key = rawKeySegment.trim();
+    if (allowBackticks && key.startsWith("`")) key = key.slice(1);
+    if (allowBackticks && key.endsWith("`")) key = key.slice(0, -1);
+    return key === label ? [content.slice(separator + 1).trim()] : [];
+  });
 }
 
+/**
+ * Decide whether an entry contains an exact checked bullet for one of the
+ * accepted authority labels.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string | string[]} labels accepted checked-line labels
+ * @returns {boolean} true only for an exact `[x]` label match
+ */
+function hasCheckedLine(entry, labels) {
+  const acceptedLabels = Array.isArray(labels) ? labels : [labels];
+  return entry.split("\n").some((line) => {
+    const content = line.startsWith("-") ? line.slice(1).trimStart() : "";
+    return content.startsWith("[x]") && acceptedLabels.includes(content.slice("[x]".length).trim());
+  });
+}
+
+/**
+ * Reject loopback and wildcard hosts that cannot constitute production buyer evidence.
+ *
+ * The check includes IPv4-mapped loopback IPv6 forms so alternate textual
+ * encodings cannot promote a local endpoint into production authority.
+ *
+ * @param {string} host normalized URL hostname
+ * @returns {boolean} true when the host is local-only
+ */
 function isLocalOnlyHostname(host) {
   const normalized = host.startsWith("[") && host.endsWith("]")
     ? host.slice(1, -1)
@@ -45,6 +137,15 @@ function isLocalOnlyHostname(host) {
   return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
+/**
+ * Admit only credential-free HTTPS URLs that can represent a real production endpoint.
+ *
+ * Local, example, and userinfo-bearing URLs are excluded so a pilot document
+ * cannot satisfy buyer readiness with development or placeholder infrastructure.
+ *
+ * @param {string} value candidate production URL
+ * @returns {boolean} true only for an admissible production endpoint
+ */
 function isUsableProductionUrl(value) {
   if (!value) return false;
   try {
@@ -64,6 +165,12 @@ function isUsableProductionUrl(value) {
   }
 }
 
+/**
+ * Reject placeholder/local support-channel references from pilot authority.
+ *
+ * @param {string} value candidate support-channel reference
+ * @returns {boolean} true only for a non-placeholder channel
+ */
 function isUsableSupportChannel(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
@@ -72,6 +179,15 @@ function isUsableSupportChannel(value) {
     && !normalized.includes("localhost");
 }
 
+/**
+ * Reject placeholder/local evidence references without interpreting foreign evidence truth.
+ *
+ * This is a lexical admission boundary only; the referenced system remains the
+ * authority for the evidence itself.
+ *
+ * @param {string} value candidate evidence reference
+ * @returns {boolean} true only for a non-placeholder reference
+ */
 function isUsableEvidenceReference(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
@@ -80,6 +196,16 @@ function isUsableEvidenceReference(value) {
     && !normalized.includes(".local");
 }
 
+/**
+ * Evaluate one production-pilot record as an authority-bearing readiness unit.
+ *
+ * Duplicate authorities fail closed before business thresholds are considered;
+ * production URL, evidence, handover, latency, failure-rate, and trace fields
+ * must all satisfy their existing contracts.
+ *
+ * @param {string} entry one `## 항목` section body
+ * @returns {{customerName: string, passed: boolean, failures: string[]}} deterministic pilot decision
+ */
 function evaluatePilotEntry(entry) {
   const customerName = fieldValue(entry, "고객명");
   const noemaUrl = fieldValue(entry, "NOEMA URL");
@@ -118,8 +244,8 @@ function evaluatePilotEntry(entry) {
   if (handoverDateStatus === "invalid") failures.push("운영 전환 승인일 required");
   if (handoverDateStatus === "future") failures.push("운영 전환 승인일 must not be in the future");
   if (!hasCheckedLine(entry, "운영 이관 승인")) failures.push("운영 이관 승인 required");
-  if (!hasCheckedLine(entry, "(?:p95 <= 300|p95 < 300)")) failures.push("p95 threshold checkbox required");
-  if (!hasCheckedLine(entry, "실패율 <= 0\\.02")) failures.push("failure-rate threshold checkbox required");
+  if (!hasCheckedLine(entry, ["p95 <= 300", "p95 < 300"])) failures.push("p95 threshold checkbox required");
+  if (!hasCheckedLine(entry, "실패율 <= 0.02")) failures.push("failure-rate threshold checkbox required");
   if (failureRate === null || failureRate > 0.02) failures.push("exchange_failure_rate must be <= 0.02");
   if (p95 === null || p95 >= 300) failures.push("exchange_p95_latency_ms must be < 300");
   if (!evidencePath) failures.push("분석 데이터 경로 required");
@@ -137,6 +263,15 @@ function evaluatePilotEntry(entry) {
   };
 }
 
+/**
+ * Evaluate all declared pilot records without collapsing their individual diagnostics.
+ *
+ * Overall readiness requires at least one production record to satisfy the full
+ * per-entry authority contract; source text alone is never promoted to evidence.
+ *
+ * @param {string} text complete pilot-readiness document
+ * @returns {{passed: boolean, entries: Array<{customerName: string, passed: boolean, failures: string[]}>}} aggregate and per-entry decisions
+ */
 export function evaluatePilotReadinessText(text) {
   const entries = text.split(/^## 항목\s+\d+/m).slice(1);
   const evaluatedEntries = entries.map(evaluatePilotEntry);
