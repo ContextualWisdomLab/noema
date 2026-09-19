@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
 import { readStrictJsonEvidence } from "./lib/strict-json-evidence.mjs";
@@ -69,6 +69,19 @@ function createReadinessSubprocessEnvironment(overrides = {}) {
   return env;
 }
 
+/**
+ * Run one readiness command without introducing a command shell.
+ *
+ * On Windows, npm is a `.cmd` shim and cannot be spawned directly without a
+ * shell on supported Node releases. Execute the npm JavaScript entry point
+ * with the already-running Node binary instead, preserving the argument array
+ * and the bounded child environment.
+ *
+ * @param {string} command logical command name
+ * @param {string[]} args command arguments
+ * @param {{env?: Record<string, unknown>}} options bounded call-site options
+ * @returns {{command: string, exitCode: number, stdout: string, stderr: string, error: string | undefined}} command evidence
+ */
 function runCommand(command, args, options = {}) {
   const env = createReadinessSubprocessEnvironment(options.env);
   if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
@@ -79,11 +92,15 @@ function runCommand(command, args, options = {}) {
     encoding: "utf8",
     env,
   };
-  const executable = process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
-  const result = spawnSync(executable, args, spawnOptions);
+  const isWindowsNpm = process.platform === "win32" && command === "npm";
+  const executable = isWindowsNpm ? process.execPath : command;
+  const spawnArgs = isWindowsNpm
+    ? [join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"), ...args]
+    : args;
+  const result = spawnSync(executable, spawnArgs, spawnOptions);
 
   return {
-    command: `${executable} ${args.join(" ")}`,
+    command: `${command} ${args.join(" ")}`,
     exitCode: result.status ?? 1,
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim(),
