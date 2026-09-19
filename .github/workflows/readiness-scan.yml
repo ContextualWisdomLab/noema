@@ -64,6 +64,35 @@ jobs:
             exit 0
           fi
 
+      - name: Mint repository-scoped private-reporting read token
+        id: private_reporting_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_GITHUB_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-metadata: read
+
+      - name: Collect exact-source private vulnerability reporting evidence
+        env:
+          NOEMA_AUDIT_REPOSITORY: ${{ github.repository }}
+          NOEMA_AUDIT_SOURCE_SHA: ${{ github.sha }}
+          DELEGATED_PRIVATE_REPORTING_TOKEN: ${{ steps.private_reporting_app.outputs.token }}
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_AUDIT_PATH: ${{ runner.temp }}/private-vulnerability-reporting-audit.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-private-reporting-token.XXXXXX")"
+          trap 'rm -rf "$token_dir"' EXIT
+          token_path="$token_dir/github-token"
+          printf '%s' "$DELEGATED_PRIVATE_REPORTING_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_PRIVATE_REPORTING_TOKEN
+          export NOEMA_PRIVATE_VULNERABILITY_REPORTING_TOKEN_PATH="$token_path"
+          npm run security:private-reporting-audit
+
       - name: run readiness audit
         env:
           NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
@@ -72,6 +101,9 @@ jobs:
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
           NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
           NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH: ${{ runner.temp }}/private-vulnerability-reporting-audit.json
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES: "30"
         run: |
           set +e
           npm run readiness:audit
@@ -92,4 +124,5 @@ jobs:
             noema-kpi-evidence.json
             exchange-30d.ndjson.provenance.json
             noema-smoke-evidence.json
+            ${{ runner.temp }}/private-vulnerability-reporting-audit.json
           if-no-files-found: error
