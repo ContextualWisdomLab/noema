@@ -46,11 +46,11 @@ File evidence는 descriptor 기반 bounded read를 사용한다. regular file이
 
 ## Lockfile evidence 업로드의 실패 권한
 
-`upload regenerated lockfile evidence`는 lockfile 재생성 단계가 실제로 실행될 자격이 있었을 때만 증거 업로드를 시도한다. PR의 live-base guard처럼 더 앞선 authority가 실패해 `regenerate_lockfile` 단계가 `skipped`되면, 존재할 수 없는 artifact를 `if-no-files-found: error`로 다시 실패시키지 않는다. 그렇지 않으면 CI 화면과 로그에 원인과 무관한 두 번째 오류가 붙어 운영자가 stale-base 정책 실패를 lockfile artifact 결함으로 오인할 수 있다.
+`upload regenerated lockfile evidence`는 lockfile 재생성 단계가 실제로 실행될 자격이 있었고 workflow가 취소되지 않았을 때만 증거 업로드를 시도한다. PR의 live-base guard처럼 더 앞선 authority가 실패해 `regenerate_lockfile` 단계가 `skipped`되면, 존재할 수 없는 artifact를 `if-no-files-found: error`로 다시 실패시키지 않는다. 그렇지 않으면 CI 화면과 로그에 원인과 무관한 두 번째 오류가 붙어 운영자가 stale-base 정책 실패를 lockfile artifact 결함으로 오인할 수 있다.
 
-반대로 재생성 단계가 **실행된 뒤** 실패하거나 성공했다면 업로드 단계는 `always()` semantics를 유지한다. 재생성 결과가 `failure`인 경우에도 가능한 진단 artifact를 수집하고, artifact가 존재해야 하는 경로에서 누락되면 `if-no-files-found: error`를 그대로 유지하여 증거 손실을 성공처럼 보이지 않게 한다. GitHub Actions의 `steps.<step_id>.outcome`은 `success`, `failure`, `cancelled`, `skipped`를 구분하므로, 선택한 조건은 `always() && steps.regenerate_lockfile.outcome != 'skipped'`이다. 이 결정은 gate를 완화하는 것이 아니라 **선행 단계가 생성 기회를 갖지 못한 artifact에만 비적용**하고 실제 재생성 실행에 대한 증거 엄격성은 보존한다.
+재생성 단계가 **실행된 뒤** 실패하거나 성공했다면 업로드는 계속 수행한다. `steps.<step_id>.outcome`이 `failure`여도 가능한 진단 artifact를 수집하고, artifact가 존재해야 하는 경로에서 누락되면 `if-no-files-found: error`를 그대로 유지하여 증거 손실을 성공처럼 보이지 않게 한다. 반면 workflow cancellation은 별도 terminal authority다. GitHub는 `always()`가 취소 시에도 true이며 unfinished step을 계속 실행시킬 수 있다고 명시하고, 성공·실패와 무관하게 실행하되 cancellation은 보존하려면 `!cancelled()`를 권장한다. 따라서 선택한 조건은 `!cancelled() && steps.regenerate_lockfile.outcome != 'skipped'`이다. 이 조건은 선행 실패 뒤의 진단 evidence는 보존하지만 user/platform cancellation을 artifact upload failure로 재분류하거나 불필요하게 연장하지 않는다.
 
-대안으로 `if: always()`를 유지하는 방식은 선행 guard 실패 뒤 허위 후속 오류를 만들기 때문에 기각한다. `if: success()`로 단순화하는 방식도 재생성 단계 자체가 실패했을 때 진단 artifact 수집 기회를 잃으므로 기각한다. `if-no-files-found: warn|ignore`로 바꾸는 방식은 실제로 실행된 재생성 단계의 증거 누락을 약화시키므로 기각한다.
+대안으로 `if: always()`를 유지하는 방식은 선행 guard 실패 뒤 허위 후속 오류뿐 아니라 cancellation 이후에도 업로드를 계속 실행할 수 있어 기각한다. `if: success()`로 단순화하는 방식은 재생성 단계 자체가 실패했을 때 진단 artifact 수집 기회를 잃으므로 기각한다. `always() && outcome != 'skipped'`도 cancellation을 별도 terminal로 보존하지 못하므로 기각한다. `if-no-files-found: warn|ignore`로 바꾸는 방식은 실제로 실행된 재생성 단계의 증거 누락을 약화시키므로 기각한다.
 
 ## 증거 권한 분리
 
@@ -89,6 +89,8 @@ GitHub, Inc. (2026). *actions/setup-node releases*. GitHub. https://github.com/a
 GitHub, Inc. (2026). *Contexts reference*. GitHub Docs. https://docs.github.com/en/actions/reference/workflows-and-actions/contexts
 
 GitHub, Inc. (2026). *Evaluate expressions in workflows and actions*. GitHub Docs. https://docs.github.com/en/actions/reference/workflows-and-actions/expressions
+
+GitHub, Inc. (2026). *Workflow cancellation reference*. GitHub Docs. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-cancellation
 
 npm, Inc. (2026). *npm ci*. npm Docs. https://docs.npmjs.com/cli/v11/commands/npm-ci/
 
