@@ -168,4 +168,5 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 
 ## 연동 지연 정책
 - 코드 리뷰 봇/리뷰어 지연은 Goal 완성률 산정에서 `risk`로만 기록하고 `blocker`로 처리하지 않는다.
-- protected CD `release:verify:strict` 실행 실패는 지표/리스크 근거를 우선 기록하고, `exchange-30d.ndjson` 및 production provenance 확보로 재평가한다.
+- KPI/provenance 때문에 strict gate가 실패하면 지표/리스크 근거를 기록하고, `exchange-30d.ndjson` 및 production provenance 확보 후 재평가한다.
+- receipt authority 때문에 strict gate가 실패하면 exact immutable release에서 same-run receipt를 새로 수집하는 protected CD strict gate를 재실행한 뒤 재평가한다.
