@@ -35,9 +35,10 @@ describe("Cloudflare toolchain lockfile and validator isolation", () => {
     );
 
     expect(uploadStep).toContain(
-      "if: !cancelled() && steps.regenerate_lockfile.outcome != 'skipped'",
+      "if: ${{ !cancelled() && steps.regenerate_lockfile.outcome != 'skipped' }}",
     );
     expect(uploadStep).not.toContain("if: always()");
+    expect(uploadStep).not.toContain("if: !cancelled()");
     expect(uploadStep).toContain("if-no-files-found: error");
   });
 
