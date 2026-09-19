@@ -256,6 +256,32 @@ record("npm run security:scan", securityScan.exitCode === 0, {
 const kpiLogPath = process.env.NOEMA_KPI_LOG_PATH || "exchange-30d.ndjson";
 const kpiEvidencePath = process.env.NOEMA_KPI_EVIDENCE_PATH || join(outDir, "noema-kpi-evidence.json");
 const kpiProvenancePath = process.env.NOEMA_KPI_PROVENANCE_PATH || `${kpiLogPath}.provenance.json`;
+const privateReportingAuthority = runCommand(
+  "npm",
+  ["run", "security:private-reporting-authority"],
+  {
+    env: {
+      GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES,
+    },
+    additionalEnvironmentKeys: privateReportingStrictEnvironmentKeys,
+  },
+);
+record("npm run security:private-reporting-authority", privateReportingAuthority.exitCode === 0, {
+  command: privateReportingAuthority.command,
+  exitCode: privateReportingAuthority.exitCode,
+  stdout: privateReportingAuthority.stdout,
+  stderr: privateReportingAuthority.stderr,
+  error: privateReportingAuthority.error,
+});
+
 const strict = runCommand("npm", ["run", "release:verify:strict"], {
   env: {
     NOEMA_KPI_LOG_PATH: kpiLogPath,
