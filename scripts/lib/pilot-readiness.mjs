@@ -1,5 +1,15 @@
 const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Admit only calendar-valid, non-future date-only evidence.
+ *
+ * Pilot handover/onboarding dates are buyer evidence rather than scheduling
+ * hints, so impossible dates and future-dated claims must fail closed instead
+ * of being normalized by JavaScript's permissive date parser.
+ *
+ * @param {unknown} value candidate YYYY-MM-DD evidence
+ * @returns {"invalid" | "future" | "valid"} bounded authority status
+ */
 function dateStatus(value) {
   const normalized = String(value ?? "").trim();
   if (!dateOnlyRegex.test(normalized)) return "invalid";
@@ -109,6 +119,15 @@ function hasCheckedLine(entry, labels) {
   });
 }
 
+/**
+ * Reject loopback and wildcard hosts that cannot constitute production buyer evidence.
+ *
+ * The check includes IPv4-mapped loopback IPv6 forms so alternate textual
+ * encodings cannot promote a local endpoint into production authority.
+ *
+ * @param {string} host normalized URL hostname
+ * @returns {boolean} true when the host is local-only
+ */
 function isLocalOnlyHostname(host) {
   const normalized = host.startsWith("[") && host.endsWith("]")
     ? host.slice(1, -1)
@@ -118,6 +137,15 @@ function isLocalOnlyHostname(host) {
   return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
+/**
+ * Admit only credential-free HTTPS URLs that can represent a real production endpoint.
+ *
+ * Local, example, and userinfo-bearing URLs are excluded so a pilot document
+ * cannot satisfy buyer readiness with development or placeholder infrastructure.
+ *
+ * @param {string} value candidate production URL
+ * @returns {boolean} true only for an admissible production endpoint
+ */
 function isUsableProductionUrl(value) {
   if (!value) return false;
   try {
@@ -137,6 +165,12 @@ function isUsableProductionUrl(value) {
   }
 }
 
+/**
+ * Reject placeholder/local support-channel references from pilot authority.
+ *
+ * @param {string} value candidate support-channel reference
+ * @returns {boolean} true only for a non-placeholder channel
+ */
 function isUsableSupportChannel(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
@@ -145,6 +179,15 @@ function isUsableSupportChannel(value) {
     && !normalized.includes("localhost");
 }
 
+/**
+ * Reject placeholder/local evidence references without interpreting foreign evidence truth.
+ *
+ * This is a lexical admission boundary only; the referenced system remains the
+ * authority for the evidence itself.
+ *
+ * @param {string} value candidate evidence reference
+ * @returns {boolean} true only for a non-placeholder reference
+ */
 function isUsableEvidenceReference(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
@@ -220,6 +263,15 @@ function evaluatePilotEntry(entry) {
   };
 }
 
+/**
+ * Evaluate all declared pilot records without collapsing their individual diagnostics.
+ *
+ * Overall readiness requires at least one production record to satisfy the full
+ * per-entry authority contract; source text alone is never promoted to evidence.
+ *
+ * @param {string} text complete pilot-readiness document
+ * @returns {{passed: boolean, entries: Array<{customerName: string, passed: boolean, failures: string[]}>}} aggregate and per-entry decisions
+ */
 export function evaluatePilotReadinessText(text) {
   const entries = text.split(/^## 항목\s+\d+/m).slice(1);
   const evaluatedEntries = entries.map(evaluatePilotEntry);
