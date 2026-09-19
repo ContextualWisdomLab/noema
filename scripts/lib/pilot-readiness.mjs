@@ -41,18 +41,23 @@ function metricCount(entry, name) {
 /**
  * Read the first exact plain-label field value from a pilot entry.
  *
- * Plain authority labels intentionally do not inherit metric backtick syntax.
+ * Plain authority labels intentionally do not inherit metric backtick syntax
+ * or whitespace-before-colon syntax that the historical duplicate counter
+ * accepted.
  *
  * @param {string} entry pilot entry text
  * @param {string} label exact field label
  * @returns {string} trimmed value, or an empty string when absent
  */
 function fieldValue(entry, label) {
-  return bulletFieldValues(entry, label, false)[0] ?? "";
+  return bulletFieldValues(entry, label, false, false)[0] ?? "";
 }
 
 /**
  * Count exact plain-label authority fields without widening their grammar.
+ *
+ * The historical duplicate counter accepts whitespace before the colon, so
+ * this path preserves that behavior even though fieldValue() does not.
  *
  * @param {string} entry pilot entry text
  * @param {string} label exact field label
@@ -69,15 +74,18 @@ function fieldCount(entry, label) {
  * @param {string} entry pilot entry text
  * @param {string} label exact field label
  * @param {boolean} allowBackticks whether one surrounding backtick pair is accepted on the key
+ * @param {boolean} allowWhitespaceBeforeColon whether trailing key whitespace before `:` is accepted
  * @returns {string[]} trimmed values for every matching bullet field
  */
-function bulletFieldValues(entry, label, allowBackticks) {
+function bulletFieldValues(entry, label, allowBackticks, allowWhitespaceBeforeColon = true) {
   return entry.split("\n").flatMap((line) => {
     if (!line.startsWith("-")) return [];
     const content = line.slice(1).trimStart();
     const separator = content.indexOf(":");
     if (separator < 0) return [];
-    const rawKey = content.slice(0, separator).trim();
+    const rawKeySegment = content.slice(0, separator);
+    if (!allowWhitespaceBeforeColon && rawKeySegment !== rawKeySegment.trimEnd()) return [];
+    const rawKey = rawKeySegment.trim();
     const key = allowBackticks && rawKey.startsWith("`") && rawKey.endsWith("`")
       ? rawKey.slice(1, -1)
       : rawKey;
