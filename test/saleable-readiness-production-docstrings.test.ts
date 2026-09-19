@@ -13,6 +13,12 @@ const productionFunctions = [
   "logBlockingFailures",
 ] as const;
 
+/**
+ * Return only a JSDoc block immediately adjacent to the named production function.
+ *
+ * Adjacency prevents a nearby unrelated comment from satisfying the executable documentation
+ * contract when the actual authority boundary has no rationale of its own.
+ */
 function immediateJsdoc(name: string): string | undefined {
   const marker = `function ${name}(`;
   const functionIndex = source.indexOf(marker);
