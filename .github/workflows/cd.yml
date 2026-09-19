@@ -315,7 +315,7 @@ jobs:
               repository: $repository,
               releaseTag: $releaseTag,
               commitSha: $commitSha,
-              deploymentEvidenceSha256: $deployment_digest,
+              deploymentEvidenceSha256: $deploymentEvidenceSha256,
               signerWorkflow: $signerWorkflow,
               predicateType: $predicateType,
               oidcIssuer: $oidcIssuer,
