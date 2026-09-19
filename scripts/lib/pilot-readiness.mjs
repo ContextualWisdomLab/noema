@@ -10,24 +10,67 @@ function dateStatus(value) {
   return parsed.getTime() > Date.now() ? "future" : "valid";
 }
 
+/**
+ * Read the first exact metric authority from a pilot entry.
+ *
+ * Historical metric labels may be wrapped in one pair of backticks; arbitrary
+ * label syntax is not interpreted as a regular expression.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} name exact metric label
+ * @returns {number | null} parsed non-negative decimal, or null when absent/invalid
+ */
 function metricValue(entry, name) {
   const value = bulletFieldValues(entry, name, true)[0];
   if (value === undefined) return null;
   return /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : null;
 }
 
+/**
+ * Count exact occurrences of a metric authority, including its supported
+ * backtick-wrapped label form.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} name exact metric label
+ * @returns {number} number of matching bullet fields
+ */
 function metricCount(entry, name) {
   return bulletFieldValues(entry, name, true).length;
 }
 
+/**
+ * Read the first exact plain-label field value from a pilot entry.
+ *
+ * Plain authority labels intentionally do not inherit metric backtick syntax.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @returns {string} trimmed value, or an empty string when absent
+ */
 function fieldValue(entry, label) {
   return bulletFieldValues(entry, label, false)[0] ?? "";
 }
 
+/**
+ * Count exact plain-label authority fields without widening their grammar.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @returns {number} number of matching bullet fields
+ */
 function fieldCount(entry, label) {
   return bulletFieldValues(entry, label, false).length;
 }
 
+/**
+ * Extract values from top-level bullet fields using structural exact-label
+ * matching rather than dynamically constructed regular expressions.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string} label exact field label
+ * @param {boolean} allowBackticks whether one surrounding backtick pair is accepted on the key
+ * @returns {string[]} trimmed values for every matching bullet field
+ */
 function bulletFieldValues(entry, label, allowBackticks) {
   return entry.split("\n").flatMap((line) => {
     if (!line.startsWith("-")) return [];
@@ -42,6 +85,14 @@ function bulletFieldValues(entry, label, allowBackticks) {
   });
 }
 
+/**
+ * Decide whether an entry contains an exact checked bullet for one of the
+ * accepted authority labels.
+ *
+ * @param {string} entry pilot entry text
+ * @param {string | string[]} labels accepted checked-line labels
+ * @returns {boolean} true only for an exact `[x]` label match
+ */
 function hasCheckedLine(entry, labels) {
   const acceptedLabels = Array.isArray(labels) ? labels : [labels];
   return entry.split("\n").some((line) => {
@@ -94,6 +145,16 @@ function isUsableEvidenceReference(value) {
     && !normalized.includes(".local");
 }
 
+/**
+ * Evaluate one production-pilot record as an authority-bearing readiness unit.
+ *
+ * Duplicate authorities fail closed before business thresholds are considered;
+ * production URL, evidence, handover, latency, failure-rate, and trace fields
+ * must all satisfy their existing contracts.
+ *
+ * @param {string} entry one `## 항목` section body
+ * @returns {{customerName: string, passed: boolean, failures: string[]}} deterministic pilot decision
+ */
 function evaluatePilotEntry(entry) {
   const customerName = fieldValue(entry, "고객명");
   const noemaUrl = fieldValue(entry, "NOEMA URL");
