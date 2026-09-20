@@ -135,20 +135,16 @@ describe("runtime-readiness exact Git ref validation", () => {
       "ContextualWisdomLab/.github/.github/workflows/@refs/heads/main",
     ],
     [
-      "a workflow path longer than the filename grammar permits",
+      "a workflow basename longer than the protected grammar permits",
       `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(102)}.yml@refs/heads/main`,
     ],
     [
-      "a workflow filename longer than 100 characters",
+      "a 101-character basename with .yml",
       `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(101)}.yml@refs/heads/main`,
     ],
     [
-      "a 101-character .yml workflow filename at the extension boundary",
-      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(97)}.yml@refs/heads/main`,
-    ],
-    [
-      "a 101-character .yaml workflow filename at the extension boundary",
-      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(96)}.yaml@refs/heads/main`,
+      "a 101-character basename with .yaml",
+      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(101)}.yaml@refs/heads/main`,
     ],
     [
       "an unsupported workflow extension",
@@ -173,9 +169,9 @@ describe("runtime-readiness exact Git ref validation", () => {
   });
 
   it.each([
-    `${"a".repeat(96)}.yml`,
-    `${"a".repeat(95)}.yaml`,
-  ])("accepts a 100-character workflow filename at the %s boundary", async (workflowName) => {
+    `${"a".repeat(100)}.yml`,
+    `${"a".repeat(100)}.yaml`,
+  ])("accepts the protected 100-character basename boundary for %s", async (workflowName) => {
     const env = await readyEnvironment();
     env.ALLOWED_WORKFLOW_REF_PREFIX =
       `ContextualWisdomLab/.github/.github/workflows/${workflowName}@refs/heads/main`;
