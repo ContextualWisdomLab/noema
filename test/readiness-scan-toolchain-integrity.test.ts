@@ -12,9 +12,12 @@ describe("saleable-readiness workflow supply-chain integrity", () => {
       "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0",
     );
     expect(workflow).toContain(
+      "uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0",
+    );
+    expect(workflow).toContain(
       "uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
     );
-    expect(workflow).not.toMatch(/uses:\s+actions\/(?:checkout|setup-node|upload-artifact)@v\d+/);
+    expect(workflow).not.toMatch(/uses:\s+(?:actions|[\w.-]+)\/[\w.-]+@v\d+/);
   });
 
   it("does not persist the workflow token in the checkout", () => {
