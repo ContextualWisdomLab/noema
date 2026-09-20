@@ -126,7 +126,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
 
 ### Phase 4: final gate
 
-- `npm run release:verify:strict` PASS
+- protected production CD가 exact immutable release와 같은 실행에서 수집한 fresh private-reporting receipt를 사용해 `release:verify:strict` PASS. Bare local strict 명령은 final-gate evidence가 아니며 수동 진단은 `docs/deployment-guide.md`의 repository + receipt path + expected source SHA 계약을 따른다.
 - `npm run readiness:audit` PASS
 - `npm run acquisition:manifest` PASS 및 `finalGatePassed: true`
 - `npm run acquisition:audit` PASS

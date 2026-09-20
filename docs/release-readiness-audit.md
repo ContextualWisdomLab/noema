@@ -13,7 +13,7 @@
 - `npm run release:verify` → PASS (10 files, 44 tests, `npm audit --audit-level=high` 0 vulnerabilities, KPI strict 미사용 모드에서 SKIP)
 - `npm run test` → PASS (10 files, 44 tests)
 - `npm run kpi:verify:strict` → FAIL. `exchange-30d.ndjson`와 `exchange-30d.ndjson.provenance.json`의 `sourceKind=production` 증빙 필요.
-- `npm run production:preflight` → CD에서 `release:verify:strict`보다 먼저 실행됨. `NOEMA_EXCHANGE_URL`, `NOEMA_KPI_SOURCE_KIND=production`, `NOEMA_KPI_SOURCE_ID`, `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND` 필요.
+- `npm run production:preflight` → protected CD에서 receipt-bound `release:verify:strict`보다 먼저 실행됨. `NOEMA_EXCHANGE_URL`, `NOEMA_KPI_SOURCE_KIND=production`, `NOEMA_KPI_SOURCE_ID`, `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND` 필요.
 - `NOEMA_EXCHANGE_URL=<URL> npm run smoke:check` → 운영 배포 endpoint 존재 시 스키마/운영 헤더/401 Bearer challenge/no-store 보안 헤더 PASS 필요
 - `cd` 워크플로우에서 스모크 증빙 아티팩트(`noema-smoke-evidence.json`) 생성됨
 - `npm run readiness:audit` → FAIL (`exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json` 미보유)
@@ -44,9 +44,9 @@
 ## 3. 배포 안정성
 - [x] CI 게이트: typecheck/test/audit 수행
 - [x] CD 게이트: 수동 승인 + 스모크 검증 (`/health` 스키마/필수헤더/no-store 보안 헤더, `/exchange` 401/`ERR_AUTH_MISSING`/필수헤더/`WWW-Authenticate`/no-store 보안 헤더) via `./scripts/smoke-readiness.sh`
-- [x] `npm run release:verify:strict` 실행(운영 배포 전)
+- [x] protected production CD가 exact immutable release에서 같은 실행 중 private-reporting receipt를 수집하고 repository/source/freshness를 결합해 `release:verify:strict`를 실행하도록 구성됨. Bare local strict 명령은 배포 승인 증거가 아님.
 - [x] `npm run kpi:verify` 운영 증빙(30일 NDJSON 존재 시) 실행
-- [x] 배포 전 `cd`에서 `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND` 사용 시 provenance 생성 후 `release:verify:strict` 수행
+- [x] 배포 전 `cd`에서 `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND` 사용 시 provenance를 생성하고 same-run private-reporting receipt를 결합한 뒤 strict release gate를 수행
 
 ## 4. 구매/운영 문서 패키지
 - [x] API 명세, SLA, 가격, 온보딩, 배포 가이드, 보안 체크리스트 문서 완비
@@ -70,7 +70,7 @@
 ## 증빙 저장 규칙
 - KPI/스모크 배포 증빙 파일:
   - `cd` 실행 시 `noema-kpi-evidence.json`(KPI 게이트), `exchange-30d.ndjson.provenance.json`(운영 출처), `noema-smoke-evidence.json`(스모크)가 artifact로 보관되어야 함
-- 증빙 불일치 시 `pass` 판정은 `release:verify:strict` 재실행 후 재평가한다.
+- 증빙 불일치 시 `pass` 판정은 protected production CD의 exact immutable-release receipt-bound `release:verify:strict`를 새 evidence로 다시 수행한 뒤 재평가한다. 수동 진단 재현은 `docs/deployment-guide.md`의 `GITHUB_REPOSITORY` + receipt path + expected source SHA 계약을 따른다.
 
 ## 8. 파일럿
 - [ ] 유료 대상 1개 조직 이상 Onboarding 체크리스트 완료
