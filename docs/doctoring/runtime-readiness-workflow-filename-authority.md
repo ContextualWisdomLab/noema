@@ -2,39 +2,41 @@
 
 ## Problem
 
-Fresh independent review of PR #727 exact `9f8f6031a4477c2f5fcb31367c6d8a517ae64e13` found that the structural replacement for the historical reusable-workflow regular expression widened one trust-boundary invariant. Protected predecessor grammar admitted a complete workflow filename, including `.yml` or `.yaml`, within 100 characters. The structural parser instead allowed the complete filename to reach 105 characters and separately limited only the basename to 100 characters.
+Fresh independent review of PR #727 restacked exact `9f8f6031a4477c2f5fcb31367c6d8a517ae64e13` initially identified a possible workflow-filename trust-grammar widening. The first repair misread the protected predecessor pattern by treating `{1,100}` as a limit on the complete filename. Exact-head re-review of `52494add6a21865864fecc45558bf957634179f0` corrected that interpretation: the protected pattern `[A-Za-z0-9_.-]{1,100}\.ya?ml` limits the **basename** to 100 characters, then appends a four-character `.yml` or five-character `.yaml` extension.
 
-That admits values the prior trust contract rejected, including a 97-character basename plus `.yml` and a 96-character basename plus `.yaml`. Because `ALLOWED_WORKFLOW_REF_PREFIX` participates in reusable-workflow credential-exchange authority, this is a security-boundary compatibility defect rather than a cosmetic naming difference.
+Therefore a 100-character basename plus `.yml` (104 complete characters) and plus `.yaml` (105 complete characters) are protected-baseline-valid. A 101-character basename is invalid for either extension. The temporary 100-character complete-file ceiling was an accidental narrowing of trusted workflow authority.
 
 ## Constraint
 
-The Semgrep repair must remove dynamic regular-expression construction without widening the previously protected workflow-identity language. One-character workflow basenames and both `.yml` / `.yaml` extensions remain valid. Ref syntax and immutable-SHA coherence are separate invariants and are unchanged.
+The Semgrep repair must remove dynamic regular-expression construction without widening or narrowing the previously protected workflow-identity language. One-character through 100-character basenames and both `.yml` / `.yaml` extensions remain valid. Ref syntax and immutable-SHA coherence are separate invariants and are unchanged.
 
 ## Decision
 
-Keep structural parsing, but apply the historical 100-character ceiling to the complete workflow filename before stripping its extension. The existing character-set and extension checks remain unchanged.
+Keep structural parsing. Permit a complete workflow filename up to 105 characters so a 100-character `.yaml` basename can survive the early bound, then enforce the authoritative `workflowName.length <= 100` basename ceiling after stripping `.yml` or `.yaml`. The existing character-set and extension checks remain unchanged.
 
-Executable boundary cases preserve both sides of the contract:
+Executable boundary cases preserve both sides of the protected contract:
 
-- 96-character basename + `.yml` = 100 characters: accepted.
-- 95-character basename + `.yaml` = 100 characters: accepted.
-- 97-character basename + `.yml` = 101 characters: rejected.
-- 96-character basename + `.yaml` = 101 characters: rejected.
+- 100-character basename + `.yml` = 104 complete characters: accepted.
+- 100-character basename + `.yaml` = 105 complete characters: accepted.
+- 101-character basename + `.yml` = 105 complete characters: rejected by the basename invariant.
+- 101-character basename + `.yaml` = 106 complete characters: rejected.
 
 ## Alternatives rejected
 
 - Restoring the dynamic regular expression: rejected because the PR intentionally removes scanner-identified dynamic-regex construction and structural parsing is clearer.
-- Keeping a 100-character basename limit: rejected because it widens the trusted identity grammar by four or five characters depending on extension.
-- Reducing every basename to 95 characters: rejected because it would unnecessarily reject historically valid 96-character `.yml` names.
+- Limiting the complete filename to 100 characters: rejected because it incorrectly narrows the protected baseline and excludes valid 96–100-character basenames depending on extension.
+- Removing the complete-file bound entirely: rejected because the 105-character pre-bound is a cheap fail-closed guard while the exact 100-character basename check remains canonical.
+- Treating GitHub filesystem limits as the contract: rejected because this lane must preserve Noema's protected trust grammar, not infer a broader external maximum.
 
 ## Evidence lineage
 
-- Reviewed predecessor: `9f8f6031a4477c2f5fcb31367c6d8a517ae64e13`.
-- RED: `ed32472ef5e91624d7d71bc2caf06d32a73f773c` adds exact 100/101-character `.yml` and `.yaml` boundary cases.
-- GREEN: `5c595f70298b00ca01ecb35d93ddb08884f650e2` changes only the complete workflow filename ceiling from 105 to 100 characters in production.
+- Restacked reviewed predecessor: `9f8f6031a4477c2f5fcb31367c6d8a517ae64e13`.
+- Initial interpretation RED `ed32472ef5e91624d7d71bc2caf06d32a73f773c` → GREEN `5c595f70298b00ca01ecb35d93ddb08884f650e2` narrowed complete filename length to 100; exact-head independent review showed this did not preserve the protected pattern.
+- Corrective RED `1cdc3ef24b54c48e63d13591318cf5640ff5eb17` adds acceptance for 100-character basenames with both extensions and rejection for 101-character basenames.
+- Corrective GREEN `13daa3177532ff10aaefdd3a2bc5541ade7987bc` restores the 105-character complete-file pre-bound while retaining the 100-character basename invariant and updates the production rationale accordingly.
 
-Current-head hosted checks and an independent re-review remain separate merge authority; predecessor review is repair input only.
+The incorrect intermediate commits remain auditable ancestors; they are explicitly superseded by the corrective RED/GREEN pair rather than hidden by rebase or force-push. Current-head hosted checks and a fresh independent review remain separate merge authority.
 
 ## TRACEABILITY
 
-The authoritative behavioral baseline is the protected predecessor implementation’s complete-filename grammar `[A-Za-z0-9_.-]{1,100}\\.ya?ml`, together with the current Noema runtime-readiness trust boundary. GitHub reusable-workflow syntax still requires a workflow file under `.github/workflows` referenced as `{owner}/{repo}/.github/workflows/{filename}@{ref}`; the 100-character ceiling is Noema’s preserved admission invariant, not a claim about GitHub’s global maximum filename length.
+The authoritative behavioral baseline is protected Noema's historical workflow-name grammar `[A-Za-z0-9_.-]{1,100}\.ya?ml`, where `{1,100}` applies to the basename. GitHub reusable-workflow syntax requires a workflow file under `.github/workflows` referenced as `{owner}/{repo}/.github/workflows/{filename}@{ref}`. The one-to-100-character basename invariant here is Noema's preserved admission contract, not a claim about GitHub's global maximum filename length.
