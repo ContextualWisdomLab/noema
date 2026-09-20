@@ -100,9 +100,9 @@ function isTrustedWorkflowRepository(value: string, owner: string): boolean {
  * Extract the exact workflow source ref from the configured reusable-workflow
  * identity without dynamically constructing a regular expression.
  *
- * The workflow filename remains compatible with GitHub's one-to-100-character
- * name grammar and must end in `.yml` or `.yaml`. The returned ref is validated
- * separately as either an immutable commit or a trusted named ref.
+ * The workflow basename preserves the protected one-to-100-character grammar
+ * and must end in `.yml` or `.yaml`. The returned ref is validated separately
+ * as either an immutable commit or a trusted named ref.
  *
  * @param value full `owner/repo/.github/workflows/file@ref` identity
  * @param repository exact trusted workflow repository
@@ -123,7 +123,7 @@ function workflowRefName(value: string, repository: string): string | undefined 
   const at = workflowAndRef.lastIndexOf("@");
   if (at <= 0) return undefined;
   const workflow = workflowAndRef.slice(0, at);
-  if (workflow.length > 100 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
+  if (workflow.length > 105 || (!workflow.endsWith(".yml") && !workflow.endsWith(".yaml"))) {
     return undefined;
   }
   const workflowName = workflow.endsWith(".yaml")
