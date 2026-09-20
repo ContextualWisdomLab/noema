@@ -44,7 +44,7 @@
 
 - repository admin, branch/ruleset 관리자, CI secret 관리자 목록을 정리한다.
 - 구매자 organization으로 이전할 경우 GitHub App installation target과 required workflow reference를 함께 갱신한다.
-- 이전 직전 `npm run release:verify:strict`와 `npm run acquisition:audit` 결과를 artifact로 보존한다.
+- 이전 직전에는 protected production CD에서 exact immutable release를 대상으로 receipt-bound `release:verify:strict` PASS를 확보하고 `npm run acquisition:audit` 결과와 함께 artifact로 보존한다. Bare local strict 명령은 transfer evidence가 아니다.
 
 ### 3. GitHub App
 
@@ -74,7 +74,7 @@
 
 구매자 reliance 전에 다음이 모두 필요하다.
 
-- `npm run release:verify:strict` PASS
+- protected production CD의 exact immutable-release `release:verify:strict` PASS. Private-reporting authority는 같은 실행에서 수집한 repository/source-matching receipt를 사용해야 하며, 수동 진단 재현이 필요할 때는 `docs/deployment-guide.md`의 `GITHUB_REPOSITORY` + receipt path + expected source SHA 계약을 따른다.
 - `npm run readiness:audit` PASS
 - `npm run acquisition:manifest` PASS
 - `npm run acquisition:audit` PASS

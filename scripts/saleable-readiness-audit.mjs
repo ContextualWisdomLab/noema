@@ -46,19 +46,30 @@ const readinessSubprocessEnvironmentKeys = Object.freeze([
   "NOEMA_AUDIT_REPORT_ONLY",
 ]);
 
+const privateReportingStrictEnvironmentKeys = Object.freeze([
+  "GITHUB_REPOSITORY",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA",
+  "NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES",
+]);
+
 /**
  * Build the least-authority environment for saleable-readiness child commands.
  *
  * Explicit call-site overrides take precedence over the reviewed ambient
- * runtime allowlist. Unrelated credentials, proxy state, and process hooks are
- * intentionally excluded from child authority.
+ * runtime allowlist. Additional keys are opt-in per command so receipt authority
+ * required by strict release verification is not leaked to unrelated children.
+ * Unrelated credentials, proxy state, and process hooks remain excluded.
  *
  * @param {Record<string, unknown>} overrides reviewed per-command environment overrides
+ * @param {readonly string[]} additionalKeys extra environment names authorized for this command only
  * @returns {Record<string, string>} bounded child-process environment
  */
-function createReadinessSubprocessEnvironment(overrides = {}) {
+function createReadinessSubprocessEnvironment(overrides = {}, additionalKeys = []) {
   const env = {};
-  for (const key of readinessSubprocessEnvironmentKeys) {
+  const allowedKeys = new Set([...readinessSubprocessEnvironmentKeys, ...additionalKeys]);
+  for (const key of allowedKeys) {
     const value = Object.prototype.hasOwnProperty.call(overrides, key)
       ? overrides[key]
       : process.env[key];
@@ -70,20 +81,24 @@ function createReadinessSubprocessEnvironment(overrides = {}) {
 }
 
 /**
- * Run one readiness command without introducing a command shell.
+ * Execute one readiness command through its explicitly bounded child authority.
  *
- * On Windows, npm is a `.cmd` shim and cannot be spawned directly without a
- * shell on supported Node releases. Execute the npm JavaScript entry point
- * with the already-running Node binary instead, preserving the argument array
- * and the bounded child environment.
+ * `additionalEnvironmentKeys` widens only the selected child process. The caller
+ * must also provide the corresponding override values; this prevents a new
+ * authority class from silently becoming ambient to every readiness command.
+ * On Windows, npm is a `.cmd` shim, so npm commands execute through the npm
+ * JavaScript CLI with the current Node binary rather than acquiring shell authority.
  *
- * @param {string} command logical command name
- * @param {string[]} args command arguments
- * @param {{env?: Record<string, unknown>}} options bounded call-site options
+ * @param {string} command executable name
+ * @param {string[]} args argument vector
+ * @param {{env?: Record<string, unknown>, additionalEnvironmentKeys?: readonly string[]}} options reviewed child authority
  * @returns {{command: string, exitCode: number, stdout: string, stderr: string, error: string | undefined}} command evidence
  */
 function runCommand(command, args, options = {}) {
-  const env = createReadinessSubprocessEnvironment(options.env);
+  const env = createReadinessSubprocessEnvironment(
+    options.env,
+    options.additionalEnvironmentKeys ?? [],
+  );
   if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
     delete env.NOEMA_AUDIT_REPORT_ONLY;
   }
@@ -108,14 +123,37 @@ function runCommand(command, args, options = {}) {
   };
 }
 
+/**
+ * Append one deterministic readiness decision to the audit evidence ledger.
+ *
+ * Centralizing writes keeps later PASS/NOT_READY/FAIL classification tied to the
+ * same immutable in-memory check sequence instead of duplicating status logic.
+ *
+ * @param {string} name stable buyer-facing check identity
+ * @param {boolean} pass whether the check satisfied its authority contract
+ * @param {Record<string, unknown>} details bounded diagnostic evidence
+ * @returns {void}
+ */
 function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
+/**
+ * Distinguish an intentionally deferred production-evidence check from a blocker.
+ *
+ * @param {{details?: {status?: string}}} item readiness check candidate
+ * @returns {boolean} true only for an explicit deferred status
+ */
 function isDeferredCheck(item) {
   return item.details?.status === "deferred";
 }
 
+/**
+ * Decide whether scheduled evidence collection may report NOT_READY instead of
+ * failing CI for external production evidence that is not available yet.
+ *
+ * @returns {boolean} true only when the explicit report-only switch is enabled
+ */
 function isReportOnlyMode() {
   return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
 }
@@ -130,10 +168,25 @@ const reportOnlyEvidenceGapNames = new Set([
   "pilot readiness has completed production record",
 ]);
 
+/**
+ * Classify only the reviewed external-evidence gaps as report-only eligible.
+ *
+ * This allowlist prevents source/configuration defects from being downgraded to
+ * NOT_READY merely because scheduled evidence collection runs in report mode.
+ *
+ * @param {{name: string}} item readiness check candidate
+ * @returns {boolean} true only for a named external-evidence gap
+ */
 function isReportOnlyEvidenceGap(item) {
   return reportOnlyEvidenceGapNames.has(item.name);
 }
 
+/**
+ * Emit bounded diagnostics for checks that block saleable readiness.
+ *
+ * @param {Array<{name: string, details?: Record<string, unknown>}>} failures blocking checks in evaluation order
+ * @returns {void}
+ */
 function logBlockingFailures(failures) {
   console.log("Failed checks:");
   failures.forEach((item) => {
@@ -208,12 +261,48 @@ record("npm run security:scan", securityScan.exitCode === 0, {
 const kpiLogPath = process.env.NOEMA_KPI_LOG_PATH || "exchange-30d.ndjson";
 const kpiEvidencePath = process.env.NOEMA_KPI_EVIDENCE_PATH || join(outDir, "noema-kpi-evidence.json");
 const kpiProvenancePath = process.env.NOEMA_KPI_PROVENANCE_PATH || `${kpiLogPath}.provenance.json`;
+const privateReportingAuthority = runCommand(
+  "npm",
+  ["run", "security:private-reporting-authority"],
+  {
+    env: {
+      GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA,
+      NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES:
+        process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES,
+    },
+    additionalEnvironmentKeys: privateReportingStrictEnvironmentKeys,
+  },
+);
+record("npm run security:private-reporting-authority", privateReportingAuthority.exitCode === 0, {
+  command: privateReportingAuthority.command,
+  exitCode: privateReportingAuthority.exitCode,
+  stdout: privateReportingAuthority.stdout,
+  stderr: privateReportingAuthority.stderr,
+  error: privateReportingAuthority.error,
+});
+
 const strict = runCommand("npm", ["run", "release:verify:strict"], {
   env: {
     NOEMA_KPI_LOG_PATH: kpiLogPath,
     NOEMA_KPI_EVIDENCE_PATH: kpiEvidencePath,
     NOEMA_KPI_PROVENANCE_PATH: kpiProvenancePath,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATH,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_RECEIPT_PATHS_JSON,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_EXPECTED_SOURCE_SHA,
+    NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES:
+      process.env.NOEMA_PRIVATE_VULNERABILITY_REPORTING_MAX_AGE_MINUTES,
   },
+  additionalEnvironmentKeys: privateReportingStrictEnvironmentKeys,
 });
 record("npm run release:verify:strict", strict.exitCode === 0, {
   command: strict.command,
