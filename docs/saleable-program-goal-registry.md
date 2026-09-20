@@ -15,7 +15,7 @@
 - 목표식:  
   `Release-Ready = 기술게이트_PASS AND KPI_증빙_PASS AND 파일럿_PASS`
 - 최소 기준:
-  - 기술게이트_PASS: `npm run release:verify:strict` PASS
+  - 기술게이트_PASS: protected production CD의 exact immutable-release `release:verify:strict` PASS. Same-run private-reporting receipt가 repository/source/freshness를 충족해야 하며 bare local strict 명령은 기술게이트 증거가 아니다.
   - KPI_증빙_PASS: `exchange_failure_rate <= 0.02`, `exchange_p95_latency_ms < 300`, `exchange_window_days >= 30`, `provenance.sourceKind === "production"`
   - 파일럿_PASS: `docs/pilot-readiness-log.md` production 증빙 완료 항목 1건 이상
 - 운영 판정(자동): `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json.passed === true`
@@ -25,7 +25,7 @@
 `Release-Ready = 기술게이트_PASS AND KPI_증빙_PASS AND 파일럿_PASS`
 
 - 기술게이트_PASS
-  - `npm run release:verify:strict` PASS
+  - protected production CD의 receipt-bound `release:verify:strict` PASS (`docs/deployment-guide.md`의 repository + receipt path + expected source SHA 계약)
   - `docs/saleable-program-readiness.md`의 핵심 6개 항목 `[x]` 충족
   - `docs/goal-completion-audit.md` 핵심 항목 정합성 PASS
 - KPI_증빙_PASS
@@ -114,7 +114,7 @@
 | 항목 | 판정 기준 | 상태 |
 |---|---|---|
 | 기술게이트 | `release:verify` | pass (6 files, 27 tests, npm audit high 0 vulnerabilities, KPI non-strict skip) |
-| Strict 기술게이트 | `release:verify:strict` | blocked (운영 실데이터/provenance 수집 미완) |
+| Strict 기술게이트 | protected CD `release:verify:strict` | blocked (운영 실데이터/provenance 및 exact-release same-run private-reporting receipt 필요) |
 | KPI 30일 실패율 | `exchange_failure_rate <= 0.02` | blocked (운영 실데이터/provenance 미보유) |
 | KPI 30일 p95 | `exchange_p95_latency_ms < 300` | blocked (운영 실데이터/provenance 미보유) |
 | KPI 증빙 보관 | `noema-kpi-evidence.json` status PASS + production provenance | blocked (운영 실데이터/provenance 미보유) |
@@ -147,7 +147,7 @@
 - `.github/workflows/readiness-scan.yml` 스케줄(UTC 매일 01:00)에 자동 실행되어 `goal-audit.json`, `noema-kpi-evidence.json`, `exchange-30d.ndjson.provenance.json`, `noema-smoke-evidence.json`을 아티팩트로 저장
 - 정기 `schedule` 실행은 누락된 production evidence를 `NOT_READY` status, warning, artifact로 남기는 감시 작업이다. `workflow_dispatch`와 로컬 `npm run readiness:audit`는 동일한 누락을 실패로 유지한다.
 - `docs/security-validation-checklist.md`의 미체크 항목은 readiness audit 실패로 처리된다.
-- 배포 전: `npm run release:verify:strict`
+- 배포 전 strict 기술게이트는 protected production CD의 `release:verify:strict`로만 판정한다. 수동 진단은 `docs/deployment-guide.md`의 repository + receipt path + expected source SHA 계약을 따른다.
 - 배포 직후: `NOEMA_EXCHANGE_URL=<BASE>/exchange npm run smoke:check`
 - 블로커 재평가: `exchange-30d.ndjson` 및 provenance 신규 수집 후 `NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify:strict` 재실행
 
