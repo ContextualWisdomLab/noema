@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_MAIN_CHECK_NAMES,
+  REQUIRED_MAIN_WORKFLOW,
   evaluateMainGovernanceRules,
 } from "../scripts/lib/main-governance-audit.mjs";
 
@@ -46,6 +47,21 @@ function compliantRules() {
       ruleset_id: 101,
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
+    },
+    {
+      type: "workflows",
+      ruleset_id: 18_794_436,
+      ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+      ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+      parameters: {
+        workflows: [
+          {
+            repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+            path: REQUIRED_MAIN_WORKFLOW.path,
+            ref: REQUIRED_MAIN_WORKFLOW.ref,
+          },
+        ],
+      },
     },
   ];
 }
@@ -115,6 +131,7 @@ describe("main governance rules evaluator", () => {
       "non_fast_forward_rule_missing",
       "deletion_rule_missing",
     ]));
+    expect(failureCodes(result)).not.toContain("required_security_workflow_missing");
   });
 
   it.each([
