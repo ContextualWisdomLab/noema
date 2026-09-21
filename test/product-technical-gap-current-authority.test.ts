@@ -8,11 +8,11 @@ const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586
 const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `7923e0be72a48d5ea94ab6fe89f63eeb95da7e8d`";
-const STALE_730_EXACT = "#730 current exact `a8c450b2d9fc51d534e7de1c3a8d594d56cfadf7`";
+const CURRENT_730_EXACT = "#730 current exact `68cf8c6a55c80a201ca22dc23bbae128a312e19b`";
+const STALE_730_EXACT = "#730 current exact `7923e0be72a48d5ea94ab6fe89f63eeb95da7e8d`";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `7923e0be72a48d5ea94ab6fe89f63eeb95da7e8d`";
+  "issue #27; candidate #730 exact `68cf8c6a55c80a201ca22dc23bbae128a312e19b`";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
