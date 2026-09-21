@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
-const STALE_726_EXACT = "#726 current exact `cc26566450b693a21fd46bd29daa887d4b2ac4db`";
+const CURRENT_PROTECTED_MAIN = "main@c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9";
+const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
+const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
+const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
+const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
+const CURRENT_730_EXACT = "#730 current exact `a8c450b2d9fc51d534e7de1c3a8d594d56cfadf7`";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `ce5a84df726e59e35f113f86578b3b1e55880ddf`";
+  "issue #27; candidate #730 exact `a8c450b2d9fc51d534e7de1c3a8d594d56cfadf7`";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -68,7 +72,7 @@ function hasCurrentPrivateReportingObservation(baseline: string): boolean {
 }
 
 describe("product-technical gap current authority", () => {
-  it("records protected private-reporting history and post-#728 downstream authority inside the dated convergence section", () => {
+  it("records protected private-reporting history and the latest protected-main merge authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = convergenceSection(baseline);
 
@@ -86,16 +90,20 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain("ordinary/non-force descendants");
     expect(section).toContain("PR #726 exact `1f5a5a120ea803184649e24e0ad6fc7b3419df63`");
     expect(section).toContain("PR #727 exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`");
-    expect(section).toContain("#728 is protected history, not an open candidate");
+    expect(section).toContain(MERGED_727);
+    expect(section).toContain(CURRENT_PROTECTED_MAIN);
+    expect(section).toContain("#728 and #727 are protected history, not open candidates");
     expect(section).not.toContain("PR #728 exact `5deb783fd0985f374630112a92b921bb2f420356`");
   });
 
-  it("binds current #726 exact authority only inside the active open-lane section", () => {
+  it("binds current #726/#730 exact authority only inside the active open-lane section", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
 
     expect(section).toContain(CURRENT_726_EXACT);
     expect(section).not.toContain(STALE_726_EXACT);
+    expect(section).toContain(CURRENT_730_EXACT);
+    expect(section).not.toContain(OPEN_727);
   });
 
   it("records the current protected-main governance candidate in the commercial gap register", () => {
