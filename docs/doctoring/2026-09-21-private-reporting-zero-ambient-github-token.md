@@ -31,12 +31,15 @@ Keeping `contents: read` was rejected because public source acquisition does not
 - GREEN implementation `7f19ecb195c65a09c360be4b43fedebc99faf250` removes job-level `contents: read`, removes `actions/checkout`, uses credential-free exact public fetch, and sets setup-node `token: ""`.
 - `b88285f5ffc8dcaca75b789f16972c43d8100283` updates the canonical App-token contract so it requires zero ambient job permissions rather than the superseded checkout permission.
 - `69ccb2b15b998216691973df1d2e18b278e1713e` updates the broader operational-audit assertions so they reject ambient `contents: read` and `actions/checkout` authority.
+- Independent review of `9b1bb674bd8401748aa9b0287bcf0e5ad338cecd` found one valid regression-oracle weakness: the ambient-token test looked for `token: ""` anywhere in the complete setting job, so an unrelated action could carry that empty input while `actions/setup-node` silently reverted to its default `github.token` input.
+- RED `f08aed5ded4c36419fd816849ee9e2f8400b052e` adds a hostile setting-job fixture that removes the setup-node token while putting `token: ""` on an unrelated step; the predecessor whole-job matcher false-PASSes that fixture.
+- GREEN `d688cf90f6f0bfa5d27189ae7e76ced87ffc0dc2` binds the assertion to the exact pinned setup-node step and its contiguous `with:` block, so an unrelated empty token cannot satisfy the boundary.
 
-Hosted evidence and independent current-head review must bind to the final exact head after this record is added; predecessor review and workflow GREEN do not transfer.
+Hosted evidence and independent current-head review must bind to the final exact head after this record is updated; predecessor review and workflow GREEN do not transfer.
 
 ## Risks and rollback
 
-Unauthenticated GitHub source acquisition and unauthenticated setup-node distribution lookup can encounter public rate limits or transient network failures. Those are deliberate fail-closed availability risks in exchange for removing unnecessary repository-token authority. If that proves operationally unacceptable, rollback requires a new reviewed decision that demonstrates the least additional permission needed; silently restoring `contents: read` is not an accepted fallback.
+Unauthenticated GitHub source acquisition and unauthenticated setup-node distribution lookup can encounter public rate limits or transient network failures. Those are deliberate fail-closed availability risks in exchange for removing unnecessary repository-token authority. The exact-step regression contract is intentionally stricter than a generic YAML search: if setup-node version/input structure changes, the contract must be reviewed with that change rather than silently accepting an equivalent-looking unrelated token input. If tokenless public acquisition proves operationally unacceptable, rollback requires a new reviewed decision that demonstrates the least additional permission needed; silently restoring `contents: read` is not an accepted fallback.
 
 ## References
 
