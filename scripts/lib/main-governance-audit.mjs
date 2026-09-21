@@ -19,6 +19,14 @@ function normalized(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function exactAuthorityString(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim()
+    ? value
+    : "";
+}
+
 function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
@@ -42,7 +50,7 @@ function rulesOfType(rules, type) {
 }
 
 function observedWorkflowControls(rules) {
-  return rulesOfType(rules, "workflows").flatMap((rule) => {
+  return rules.filter((rule) => rule?.type === "workflows").flatMap((rule) => {
     const workflows = ruleParameters(rule).workflows;
     if (!Array.isArray(workflows)) {
       return [];
@@ -51,11 +59,11 @@ function observedWorkflowControls(rules) {
       repository_id: positiveInteger(workflow?.repository_id)
         ? workflow.repository_id
         : null,
-      path: normalized(workflow?.path) || "unknown",
-      ref: normalized(workflow?.ref) || "unknown",
+      path: exactAuthorityString(workflow?.path) || "unknown",
+      ref: exactAuthorityString(workflow?.ref) || "unknown",
       ruleset_id: positiveInteger(rule?.ruleset_id) ? rule.ruleset_id : null,
-      ruleset_source_type: normalized(rule?.ruleset_source_type) || "unknown",
-      ruleset_source: normalized(rule?.ruleset_source) || "unknown",
+      ruleset_source_type: exactAuthorityString(rule?.ruleset_source_type) || "unknown",
+      ruleset_source: exactAuthorityString(rule?.ruleset_source) || "unknown",
     }));
   });
 }
