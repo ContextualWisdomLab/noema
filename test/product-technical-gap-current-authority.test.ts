@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
 
+/**
+ * Isolates the dated convergence authority so duplicated historical text cannot satisfy current-evidence assertions.
+ */
 function convergenceSection(baseline: string) {
   const start = baseline.indexOf(CONVERGENCE_HEADING);
   expect(start).toBeGreaterThanOrEqual(0);
