@@ -7,6 +7,14 @@ export const REQUIRED_MAIN_CHECK_NAMES = Object.freeze([
   "dependency-review",
 ]);
 
+export const REQUIRED_MAIN_WORKFLOW = Object.freeze({
+  repository_id: 1_274_066_402,
+  path: ".github/workflows/security-scan.yml",
+  ref: "refs/heads/main",
+  ruleset_source_type: "Organization",
+  ruleset_source: "ContextualWisdomLab",
+});
+
 function normalized(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -52,6 +60,14 @@ function observedWorkflowControls(rules) {
   });
 }
 
+function isCanonicalRequiredWorkflow(workflow) {
+  return workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && workflow.path === REQUIRED_MAIN_WORKFLOW.path
+    && workflow.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && workflow.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+    && workflow.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source;
+}
+
 function emptyObservedControls() {
   return {
     pull_request_rule_present: false,
@@ -85,6 +101,7 @@ export function evaluateMainGovernanceRules(rules) {
   const statusRules = rulesOfType(rules, "required_status_checks");
   const nonFastForwardRules = rulesOfType(rules, "non_fast_forward");
   const deletionRules = rulesOfType(rules, "deletion");
+  const requiredWorkflows = observedWorkflowControls(rules);
 
   addCheck(
     checks,
@@ -121,6 +138,17 @@ export function evaluateMainGovernanceRules(rules) {
     deletionRules.length > 0
       ? "Main deletion is restricted by an active deletion rule."
       : "No active deletion rule protects main.",
+  );
+
+  const canonicalSecurityWorkflowPresent = requiredWorkflows.some(isCanonicalRequiredWorkflow);
+  addCheck(
+    checks,
+    failures,
+    "required_security_workflow_missing",
+    canonicalSecurityWorkflowPresent,
+    canonicalSecurityWorkflowPresent
+      ? "The canonical organization-owned central Security Scan workflow is enforced for main."
+      : "The canonical organization-owned central Security Scan workflow is not enforced for main.",
   );
 
   const dismissStaleReviews = pullRequestRules.some(
@@ -229,7 +257,7 @@ export function evaluateMainGovernanceRules(rules) {
       required_status_checks_rule_present: statusRules.length > 0,
       non_fast_forward_rule_present: nonFastForwardRules.length > 0,
       deletion_rule_present: deletionRules.length > 0,
-      required_workflows: observedWorkflowControls(rules),
+      required_workflows: requiredWorkflows,
     },
   };
 }
