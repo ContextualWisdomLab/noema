@@ -35,7 +35,7 @@ function compliantRules() {
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         required_approving_review_count: 1,
         required_review_thread_resolution: true,
