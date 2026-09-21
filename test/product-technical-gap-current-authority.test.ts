@@ -113,8 +113,8 @@ describe("product-technical gap current authority", () => {
   it("keeps release observation current without promoting absence into release completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("Dated release observation for this repair (2026-09-21 KST)는 GitHub Releases **0건**이다.");
-    expect(baseline).not.toContain("Dated release observation for this repair (2026-09-16 KST)는 GitHub Releases **0건**이다.");
+    expect(baseline).toContain("Dated release observation for this repair (2026-09-22 KST)는 GitHub Releases **0건**이다.");
+    expect(baseline).not.toContain("Dated release observation for this repair (2026-09-21 KST)는 GitHub Releases **0건**이다.");
     expect(baseline).toContain("GitHub release collection에 immutable Noema release가 실제 존재하기 전");
   });
 });
