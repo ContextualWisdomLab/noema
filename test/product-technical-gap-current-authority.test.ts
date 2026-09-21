@@ -7,6 +7,13 @@ const GOVERNANCE_CANDIDATE =
   "issue #27; candidate #730 exact `ce5a84df726e59e35f113f86578b3b1e55880ddf`";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
+const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
+const PRIVATE_REPORTING_DATED_VISIBILITY =
+  "dated 2026-09-22 signed-out `Report a vulnerability` visibility + bounded public observation evidenced";
+const PRIVATE_REPORTING_REMAINING_GAPS =
+  "direct submission form, fresh protected receipt, staffing/notification, benign private case, release/deployment evidence open";
+const PRIVATE_REPORTING_NEXT_ACTION =
+  "#73에서 fresh protected receipt, direct submission form, staffing/notification, benign private case, buyer-safe receipt를 owner별로 독립 수집";
 
 /**
  * Isolates the dated convergence authority so duplicated historical text cannot satisfy current-evidence assertions.
@@ -31,6 +38,20 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
   return governanceRows.length === 1
     && governanceRows[0].includes(GOVERNANCE_CANDIDATE)
     && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
+}
+
+/**
+ * Requires the active private-reporting P0 row itself to carry the newest dated
+ * reporter-surface observation and the still-open operational evidence classes.
+ */
+function hasCurrentPrivateReportingObservation(baseline: string): boolean {
+  const privateReportingRows = baseline
+    .split("\n")
+    .filter((line) => line.startsWith(PRIVATE_REPORTING_ROW_PREFIX));
+  return privateReportingRows.length === 1
+    && privateReportingRows[0].includes(PRIVATE_REPORTING_DATED_VISIBILITY)
+    && privateReportingRows[0].includes(PRIVATE_REPORTING_REMAINING_GAPS)
+    && privateReportingRows[0].includes(PRIVATE_REPORTING_NEXT_ACTION);
 }
 
 describe("product-technical gap current authority", () => {
@@ -70,6 +91,23 @@ describe("product-technical gap current authority", () => {
     ].join("\n");
 
     expect(hasCurrentGovernanceCandidate(hostileBaseline)).toBe(false);
+  });
+
+  it("binds the dated external-reporter observation to the active private-reporting P0 row", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(hasCurrentPrivateReportingObservation(baseline)).toBe(true);
+  });
+
+  it("does not let historical reporter-observation prose satisfy the active private-reporting row", () => {
+    const hostileBaseline = [
+      `Historical observation: ${PRIVATE_REPORTING_DATED_VISIBILITY}`,
+      `Historical remaining gaps: ${PRIVATE_REPORTING_REMAINING_GAPS}`,
+      `Historical next action: ${PRIVATE_REPORTING_NEXT_ACTION}`,
+      `${PRIVATE_REPORTING_ROW_PREFIX} setting receipt가 운영 증거로 과대 승격될 위험 | issue #73; candidate #726 | external reporter visibility open | protected observation | collect remaining evidence |`,
+    ].join("\n");
+
+    expect(hasCurrentPrivateReportingObservation(hostileBaseline)).toBe(false);
   });
 
   it("keeps release observation current without promoting absence into release completion", () => {
