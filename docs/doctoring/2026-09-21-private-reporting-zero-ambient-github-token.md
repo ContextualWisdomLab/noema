@@ -16,14 +16,14 @@ The `setting` job now uses `permissions: {}` and performs the same credential-fr
 - add only `https://github.com/ContextualWisdomLab/noema.git`;
 - fetch exactly `$GITHUB_SHA` with `credential.helper=` and terminal prompting disabled;
 - detach at `FETCH_HEAD` and retain the existing exact-checkout cleanliness check;
-- allow exactly one `actions/setup-node@...` reference in the setting-job regression contract, and require that pinned canonical step to pass `token: ""` so no additional setup-node invocation can silently regain the default job token;
+- admit only plain, non-indirected `uses:` values at this regression boundary, then require exactly one `actions/setup-node@...` reference and the pinned canonical step with `token: ""`; quoted/escaped/aliased `uses:` serialization fails closed rather than becoming an alternate path to the default job token;
 - mint the separate repository-scoped GitHub App token only for the bounded private-vulnerability-reporting status GET, retaining the exact `permission-metadata: read` allowlist and owner-only capability-file handoff.
 
 No product-domain, provider-routing, quarantine/security-runtime, outbound, deployment, or case-handling authority moves into Noema.
 
 ## Alternatives rejected
 
-Keeping `contents: read` was rejected because public source acquisition does not require it and every third-party action in the job can otherwise access `github.token`. Retaining `actions/checkout` with `persist-credentials: false` was also rejected: that prevents persisted Git credentials after checkout, but it still requires the checkout action to receive a repository-capable token for the checkout itself. Removing `setup-node` was unnecessary because its token input can be explicitly blank while preserving deterministic Node setup. Accepting one compliant setup-node block while allowing additional setup-node invocations was rejected because a second invocation can recover the action's default `github.token` input and invalidate the zero-ambient-token evidence while the earlier block keeps a substring-based oracle green.
+Keeping `contents: read` was rejected because public source acquisition does not require it and every third-party action in the job can otherwise access `github.token`. Retaining `actions/checkout` with `persist-credentials: false` was also rejected: that prevents persisted Git credentials after checkout, but it still requires the checkout action to receive a repository-capable token for the checkout itself. Removing `setup-node` was unnecessary because its token input can be explicitly blank while preserving deterministic Node setup. Accepting one compliant setup-node block while allowing additional or YAML-obfuscated setup-node invocations was rejected because another invocation can recover the action's default `github.token` input while a literal-substring oracle remains green. Parsing arbitrary YAML inside the test was rejected in favor of a narrower fail-closed serialization contract: a future need for quoted, escaped or aliased action identity must change this authority contract explicitly.
 
 ## Executable evidence
 
@@ -36,13 +36,16 @@ Keeping `contents: read` was rejected because public source acquisition does not
 - GREEN `d688cf90f6f0bfa5d27189ae7e76ced87ffc0dc2` binds the assertion to the exact pinned setup-node step and its contiguous `with:` block, so an unrelated empty token cannot satisfy the boundary.
 - After #728 merged, independent review of non-force-restacked exact `3b5d8e9579ccefbb3ed632b6fc8033aa695a7937` found another valid false-PASS: the helper could find one compliant setup-node block while ignoring a second setup-node invocation that omitted the blank token.
 - RED `fcf07cdd202cfdf365253470dc1c5da9a24637b3` adds a workflow-shaped hostile setting-job fixture containing both an unsafe setup-node invocation and the retained compliant block; the predecessor substring oracle returns true for that fixture.
-- GREEN `f66b7a271884e6270973d40cfb3c3fe032d51cca` requires exactly one textual `actions/setup-node@` reference before admitting the canonical pinned tokenless block. The checked-in production workflow is unchanged by this repair.
+- GREEN `f66b7a271884e6270973d40cfb3c3fe032d51cca` requires exactly one literal `actions/setup-node@` reference before admitting the canonical pinned tokenless block.
+- Independent review of `3e54330942c607107df587f731c2e81e59462d4e` found that literal counting still missed a valid YAML double-quoted action identity such as `actions/setup\u002dnode@...`, which YAML resolves to the same setup-node action.
+- RED `5723265c047f796406f43bc858efa252e5b917de` adds that escaped duplicate invocation while retaining the compliant block; the literal-count predecessor false-PASSes it.
+- GREEN `ef04636af3911fbe06b535be57cca2dd924266bd` rejects quoted, escaped or aliased `uses:` values before requiring exactly one canonical plain setup-node identity. The production workflow remains unchanged by both review-oracle repairs.
 
 Hosted evidence and independent current-head review must bind to the final exact head after this record is updated; predecessor review and workflow GREEN do not transfer.
 
 ## Risks and rollback
 
-Unauthenticated GitHub source acquisition and unauthenticated setup-node distribution lookup can encounter public rate limits or transient network failures. Those are deliberate fail-closed availability risks in exchange for removing unnecessary repository-token authority. The exact-step regression contract is intentionally stricter than a generic YAML search: if setup-node version/input structure changes, or a legitimate second setup-node invocation is proposed, the contract and authority model must be reviewed with that change rather than silently accepting another token acquisition path. If tokenless public acquisition proves operationally unacceptable, rollback requires a new reviewed decision that demonstrates the least additional permission needed; silently restoring `contents: read` is not an accepted fallback.
+Unauthenticated GitHub source acquisition and unauthenticated setup-node distribution lookup can encounter public rate limits or transient network failures. Those are deliberate fail-closed availability risks in exchange for removing unnecessary repository-token authority. The regression contract is intentionally stricter than generic YAML equivalence: if setup-node version/input structure changes, a legitimate second invocation is proposed, or quoted/escaped/aliased `uses:` serialization becomes necessary, the authority model must be reviewed with that change rather than silently accepting another token acquisition path. If tokenless public acquisition proves operationally unacceptable, rollback requires a new reviewed decision that demonstrates the least additional permission needed; silently restoring `contents: read` is not an accepted fallback.
 
 ## References
 
