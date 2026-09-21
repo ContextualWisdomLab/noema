@@ -33,7 +33,7 @@ function compliantRules() {
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
@@ -273,13 +273,13 @@ describe("main governance rules evaluator", () => {
     expect(failureCodes(result)).toContain("review_thread_resolution_disabled");
   });
 
-  it("requires squash as an allowed merge method", () => {
+  it("requires normal merge commits as an allowed merge method", () => {
     const rules = compliantRules();
-    rules[0].parameters.allowed_merge_methods = ["rebase"];
+    rules[0].parameters.allowed_merge_methods = ["squash"];
 
     const result = evaluateMainGovernanceRules(rules);
 
-    expect(failureCodes(result)).toContain("squash_merge_not_allowed");
+    expect(failureCodes(result)).toContain("merge_commit_not_allowed");
   });
 
   it("requires strict current-base status checks", () => {
