@@ -128,4 +128,79 @@ describe("runtime-readiness exact Git ref validation", () => {
     expect(result.failedChecks).not.toContain("allowed_workflow_ref");
     expect(result.failedChecks).not.toContain("allowed_workflow_sha");
   });
+
+  it.each([
+    [
+      "an empty workflow filename",
+      "ContextualWisdomLab/.github/.github/workflows/@refs/heads/main",
+    ],
+    [
+      "a workflow basename longer than the protected grammar permits",
+      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(102)}.yml@refs/heads/main`,
+    ],
+    [
+      "a 101-character basename with .yml",
+      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(101)}.yml@refs/heads/main`,
+    ],
+    [
+      "a 101-character basename with .yaml",
+      `ContextualWisdomLab/.github/.github/workflows/${"a".repeat(101)}.yaml@refs/heads/main`,
+    ],
+    [
+      "an unsupported workflow extension",
+      "ContextualWisdomLab/.github/.github/workflows/review.json@refs/heads/main",
+    ],
+    [
+      "an empty workflow basename",
+      "ContextualWisdomLab/.github/.github/workflows/.yml@refs/heads/main",
+    ],
+    [
+      "a nested workflow path",
+      "ContextualWisdomLab/.github/.github/workflows/nested/review.yml@refs/heads/main",
+    ],
+  ])("rejects %s", async (_description, workflowRef) => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REF_PREFIX = workflowRef;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_workflow_ref");
+  });
+
+  it.each([
+    `${"a".repeat(100)}.yml`,
+    `${"a".repeat(100)}.yaml`,
+  ])("accepts the protected 100-character basename boundary for %s", async (workflowName) => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `ContextualWisdomLab/.github/.github/workflows/${workflowName}@refs/heads/main`;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(true);
+    expect(result.failedChecks).not.toContain("allowed_workflow_ref");
+  });
+
+  it("accepts the historical yaml workflow extension", async () => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      "ContextualWisdomLab/.github/.github/workflows/review.yaml@refs/heads/main";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(true);
+    expect(result.failedChecks).not.toContain("allowed_workflow_ref");
+  });
+
+  it("preserves the historical one-character workflow filename grammar", async () => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      "ContextualWisdomLab/.github/.github/workflows/a.yml@refs/heads/main";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(true);
+    expect(result.failedChecks).not.toContain("allowed_workflow_ref");
+  });
 });
