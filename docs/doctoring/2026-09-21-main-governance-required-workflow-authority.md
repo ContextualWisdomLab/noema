@@ -65,4 +65,4 @@ After this source repair reaches an exact reviewed head, required hosted checks 
 
 ## TRACEABILITY
 
-`AGENTS.md` mandatory central Security Scan gate → `scripts/lib/main-governance-audit.mjs` canonical required-workflow predicate → `test/main-governance-required-workflow.test.ts` absence/lookalike/malformed regressions → `scripts/main-governance-audit.mjs` exact protected-main collector → `artifacts/governance/main-governance-audit.json` → issue #27 live governance closure.
+`AGENTS.md` mandatory central Security Scan gate → `scripts/lib/main-governance-audit.mjs` canonical required-workflow predicate → `test/main-governance-audit.test.ts` absence/lookalike/malformed regressions → `scripts/main-governance-audit.mjs` exact protected-main collector → `artifacts/governance/main-governance-audit.json` → issue #27 live governance closure.
