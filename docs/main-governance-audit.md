@@ -33,7 +33,7 @@ The effective response must contain:
 - `pull_request`
   - `dismiss_stale_reviews_on_push: true`
   - `required_review_thread_resolution: true`
-  - `allowed_merge_methods` includes `squash`
+  - `allowed_merge_methods` includes `merge`
 - `required_status_checks`
   - `strict_required_status_checks_policy: true`
   - `verify`
@@ -68,7 +68,7 @@ The workflow contract deliberately does not pin the ruleset numeric id. Recreati
 2. Mint the repository-scoped maintainer App token.
 3. Install lockfile dependencies.
 4. Run `npm run governance:audit`.
-5. Only after a `PASS`, inspect PRs, dispatch Noema review, or perform SHA-bound squash merge.
+5. Only after a `PASS`, inspect PRs, dispatch Noema review, or perform a SHA-bound normal merge commit.
 
 A failed governance audit stops all write actions but still uploads `main-governance-audit` evidence.
 
@@ -124,14 +124,15 @@ When the audit fails:
 4. Enable stale-review dismissal and conversation resolution.
 5. Add the six required check contexts with their exact names and select the GitHub Actions integration (`integration_id: 15368`) as the expected source.
 6. Preserve the organization-owned `ContextualWisdomLab/.github` `.github/workflows/security-scan.yml@refs/heads/main` required-workflow control; do not replace it with a repository-owned lookalike.
-7. Require branches to be up to date before merge.
+7. Require branches to be up to date before merge and allow normal merge commits (`merge`) for the commercial-readiness loop.
 8. Re-run the audit and retain the generated artifact.
 
-Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, accept an arbitrary positive status producer id, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
+Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, accept an arbitrary positive status producer id, use an unpinned status source, force squash-only merge policy, or grant the maintainer App administration access to make the workflow pass.
 
 ## Primary references
 
 - GitHub REST API: repository rules and active branch rules
 - GitHub REST API: check runs and their producing GitHub App identity
 - GitHub rulesets: available branch rules, required workflows, and required status checks
+- GitHub REST API: merge a pull request with an expected head SHA and `merge` method
 - GitHub Actions `GITHUB_TOKEN`: workflow-trigger suppression and GitHub App token alternative
