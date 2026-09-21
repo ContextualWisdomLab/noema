@@ -19,7 +19,7 @@ function compliantGovernanceRules() {
       ruleset_source_type: "Repository",
       ruleset_source: repository,
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
