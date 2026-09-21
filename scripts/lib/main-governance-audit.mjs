@@ -15,10 +15,7 @@ export const REQUIRED_MAIN_WORKFLOW = Object.freeze({
   ruleset_source: "ContextualWisdomLab",
 });
 
-function normalized(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
+/** Preserve authority-bearing API strings only when their serialization is already exact. */
 function exactAuthorityString(value) {
   return typeof value === "string"
     && value.length > 0
@@ -27,16 +24,19 @@ function exactAuthorityString(value) {
     : "";
 }
 
+/** Admit only positive safe integers where GitHub identity fields require numeric authority. */
 function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+/** Return a rule parameter object without trusting malformed or null parameter payloads. */
 function ruleParameters(rule) {
   return rule?.parameters && typeof rule.parameters === "object"
     ? rule.parameters
     : {};
 }
 
+/** Record one audit result and mirror failures into the bounded failure list. */
 function addCheck(checks, failures, code, pass, detail) {
   const check = { code, pass, detail };
   checks.push(check);
@@ -45,10 +45,12 @@ function addCheck(checks, failures, code, pass, detail) {
   }
 }
 
+/** Select only rules whose GitHub API type is already serialized exactly as the expected authority. */
 function rulesOfType(rules, type) {
-  return rules.filter((rule) => normalized(rule?.type) === type);
+  return rules.filter((rule) => rule?.type === type);
 }
 
+/** Extract required-workflow observations without normalizing owner, path, ref, or source identity. */
 function observedWorkflowControls(rules) {
   return rules.filter((rule) => rule?.type === "workflows").flatMap((rule) => {
     const workflows = ruleParameters(rule).workflows;
@@ -68,6 +70,7 @@ function observedWorkflowControls(rules) {
   });
 }
 
+/** Match the organization-owned Security Scan workflow only on its stable canonical authority tuple. */
 function isCanonicalRequiredWorkflow(workflow) {
   return workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
     && workflow.path === REQUIRED_MAIN_WORKFLOW.path
@@ -76,6 +79,7 @@ function isCanonicalRequiredWorkflow(workflow) {
     && workflow.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source;
 }
 
+/** Build the fail-closed observed-control shape used when rule evidence is structurally invalid. */
 function emptyObservedControls() {
   return {
     pull_request_rule_present: false,
@@ -86,6 +90,13 @@ function emptyObservedControls() {
   };
 }
 
+/**
+ * Evaluate effective main-branch governance evidence without upgrading normalized lookalikes into authority.
+ *
+ * @param {unknown} rules active GitHub rules applying to protected main
+ * @returns {{status: "PASS" | "FAIL", checks: Array, failures: Array, observed_controls: object}}
+ * bounded governance decision and retained observations
+ */
 export function evaluateMainGovernanceRules(rules) {
   const checks = [];
   const failures = [];
@@ -231,7 +242,7 @@ export function evaluateMainGovernanceRules(rules) {
   });
   for (const context of REQUIRED_MAIN_CHECK_NAMES) {
     const matchingEntries = requiredStatusEntries.filter(
-      (entry) => normalized(entry?.context) === context,
+      (entry) => entry?.context === context,
     );
     addCheck(
       checks,
