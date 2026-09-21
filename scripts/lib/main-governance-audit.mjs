@@ -216,18 +216,18 @@ export function evaluateMainGovernanceRules(rules) {
       : "Active pull-request rules do not require review-thread resolution.",
   );
 
-  const squashAllowed = pullRequestRules.length > 0 && pullRequestRules.every((rule) => {
+  const normalMergeAllowed = pullRequestRules.length > 0 && pullRequestRules.every((rule) => {
     const allowed = ruleParameters(rule).allowed_merge_methods;
-    return Array.isArray(allowed) && allowed.includes("squash");
+    return Array.isArray(allowed) && allowed.includes("merge");
   });
   addCheck(
     checks,
     failures,
-    "squash_merge_not_allowed",
-    squashAllowed,
-    squashAllowed
-      ? "Every active pull-request rule permits squash merge."
-      : "At least one active pull-request rule does not permit squash merge.",
+    "merge_commit_not_allowed",
+    normalMergeAllowed,
+    normalMergeAllowed
+      ? "Every active pull-request rule permits normal merge commits."
+      : "At least one active pull-request rule does not permit normal merge commits.",
   );
 
   const strictStatusPolicy = statusRules.some(
