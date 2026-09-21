@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
 import { readStrictJsonEvidence } from "./lib/strict-json-evidence.mjs";
@@ -86,6 +86,8 @@ function createReadinessSubprocessEnvironment(overrides = {}, additionalKeys = [
  * `additionalEnvironmentKeys` widens only the selected child process. The caller
  * must also provide the corresponding override values; this prevents a new
  * authority class from silently becoming ambient to every readiness command.
+ * On Windows, npm is a `.cmd` shim, so npm commands execute through the npm
+ * JavaScript CLI with the current Node binary rather than acquiring shell authority.
  *
  * @param {string} command executable name
  * @param {string[]} args argument vector
@@ -105,9 +107,12 @@ function runCommand(command, args, options = {}) {
     encoding: "utf8",
     env,
   };
-  const result = process.platform === "win32"
-    ? spawnSync(`${command} ${args.join(" ")}`, { ...spawnOptions, shell: true })
-    : spawnSync(command, args, spawnOptions);
+  const isWindowsNpm = process.platform === "win32" && command === "npm";
+  const executable = isWindowsNpm ? process.execPath : command;
+  const spawnArgs = isWindowsNpm
+    ? [join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"), ...args]
+    : args;
+  const result = spawnSync(executable, spawnArgs, spawnOptions);
 
   return {
     command: `${command} ${args.join(" ")}`,

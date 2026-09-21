@@ -66,4 +66,14 @@ describe("saleable readiness subprocess authority", () => {
     expect(jsdoc).toContain("@param");
     expect(jsdoc).toContain("@returns");
   });
+
+  it("invokes npm on Windows through Node's JavaScript CLI without a command shell", () => {
+    const script = readFileSync("scripts/saleable-readiness-audit.mjs", "utf8");
+
+    expect(script).toContain('process.platform === "win32" && command === "npm"');
+    expect(script).toContain("process.execPath");
+    expect(script).toContain('"node_modules", "npm", "bin", "npm-cli.js"');
+    expect(script).not.toContain('"npm.cmd"');
+    expect(script).not.toContain("shell: true");
+  });
 });
