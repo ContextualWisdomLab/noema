@@ -6,6 +6,24 @@ import {
   evaluateMainGovernanceRules,
 } from "../scripts/lib/main-governance-audit.mjs";
 
+function canonicalWorkflowRule() {
+  return {
+    type: "workflows",
+    ruleset_id: 18_794_436,
+    ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+    ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+    parameters: {
+      workflows: [
+        {
+          repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+          path: REQUIRED_MAIN_WORKFLOW.path,
+          ref: REQUIRED_MAIN_WORKFLOW.ref,
+        },
+      ],
+    },
+  };
+}
+
 function compliantRules() {
   return [
     {
@@ -48,21 +66,7 @@ function compliantRules() {
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
     },
-    {
-      type: "workflows",
-      ruleset_id: 18_794_436,
-      ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
-      ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
-      parameters: {
-        workflows: [
-          {
-            repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
-            path: REQUIRED_MAIN_WORKFLOW.path,
-            ref: REQUIRED_MAIN_WORKFLOW.ref,
-          },
-        ],
-      },
-    },
+    canonicalWorkflowRule(),
   ];
 }
 
@@ -132,6 +136,95 @@ describe("main governance rules evaluator", () => {
       "deletion_rule_missing",
     ]));
     expect(failureCodes(result)).not.toContain("required_security_workflow_missing");
+  });
+
+  it("requires the canonical organization-owned central Security Scan workflow", () => {
+    const result = evaluateMainGovernanceRules(
+      compliantRules().filter((rule) => rule.type !== "workflows"),
+    );
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual({
+      code: "required_security_workflow_missing",
+      detail: "The canonical organization-owned central Security Scan workflow is not enforced for main.",
+    });
+  });
+
+  it("rejects a lookalike workflow owned by a different repository id", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].repository_id = 1;
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a lookalike workflow at a different path", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].path = ".github/workflows/other.yml";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a lookalike workflow pinned to a different ref", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].ref = "refs/heads/develop";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a repository-owned lookalike workflow", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.ruleset_source_type = "Repository";
+    workflowRule.ruleset_source = "ContextualWisdomLab/noema";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a workflow attributed to the wrong organization", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.ruleset_source = "AnotherOrganization";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("fails closed when the workflows payload is malformed", () => {
+    const malformedWorkflowRule = {
+      ...canonicalWorkflowRule(),
+      parameters: { workflows: null },
+    };
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      malformedWorkflowRule,
+    ]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+    expect(result.observed_controls.required_workflows).toEqual([]);
   });
 
   it.each([
