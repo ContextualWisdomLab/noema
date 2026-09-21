@@ -61,7 +61,7 @@ PR 0 is not manufactured by closing useful work. An open lane disappears only by
 
 ## Release boundary
 
-Dated release observation for this repair (2026-09-21 KST)는 GitHub Releases **0건**이다. GitHub release collection에 immutable Noema release가 실제 존재하기 전 version/tag/package/SBOM/provenance/reproducibility/rollback completion을 주장하지 않는다. Release-ready exact protected head에서만 publication하고 consumer는 released/versioned contract만 bump한다.
+Dated release observation for this repair (2026-09-22 KST)는 GitHub Releases **0건**이다. GitHub release collection에 immutable Noema release가 실제 존재하기 전 version/tag/package/SBOM/provenance/reproducibility/rollback completion을 주장하지 않는다. Release-ready exact protected head에서만 publication하고 consumer는 released/versioned contract만 bump한다.
 
 ## Historical detail retention
 
