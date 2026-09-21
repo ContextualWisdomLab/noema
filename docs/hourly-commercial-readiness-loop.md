@@ -73,7 +73,7 @@ read-only activation preflight
 | `blocked` | 하나 이상의 필수 근거가 누락·대기·실패·오래됨 상태 | 없음 |
 | `request_review` | 기계 검증과 사람 리뷰는 준비됐지만 현재 head Noema 승인만 없음 | 정확한 head SHA로 `noema-review` dispatch |
 | `review_in_progress` | 동일 저장소·PR·head에 대한 central review가 이미 queued/in progress | 중복 dispatch 없음 |
-| `merge` | 모든 fail-closed 조건 충족 | 최종 재조회 후 SHA-bound squash merge |
+| `merge` | 모든 fail-closed 조건 충족 | 최종 재조회 후 SHA-bound normal merge commit |
 | `operational_error` | GitHub API, pagination, JSON 또는 쓰기 실패 | 워크플로 실패 및 보고서 보존 |
 
 ## 필수 병합 근거
