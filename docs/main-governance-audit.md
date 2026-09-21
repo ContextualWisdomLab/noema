@@ -44,15 +44,17 @@ The effective response must contain:
   - `dependency-review`
   - every mandatory context has a positive `integration_id`
 - `workflows`
-  - ruleset source type is `Organization`
-  - ruleset source is `ContextualWisdomLab`
+  - ruleset source type is exactly `Organization`
+  - ruleset source is exactly `ContextualWisdomLab`
   - workflow repository id is `1274066402` (`ContextualWisdomLab/.github`)
-  - workflow path is `.github/workflows/security-scan.yml`
+  - workflow path is exactly `.github/workflows/security-scan.yml`
   - workflow ref is exactly `refs/heads/main`
 - `non_fast_forward`
 - `deletion`
 
 The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
+
+The required-workflow identity fields are authority, not display text. Their rule type, source type, source, workflow path, and ref must match the API serialization exactly; values that become canonical only after trimming are malformed and fail closed.
 
 The workflow contract deliberately does not pin the ruleset numeric id. Recreating an organization ruleset can change that id without changing the owner/workflow authority. The stable authority checked by source is the organization owner plus immutable GitHub repository id, workflow path, and exact branch ref. Live ruleset identity and enforcement must still be refetched for each decision.
 
@@ -92,7 +94,7 @@ The JSON report contains:
 - `active_rule_count`
 - `active_rule_types`
 - `rule_sources`
-- `observed_controls`, including the normalized required-workflow observations
+- `observed_controls`, including the exact required-workflow observations
 - `checks`
 - `failures`
 - `limitations`
