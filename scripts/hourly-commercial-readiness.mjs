@@ -469,7 +469,7 @@ function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const payload = {
     commit_title: `${snapshot.title} (#${snapshot.number})`,
     commit_message: "Merged by Noema's hourly commercial-readiness loop after exact-head validation.",
-    merge_method: "squash",
+    merge_method: "merge",
     sha: expectedHeadSha,
   };
   const result = runGhJson(
@@ -620,7 +620,7 @@ export function main(argv = process.argv.slice(2)) {
           trustedNoemaReviewerLogin,
         );
         result.result = "merged";
-        result.detail = `Squash-merged at ${mergeSha || "GitHub-generated commit"}.`;
+        result.detail = `Merged normally at ${mergeSha || "GitHub-generated commit"}.`;
       }
       report.results.push(result);
     } catch (error) {
