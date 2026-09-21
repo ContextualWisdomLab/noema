@@ -38,15 +38,15 @@ function strictPullRequestRule() {
   };
 }
 
-/** Supply all mandatory status contexts so a whitespace mutation isolates one authority decision. */
+/** Supply all mandatory status contexts from the canonical GitHub Actions producer. */
 function strictStatusRule() {
   return {
     type: "required_status_checks",
     parameters: {
       strict_required_status_checks_policy: true,
-      required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+      required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
         context,
-        integration_id: 15_368 + index,
+        integration_id: 15_368,
       })),
     },
   };
@@ -124,5 +124,14 @@ describe("governance authority serialization", () => {
       && check.detail.includes(REQUIRED_MAIN_CHECK_NAMES[0]));
 
     expect(verifyCheck?.pass).toBe(false);
+  });
+
+  it("rejects a mandatory status context pinned to a non-GitHub-Actions integration", () => {
+    const rule = strictStatusRule();
+    rule.parameters.required_status_checks[0].integration_id = 99_999;
+
+    const result = evaluateMainGovernanceRules([rule]);
+
+    expect(failureCodes(result)).toContain("required_status_source_mismatch");
   });
 });
