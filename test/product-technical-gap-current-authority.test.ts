@@ -5,6 +5,8 @@ describe("product-technical gap current authority", () => {
   it("records the protected private-reporting lineage and current downstream candidates", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
+    expect(baseline).toContain("Dated protected observation for this repair는 `main@a69bfadb9a450a37a810a71d4070d652e23d3d60`이다.");
+    expect(baseline).not.toContain("Dated protected observation for this repair는 `main@4433c3009d4c6bc900bf5c8346f75b07185ff985`이다.");
     expect(baseline).toContain("Protected private-reporting authority convergence — merged PRs #722 + #723 + #724");
     expect(baseline).toContain("#722 reviewed source exact `b4563512dce9ce9084548cad29f247911949c359`");
     expect(baseline).toContain("#722 GitHub-verified normal merge `227e746662d29dcc8fe360f055b7fdb7857c09fd`");
