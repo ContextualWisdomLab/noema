@@ -72,6 +72,14 @@ describe("governance authority serialization", () => {
     expect(failureCodes(result)).toContain("required_security_workflow_missing");
   });
 
+  it("rejects a SHA-pinned workflow presented alongside the canonical branch ref", () => {
+    const result = evaluateMainGovernanceRules([
+      workflowOnly({ sha: "0123456789abcdef0123456789abcdef01234567" }),
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
   it.each([
     [" Organization", REQUIRED_MAIN_WORKFLOW.ruleset_source],
     ["Organization ", REQUIRED_MAIN_WORKFLOW.ruleset_source],
