@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `e089903ba6149ceca4b3672de85cc3de903b19a7`";
+  "issue #27; candidate #730 exact `ce5a84df726e59e35f113f86578b3b1e55880ddf`";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 
