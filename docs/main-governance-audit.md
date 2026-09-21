@@ -43,10 +43,18 @@ The effective response must contain:
   - `trivy-fs`
   - `dependency-review`
   - every mandatory context has a positive `integration_id`
+- `workflows`
+  - ruleset source type is `Organization`
+  - ruleset source is `ContextualWisdomLab`
+  - workflow repository id is `1274066402` (`ContextualWisdomLab/.github`)
+  - workflow path is `.github/workflows/security-scan.yml`
+  - workflow ref is exactly `refs/heads/main`
 - `non_fast_forward`
 - `deletion`
 
-The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The hourly decision engine independently verifies current-head check producer identity as a second control.
+The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
+
+The workflow contract deliberately does not pin the ruleset numeric id. Recreating an organization ruleset can change that id without changing the owner/workflow authority. The stable authority checked by source is the organization owner plus immutable GitHub repository id, workflow path, and exact branch ref. Live ruleset identity and enforcement must still be refetched for each decision.
 
 ## Workflow ordering
 
@@ -68,7 +76,7 @@ The GitHub CLI subprocess is shell-free, output-bounded, pinned to `github.com`,
 
 GitHub documents the active branch-rules endpoint as requiring only repository `Metadata: read` for a fine-grained or GitHub App installation token. The maintainer App therefore does **not** receive repository administration permission.
 
-Creating or changing a repository ruleset requires `Administration: write` and remains an explicit operator action tracked in issue #27.
+Creating or changing a repository or organization ruleset requires administrative authority and remains an explicit operator action tracked in issue #27. The audit only observes effective controls and refuses writes when the required control set is absent.
 
 ## Report schema
 
@@ -84,6 +92,7 @@ The JSON report contains:
 - `active_rule_count`
 - `active_rule_types`
 - `rule_sources`
+- `observed_controls`, including the normalized required-workflow observations
 - `checks`
 - `failures`
 - `limitations`
@@ -110,13 +119,14 @@ When the audit fails:
 3. Activate pull-request, status-check, non-fast-forward, and deletion rules.
 4. Enable stale-review dismissal and conversation resolution.
 5. Add the six required check contexts and select the GitHub Actions integration as the expected source.
-6. Require branches to be up to date before merge.
-7. Re-run the audit and retain the generated artifact.
+6. Preserve the organization-owned `ContextualWisdomLab/.github` `.github/workflows/security-scan.yml@refs/heads/main` required-workflow control; do not replace it with a repository-owned lookalike.
+7. Require branches to be up to date before merge.
+8. Re-run the audit and retain the generated artifact.
 
-Do not disable the audit, remove required checks, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
+Do not disable the audit, remove required checks or the required workflow, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
 
 ## Primary references
 
 - GitHub REST API: repository rules and active branch rules
-- GitHub rulesets: available branch rules and required status checks
+- GitHub rulesets: available branch rules, required workflows, and required status checks
 - GitHub Actions `GITHUB_TOKEN`: workflow-trigger suppression and GitHub App token alternative
