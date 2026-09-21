@@ -101,5 +101,7 @@ describe("normal-merge governance authority", () => {
     expect(operationalDocs[1][1]).toContain("SHA-bound normal merge commit");
     expect(operationalDocs[2][1]).toContain("SHA-bound normal\nmerge commit");
     expect(operationalDocs[3][1]).toContain("request SHA-bound normal merge");
+    expect(operationalDocs[3][1]).toContain("## 5. Evidence and authority state machine");
+    expect(operationalDocs[3][1]).toContain("## 9. Diagram maintenance rules");
   });
 });
