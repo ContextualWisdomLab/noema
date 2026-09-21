@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
   REQUIRED_MAIN_CHECK_NAMES,
   REQUIRED_MAIN_WORKFLOW,
   evaluateMainGovernanceRules,
@@ -46,7 +47,7 @@ function strictStatusRule() {
       strict_required_status_checks_policy: true,
       required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
         context,
-        integration_id: 15_368,
+        integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
       })),
     },
   };
