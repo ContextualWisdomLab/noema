@@ -192,7 +192,7 @@ describe("hourly commercial readiness script", () => {
     expect(redactSensitiveValue("safe diagnostic", [])).toBe("safe diagnostic");
   });
 
-  it("uses shell-free complete pagination and exact-head write contracts", () => {
+  it("uses shell-free complete pagination and exact-head normal-merge write contracts", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain('spawnSync("gh"');
@@ -219,7 +219,8 @@ describe("hourly commercial readiness script", () => {
     expect(script).toContain('JSON.stringify({ ref: "main", inputs: { dry_run: "false" } })');
     expect(script).toContain("shouldDispatchProductDevelopment(apply, operationalErrors.length)");
     expect(script).not.toContain("report.remainingOpenPullRequestCount === 0");
-    expect(script).toContain('merge_method: "squash"');
+    expect(script).toContain('merge_method: "merge"');
+    expect(script).not.toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
     expect(script).toContain("live?.head?.sha !== expectedHeadSha");
     expect(script).toContain("live?.head?.repo?.full_name !== repository");
