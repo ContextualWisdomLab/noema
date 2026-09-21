@@ -124,6 +124,7 @@ describe("main governance rules evaluator", () => {
           repository_id: 1_274_066_402,
           path: ".github/workflows/security-scan.yml",
           ref: "refs/heads/main",
+          sha: null,
           ruleset_id: 18_794_436,
           ruleset_source_type: "Organization",
           ruleset_source: "ContextualWisdomLab",
