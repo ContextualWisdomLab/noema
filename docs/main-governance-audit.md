@@ -42,7 +42,7 @@ The effective response must contain:
   - `osv-scan`
   - `trivy-fs`
   - `dependency-review`
-  - every mandatory context has a positive `integration_id`
+  - every mandatory context has `integration_id: 15368`, the GitHub Actions App identity
 - `workflows`
   - ruleset source type is exactly `Organization`
   - ruleset source is exactly `ContextualWisdomLab`
@@ -54,7 +54,7 @@ The effective response must contain:
 
 The five governance rule types above and all six mandatory status contexts are authority-bearing API values. They must match the expected serialization exactly. A value such as `" pull_request "`, `"required_status_checks "`, or `" verify "` is malformed evidence rather than a canonical control and fails closed. The same exactness applies to the required-workflow rule type, source type, source, path, and ref.
 
-The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
+A merely positive status-check `integration_id` is not enough. Current GitHub check-run evidence identifies the producer for these repository Actions jobs as the `github-actions` App with integration id `15368`; a differently named or malicious producer must not acquire merge authority just by supplying another positive integer. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
 
 Authority fields are never normalized to manufacture a match. Human-facing trimming is appropriate for presentation data, but not for GitHub control-plane identities that determine whether a merge is allowed.
 
@@ -122,15 +122,16 @@ When the audit fails:
 2. Target the default branch or `refs/heads/main`.
 3. Activate pull-request, status-check, non-fast-forward, and deletion rules using their canonical GitHub rule types.
 4. Enable stale-review dismissal and conversation resolution.
-5. Add the six required check contexts with their exact names and select the GitHub Actions integration as the expected source.
+5. Add the six required check contexts with their exact names and select the GitHub Actions integration (`integration_id: 15368`) as the expected source.
 6. Preserve the organization-owned `ContextualWisdomLab/.github` `.github/workflows/security-scan.yml@refs/heads/main` required-workflow control; do not replace it with a repository-owned lookalike.
 7. Require branches to be up to date before merge.
 8. Re-run the audit and retain the generated artifact.
 
-Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
+Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, accept an arbitrary positive status producer id, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
 
 ## Primary references
 
 - GitHub REST API: repository rules and active branch rules
+- GitHub REST API: check runs and their producing GitHub App identity
 - GitHub rulesets: available branch rules, required workflows, and required status checks
 - GitHub Actions `GITHUB_TOKEN`: workflow-trigger suppression and GitHub App token alternative
