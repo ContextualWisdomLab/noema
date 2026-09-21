@@ -5,6 +5,7 @@ import {
   evaluateMainGovernanceRules,
 } from "../scripts/lib/main-governance-audit.mjs";
 
+/** Keep workflow authority canonical except for the one field a hostile case mutates. */
 function workflowOnly(overrides: Record<string, unknown> = {}) {
   return {
     type: "workflows",
@@ -24,6 +25,7 @@ function workflowOnly(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supply the minimum pull-request authority needed to distinguish exact type admission from other gaps. */
 function strictPullRequestRule() {
   return {
     type: "pull_request",
@@ -36,6 +38,7 @@ function strictPullRequestRule() {
   };
 }
 
+/** Supply all mandatory status contexts so a whitespace mutation isolates one authority decision. */
 function strictStatusRule() {
   return {
     type: "required_status_checks",
@@ -49,6 +52,7 @@ function strictStatusRule() {
   };
 }
 
+/** Collapse bounded audit failures to stable codes for hostile serialization assertions. */
 function failureCodes(result: ReturnType<typeof evaluateMainGovernanceRules>) {
   return result.failures.map((failure) => failure.code);
 }
