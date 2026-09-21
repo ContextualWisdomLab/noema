@@ -30,7 +30,7 @@ A later **2026-09-22 KST live observation under issue #73** independently establ
 
 ## Current open-lane authority — 2026-09-22 KST
 
-- #726 current exact `cc26566450b693a21fd46bd29daa887d4b2ac4db`: Draft/mergeable, independent current-head source review clean; hosted exact-head lanes nonterminal at this observation. Issue #73 retains operational evidence authority.
+- #726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`: Draft/mergeable; hosted-CI causal repair is ordinary-forward, fresh independent current-head review is requested/pending, and current exact hosted lanes remain nonterminal. Issue #73 retains operational evidence authority.
 - #727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`: Draft/mergeable, independent source review clean; application CI, reviewer-ci and patch-validator-image are terminal SUCCESS while required Security Scan remains nonterminal. Three hosted successes are not merge authority.
 - #729 is this sole documentation-authority lane. Its own commit identity is not self-bound inside the file; live PR head is authoritative. Any source mutation invalidates predecessor review/workflow evidence and requires fresh exact-head review/checks.
 - #730 current exact `ce5a84df726e59e35f113f86578b3b1e55880ddf`: Draft/mergeable source-side governance candidate with clean current-head source review; issue #27 retains live control-plane/ruleset/review/history/deletion/bypass authority.
