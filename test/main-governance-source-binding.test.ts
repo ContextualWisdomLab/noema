@@ -10,7 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main as runMainGovernanceAudit } from "../scripts/main-governance-audit.mjs";
-import { REQUIRED_MAIN_WORKFLOW } from "../scripts/lib/main-governance-audit.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_WORKFLOW,
+} from "../scripts/lib/main-governance-audit.mjs";
 
 const temporaryDirectories: string[] = [];
 const originalEnvironment = { ...process.env };
@@ -45,9 +48,9 @@ function compliantRules() {
       ruleset_source: "ContextualWisdomLab/noema",
       parameters: {
         strict_required_status_checks_policy: true,
-        required_status_checks: requiredChecks.map((context, index) => ({
+        required_status_checks: requiredChecks.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
