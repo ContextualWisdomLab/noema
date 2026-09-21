@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
   REQUIRED_MAIN_CHECK_NAMES,
   REQUIRED_MAIN_WORKFLOW,
   evaluateMainGovernanceRules,
@@ -48,9 +49,9 @@ function compliantRules() {
       parameters: {
         do_not_enforce_on_create: false,
         strict_required_status_checks_policy: true,
-        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
@@ -305,7 +306,7 @@ describe("main governance rules evaluator", () => {
     },
   );
 
-  it("requires every mandatory status source to be pinned to an integration", () => {
+  it("requires every mandatory status source to be GitHub Actions", () => {
     const rules = compliantRules();
     rules[1].parameters.required_status_checks = [
       ...rules[1].parameters.required_status_checks,
@@ -315,8 +316,8 @@ describe("main governance rules evaluator", () => {
     const result = evaluateMainGovernanceRules(rules);
 
     expect(result.failures).toContainEqual({
-      code: "required_status_source_unpinned",
-      detail: "Required status context verify has a missing or invalid integration_id.",
+      code: "required_status_source_mismatch",
+      detail: `Required status context verify must be pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`,
     });
   });
 
