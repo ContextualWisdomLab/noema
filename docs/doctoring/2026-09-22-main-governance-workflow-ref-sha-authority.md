@@ -40,7 +40,9 @@ RED `6cdc4e937bd7626ece0fef0ae1d052f887eb389c` adds a hostile required-workflow 
 
 GREEN `d4eb6b5d06d23460969bf2d8d02fcdb6258f4f8b` adds explicit `sha: null` to the canonical owner tuple, preserves observed SHA state, and requires exact SHA-state equality in the canonical workflow matcher. The change does not alter provider routing, product-domain truth, quarantine/security runtime, outbound authority, deployment authority, or live ruleset configuration.
 
-Hosted exact-head tests and independent current-head review remain separate evidence classes and are required before Ready/merge.
+Fresh independent review of exact `e089903ba6149ceca4b3672de85cc3de903b19a7` found a valid P1 successor defect in executable evidence: exact `toEqual()` observations in `test/main-governance-audit.test.ts` and `test/main-governance-observed-workflows.test.ts` still omitted the newly reported `sha: null` field. Production correctly emitted the field, so those assertions would fail rather than verify the repaired report shape. Ordinary-forward commits `0d566f9ebe71b3dfd9d073a069708474c6273a44` and `7e39bc9cd7bebf3e6707a68550b6f0699b703188` add `sha: null` to all affected canonical and malformed observed-workflow expectations without changing production authority.
+
+Hosted exact-head tests and a fresh independent review on the post-repair exact remain separate evidence classes and are required before Ready/merge.
 
 ## Risk
 
@@ -48,4 +50,4 @@ This repair deliberately prefers false negatives if GitHub introduces a new SHA 
 
 ## TRACEABILITY
 
-GitHub required-workflow schema (`repository_id`, `path`, optional `ref`/`sha`) → `REQUIRED_MAIN_WORKFLOW.sha` → `observedWorkflowControls()` SHA preservation → `isCanonicalRequiredWorkflow()` exact ref/SHA admission → `test/main-governance-authority-exactness.test.ts` mixed ref/SHA hostile case → issue #27 live governance closure.
+GitHub required-workflow schema (`repository_id`, `path`, optional `ref`/`sha`) → `REQUIRED_MAIN_WORKFLOW.sha` → `observedWorkflowControls()` SHA preservation → `isCanonicalRequiredWorkflow()` exact ref/SHA admission → `test/main-governance-authority-exactness.test.ts` mixed ref/SHA hostile case → observed-workflow expectation repair (`0d566f9e…`, `7e39bc9c…`) → issue #27 live governance closure.
