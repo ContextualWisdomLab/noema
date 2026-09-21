@@ -52,9 +52,11 @@ The effective response must contain:
 - `non_fast_forward`
 - `deletion`
 
+The five governance rule types above and all six mandatory status contexts are authority-bearing API values. They must match the expected serialization exactly. A value such as `" pull_request "`, `"required_status_checks "`, or `" verify "` is malformed evidence rather than a canonical control and fails closed. The same exactness applies to the required-workflow rule type, source type, source, path, and ref.
+
 The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
 
-The required-workflow identity fields are authority, not display text. Their rule type, source type, source, workflow path, and ref must match the API serialization exactly; values that become canonical only after trimming are malformed and fail closed.
+Authority fields are never normalized to manufacture a match. Human-facing trimming is appropriate for presentation data, but not for GitHub control-plane identities that determine whether a merge is allowed.
 
 The workflow contract deliberately does not pin the ruleset numeric id. Recreating an organization ruleset can change that id without changing the owner/workflow authority. The stable authority checked by source is the organization owner plus immutable GitHub repository id, workflow path, and exact branch ref. Live ruleset identity and enforcement must still be refetched for each decision.
 
@@ -118,14 +120,14 @@ When the audit fails:
 
 1. Open repository or organization Rulesets settings.
 2. Target the default branch or `refs/heads/main`.
-3. Activate pull-request, status-check, non-fast-forward, and deletion rules.
+3. Activate pull-request, status-check, non-fast-forward, and deletion rules using their canonical GitHub rule types.
 4. Enable stale-review dismissal and conversation resolution.
-5. Add the six required check contexts and select the GitHub Actions integration as the expected source.
+5. Add the six required check contexts with their exact names and select the GitHub Actions integration as the expected source.
 6. Preserve the organization-owned `ContextualWisdomLab/.github` `.github/workflows/security-scan.yml@refs/heads/main` required-workflow control; do not replace it with a repository-owned lookalike.
 7. Require branches to be up to date before merge.
 8. Re-run the audit and retain the generated artifact.
 
-Do not disable the audit, remove required checks or the required workflow, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
+Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
 
 ## Primary references
 
