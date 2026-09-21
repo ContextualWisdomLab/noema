@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
+const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
+const CURRENT_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
+const STALE_726_EXACT = "#726 current exact `cc26566450b693a21fd46bd29daa887d4b2ac4db`";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
   "issue #27; candidate #730 exact `ce5a84df726e59e35f113f86578b3b1e55880ddf`";
@@ -22,6 +25,16 @@ function convergenceSection(baseline: string) {
   const start = baseline.indexOf(CONVERGENCE_HEADING);
   expect(start).toBeGreaterThanOrEqual(0);
   const nextHeading = baseline.indexOf("\n## ", start + CONVERGENCE_HEADING.length);
+  return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
+}
+
+/**
+ * Isolates live open-lane authority from dated convergence history.
+ */
+function currentOpenLaneSection(baseline: string) {
+  const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const nextHeading = baseline.indexOf("\n## ", start + CURRENT_OPEN_LANE_HEADING.length);
   return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
 }
 
@@ -75,6 +88,14 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain("PR #727 exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`");
     expect(section).toContain("#728 is protected history, not an open candidate");
     expect(section).not.toContain("PR #728 exact `5deb783fd0985f374630112a92b921bb2f420356`");
+  });
+
+  it("binds current #726 exact authority only inside the active open-lane section", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const section = currentOpenLaneSection(baseline);
+
+    expect(section).toContain(CURRENT_726_EXACT);
+    expect(section).not.toContain(STALE_726_EXACT);
   });
 
   it("records the current protected-main governance candidate in the commercial gap register", () => {
