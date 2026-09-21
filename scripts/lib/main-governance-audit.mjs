@@ -13,6 +13,7 @@ export const REQUIRED_MAIN_WORKFLOW = Object.freeze({
   repository_id: 1_274_066_402,
   path: ".github/workflows/security-scan.yml",
   ref: "refs/heads/main",
+  sha: null,
   ruleset_source_type: "Organization",
   ruleset_source: "ContextualWisdomLab",
 });
@@ -52,7 +53,7 @@ function rulesOfType(rules, type) {
   return rules.filter((rule) => rule?.type === type);
 }
 
-/** Extract required-workflow observations without normalizing owner, path, ref, or source identity. */
+/** Extract required-workflow observations without normalizing owner, path, ref, SHA, or source identity. */
 function observedWorkflowControls(rules) {
   return rules.filter((rule) => rule?.type === "workflows").flatMap((rule) => {
     const workflows = ruleParameters(rule).workflows;
@@ -65,6 +66,9 @@ function observedWorkflowControls(rules) {
         : null,
       path: exactAuthorityString(workflow?.path) || "unknown",
       ref: exactAuthorityString(workflow?.ref) || "unknown",
+      sha: workflow?.sha === undefined || workflow?.sha === null
+        ? null
+        : exactAuthorityString(workflow.sha) || "unknown",
       ruleset_id: positiveInteger(rule?.ruleset_id) ? rule.ruleset_id : null,
       ruleset_source_type: exactAuthorityString(rule?.ruleset_source_type) || "unknown",
       ruleset_source: exactAuthorityString(rule?.ruleset_source) || "unknown",
@@ -77,6 +81,7 @@ function isCanonicalRequiredWorkflow(workflow) {
   return workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
     && workflow.path === REQUIRED_MAIN_WORKFLOW.path
     && workflow.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && workflow.sha === REQUIRED_MAIN_WORKFLOW.sha
     && workflow.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
     && workflow.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source;
 }
