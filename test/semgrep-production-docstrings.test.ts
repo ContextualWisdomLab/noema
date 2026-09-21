@@ -34,7 +34,12 @@ function immediateJsdoc(source: string, name: string): string | undefined {
   const functionIndex = source.indexOf(marker);
   if (functionIndex < 0) return undefined;
 
-  const prefix = source.slice(0, functionIndex).trimEnd();
+  let prefix = source.slice(0, functionIndex).trimEnd();
+  for (const modifier of ["async", "export"] as const) {
+    if (prefix.endsWith(modifier)) {
+      prefix = prefix.slice(0, -modifier.length).trimEnd();
+    }
+  }
   const commentEnd = prefix.lastIndexOf("*/");
   const commentStart = prefix.lastIndexOf("/**", commentEnd);
   if (commentStart < 0 || commentEnd < commentStart) return undefined;
