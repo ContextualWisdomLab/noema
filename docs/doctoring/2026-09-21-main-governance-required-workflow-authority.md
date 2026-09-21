@@ -35,6 +35,8 @@ The audit now requires one observed effective workflow to match all of these sta
 - `path === ".github/workflows/security-scan.yml"`;
 - `ref === "refs/heads/main"`.
 
+These identity-bearing strings are compared exactly. Leading or trailing whitespace, a whitespace-altered `workflows` rule type, or another serialization that is only equal after trimming is malformed evidence and fails closed. Human-facing normalization is not authority normalization.
+
 The numeric ruleset id is deliberately not a pass condition. Recreating an organization ruleset can legitimately change the ruleset id while preserving the authority owner and immutable workflow repository identity. The numeric id remains evidence, not the stable contract.
 
 ## Alternatives rejected
@@ -42,6 +44,8 @@ The numeric ruleset id is deliberately not a pass condition. Recreating an organ
 **Accept any `workflows` rule.** Rejected because a repository-owned lookalike or unrelated required workflow could satisfy the audit.
 
 **Match path only.** Rejected because the same relative path in another repository is different authority.
+
+**Normalize authority strings before comparison.** Rejected because trimming malformed source/path/ref/type values can transform non-canonical evidence into canonical authority and create a false PASS. Exact API identity fields are not display text.
 
 **Pin ruleset id `18794436`.** Rejected because ruleset recreation would cause an unnecessary source change even when the owner and workflow authority are unchanged.
 
@@ -53,7 +57,11 @@ RED `e28d2bd38f92bb394daba179d3c1d38b1e2a93d5` adds a regression showing that th
 
 The protected production blob used for the focused reproduction is `d5031ea4e22221e8db39f29e0c1c55dec3b01156`. A byte-identical reconstruction verified by Git blob hash returns `PASS` for the no-workflow case.
 
-GREEN begins at `9ef38f3cd0047d660de8d6e3fa4a4d39561f28bb`: the evaluator adds `required_security_workflow_missing` and matches the organization owner plus workflow repository/path/ref. The repaired production blob `e4d72a2bcb7c697b907402eecbff16d28e1c0f6c` returns `FAIL` for missing or wrong-path authority and `PASS` when the canonical workflow is present. Subsequent test commits preserve the same production blob while expanding type-safe hostile cases.
+GREEN begins at `9ef38f3cd0047d660de8d6e3fa4a4d39561f28bb`: the evaluator adds `required_security_workflow_missing` and matches the organization owner plus workflow repository/path/ref. The repaired production blob `e4d72a2bcb7c697b907402eecbff16d28e1c0f6c` returns `FAIL` for missing or wrong-path authority and `PASS` when the canonical workflow is present.
+
+A second review found that `observedWorkflowControls()` still passed authority-bearing strings through `trim()`. That made values such as `" .github/workflows/security-scan.yml"`, `"Organization "`, or `" workflows "` equivalent to their canonical spellings. RED `56706017205703eec0b4eeda6224229b7496f39e` adds focused whitespace-altered path/ref/source/type regressions. A predecessor probe reproduces the defect directly: normalized malformed values become the canonical repository id/path/ref/source tuple and satisfy the authority predicate.
+
+GREEN `0320f9788916524f1f949d467ddaad988f547a89` adds exact authority-string admission and requires an exact `workflows` rule type before observations are eligible. A focused current-source probe covers eight whitespace-altered identity cases plus the rule-type case: all nine are rejected with `required_security_workflow_missing`, while the exact canonical workflow remains admitted. The broader repository suite and hosted current-head gates remain separate evidence classes.
 
 This focused probe is not repository full-suite, hosted current-head CI, independent review, live target-policy configuration, merge, release, or deployment evidence.
 
@@ -65,4 +73,4 @@ After this source repair reaches an exact reviewed head, required hosted checks 
 
 ## TRACEABILITY
 
-`AGENTS.md` mandatory central Security Scan gate → `scripts/lib/main-governance-audit.mjs` canonical required-workflow predicate → `test/main-governance-audit.test.ts` absence/lookalike/malformed regressions → `scripts/main-governance-audit.mjs` exact protected-main collector → `artifacts/governance/main-governance-audit.json` → issue #27 live governance closure.
+`AGENTS.md` mandatory central Security Scan gate → `scripts/lib/main-governance-audit.mjs` canonical required-workflow predicate and exact identity admission → `test/main-governance-audit.test.ts` absence/lookalike/malformed regressions + `test/main-governance-required-workflow-exactness.test.ts` serialization-exactness regressions → `scripts/main-governance-audit.mjs` exact protected-main collector → `artifacts/governance/main-governance-audit.json` → issue #27 live governance closure.
