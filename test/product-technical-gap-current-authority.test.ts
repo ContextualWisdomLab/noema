@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
+const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
+const GOVERNANCE_CANDIDATE =
+  "issue #27; candidate #730 exact `3e3352662cd34fba046ca8e897b7bbb4b8f2da4d`";
+const GOVERNANCE_NEXT_ACTION =
+  "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 
 /**
  * Isolates the dated convergence authority so duplicated historical text cannot satisfy current-evidence assertions.
@@ -11,6 +16,17 @@ function convergenceSection(baseline: string) {
   expect(start).toBeGreaterThanOrEqual(0);
   const nextHeading = baseline.indexOf("\n## ", start + CONVERGENCE_HEADING.length);
   return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
+}
+
+/**
+ * Reports whether the baseline carries the current governance candidate and executable action.
+ *
+ * This intentionally mirrors the predecessor whole-document oracle so the hostile
+ * duplicate-prose fixture below demonstrates why row-local authority is required.
+ */
+function hasCurrentGovernanceCandidate(baseline: string): boolean {
+  return baseline.includes(GOVERNANCE_CANDIDATE)
+    && baseline.includes(GOVERNANCE_NEXT_ACTION);
 }
 
 describe("product-technical gap current authority", () => {
@@ -39,12 +55,17 @@ describe("product-technical gap current authority", () => {
   it("records the current protected-main governance candidate in the commercial gap register", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain(
-      "issue #27; candidate #730 exact `3e3352662cd34fba046ca8e897b7bbb4b8f2da4d`",
-    );
-    expect(baseline).toContain(
-      "#730 current-head independent review + hosted gates 종료 후 normal merge 검토",
-    );
+    expect(hasCurrentGovernanceCandidate(baseline)).toBe(true);
+  });
+
+  it("does not let duplicated historical prose satisfy current governance-row authority", () => {
+    const hostileBaseline = [
+      `Historical predecessor note: ${GOVERNANCE_CANDIDATE}`,
+      `Historical predecessor next step: ${GOVERNANCE_NEXT_ACTION}`,
+      `${GOVERNANCE_ROW_PREFIX} Security workflow 하나로 통제를 과대 주장할 위험 | issue #27 | external control evidence open | live ruleset evidence | admin/owner control을 독립 검증 |`,
+    ].join("\n");
+
+    expect(hasCurrentGovernanceCandidate(hostileBaseline)).toBe(false);
   });
 
   it("keeps release observation current without promoting absence into release completion", () => {
