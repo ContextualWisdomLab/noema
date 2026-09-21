@@ -19,14 +19,18 @@ function convergenceSection(baseline: string) {
 }
 
 /**
- * Reports whether the baseline carries the current governance candidate and executable action.
+ * Requires one commercial governance row to carry both candidate identity and next action.
  *
- * This intentionally mirrors the predecessor whole-document oracle so the hostile
- * duplicate-prose fixture below demonstrates why row-local authority is required.
+ * Historical prose elsewhere in the baseline is predecessor evidence only and
+ * must not satisfy the current P0 register contract.
  */
 function hasCurrentGovernanceCandidate(baseline: string): boolean {
-  return baseline.includes(GOVERNANCE_CANDIDATE)
-    && baseline.includes(GOVERNANCE_NEXT_ACTION);
+  const governanceRows = baseline
+    .split("\n")
+    .filter((line) => line.startsWith(GOVERNANCE_ROW_PREFIX));
+  return governanceRows.length === 1
+    && governanceRows[0].includes(GOVERNANCE_CANDIDATE)
+    && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
 }
 
 describe("product-technical gap current authority", () => {
