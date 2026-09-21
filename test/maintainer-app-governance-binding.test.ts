@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { flattenGovernanceRulePages } from "../scripts/maintainer-app-readiness.mjs";
-import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_CHECK_NAMES,
+} from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
@@ -33,9 +36,9 @@ function compliantGovernanceRules() {
       parameters: {
         do_not_enforce_on_create: false,
         strict_required_status_checks_policy: true,
-        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
