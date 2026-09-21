@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_MAIN_CHECK_INTEGRATION_ID,
@@ -81,5 +82,24 @@ describe("normal-merge governance authority", () => {
       code: "merge_commit_not_allowed",
       detail: "At least one active pull-request rule does not permit normal merge commits.",
     });
+  });
+
+  it("keeps active operational documentation on the normal-merge contract", () => {
+    const operationalDocs = [
+      "docs/main-governance-audit.md",
+      "docs/hourly-commercial-readiness-loop.md",
+      "docs/development/contributor-and-agent-procedure.md",
+      "docs/UML.md",
+    ].map((path) => [path, readFileSync(path, "utf8")] as const);
+
+    for (const [path, source] of operationalDocs) {
+      expect(source, `${path} must not advertise SHA-bound squash merge`).not.toContain(
+        "SHA-bound squash merge",
+      );
+    }
+    expect(operationalDocs[0][1]).toContain("allow normal merge commits (`merge`)");
+    expect(operationalDocs[1][1]).toContain("SHA-bound normal merge commit");
+    expect(operationalDocs[2][1]).toContain("SHA-bound normal\nmerge commit");
+    expect(operationalDocs[3][1]).toContain("request SHA-bound normal merge");
   });
 });
