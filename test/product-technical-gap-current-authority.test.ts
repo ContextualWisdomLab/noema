@@ -14,7 +14,7 @@ function convergenceSection(baseline: string) {
 }
 
 describe("product-technical gap current authority", () => {
-  it("records the protected private-reporting lineage and dated downstream candidates inside the convergence section", () => {
+  it("records the protected private-reporting lineage and current downstream candidates inside the dated convergence section", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = convergenceSection(baseline);
 
