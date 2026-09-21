@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   REQUIRED_MAIN_CHECK_INTEGRATION_ID,
   REQUIRED_MAIN_CHECK_NAMES,
+  REQUIRED_MAIN_WORKFLOW,
 } from "../scripts/lib/main-governance-audit.mjs";
 
 const repository = "ContextualWisdomLab/noema";
@@ -64,6 +65,19 @@ function compliantGovernanceRules() {
       ruleset_id: 101,
       ruleset_source_type: "Repository",
       ruleset_source: repository,
+    },
+    {
+      type: "workflows",
+      ruleset_id: 18_794_436,
+      ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+      ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+      parameters: {
+        workflows: [{
+          repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+          path: REQUIRED_MAIN_WORKFLOW.path,
+          ref: REQUIRED_MAIN_WORKFLOW.ref,
+        }],
+      },
     },
   ];
 }
