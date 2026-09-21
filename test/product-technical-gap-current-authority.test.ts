@@ -36,6 +36,17 @@ describe("product-technical gap current authority", () => {
     expect(section).not.toContain("PR #728 exact `5deb783fd0985f374630112a92b921bb2f420356`");
   });
 
+  it("records the current protected-main governance candidate in the commercial gap register", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(baseline).toContain(
+      "issue #27; candidate #730 exact `3e3352662cd34fba046ca8e897b7bbb4b8f2da4d`",
+    );
+    expect(baseline).toContain(
+      "#730 current-head independent review + hosted gates 종료 후 normal merge 검토",
+    );
+  });
+
   it("keeps release observation current without promoting absence into release completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
