@@ -7,6 +7,8 @@ export const REQUIRED_MAIN_CHECK_NAMES = Object.freeze([
   "dependency-review",
 ]);
 
+export const REQUIRED_MAIN_CHECK_INTEGRATION_ID = 15_368;
+
 export const REQUIRED_MAIN_WORKFLOW = Object.freeze({
   repository_id: 1_274_066_402,
   path: ".github/workflows/security-scan.yml",
@@ -254,15 +256,15 @@ export function evaluateMainGovernanceRules(rules) {
         : `Required status context ${context} is not enforced for main.`,
     );
     for (const entry of matchingEntries) {
-      const pinned = positiveInteger(entry?.integration_id);
+      const expectedSource = entry?.integration_id === REQUIRED_MAIN_CHECK_INTEGRATION_ID;
       addCheck(
         checks,
         failures,
-        "required_status_source_unpinned",
-        pinned,
-        pinned
-          ? `Required status context ${context} is pinned to integration ${entry.integration_id}.`
-          : `Required status context ${context} has a missing or invalid integration_id.`,
+        "required_status_source_mismatch",
+        expectedSource,
+        expectedSource
+          ? `Required status context ${context} is pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`
+          : `Required status context ${context} must be pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`,
       );
     }
   }
