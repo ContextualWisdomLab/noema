@@ -104,4 +104,29 @@ describe("commercial readiness check-suite identity", () => {
       },
     ])).toThrow("Check run chronology metadata is incomplete for id 301.");
   });
+
+  it("fails closed when distinct retries have identical observed chronology", () => {
+    expect(() => latestCheckRunsBySuite([
+      {
+        id: 400,
+        name: "verify",
+        status: "completed",
+        conclusion: "success",
+        started_at: "2026-09-23T00:00:00Z",
+        completed_at: "2026-09-23T00:01:00Z",
+        check_suite: { id: 34 },
+        app: { slug: "github-actions" },
+      },
+      {
+        id: 401,
+        name: "verify",
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-09-23T00:00:00Z",
+        completed_at: "2026-09-23T00:01:00Z",
+        check_suite: { id: 34 },
+        app: { slug: "github-actions" },
+      },
+    ])).toThrow("Check run chronology is ambiguous for ids 400 and 401.");
+  });
 });
