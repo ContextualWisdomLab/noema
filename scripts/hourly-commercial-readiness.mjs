@@ -174,6 +174,7 @@ function checkRunSuiteKey(check) {
   return `${suiteId}\u0000${appSlug}\u0000${name}`;
 }
 
+/** Preserve exact check-suite identity while selecting only the latest chronological retry for each check. */
 export function latestCheckRunsBySuite(checkRuns) {
   const latestBySuite = new Map();
   for (const check of Array.isArray(checkRuns) ? checkRuns : []) {
@@ -201,6 +202,7 @@ export function latestCheckRunsBySuite(checkRuns) {
   });
 }
 
+/** Accept a required-workflow run id only when URL identity and payload workflow_id agree exactly. */
 function requiredWorkflowRunId(run, repository) {
   const workflowUrl = String(run?.workflow_url ?? "");
   const requiredWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/required_workflows/`;
@@ -219,6 +221,7 @@ function requiredWorkflowRunId(run, repository) {
     : null;
 }
 
+/** Require live required-workflow metadata to match the canonical owner contract without normalization. */
 function requiredWorkflowMetadataIsCanonical(metadata, workflowId) {
   return metadata?.workflow_id === workflowId
     && metadata?.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
@@ -232,6 +235,7 @@ function requiredWorkflowMetadataIsCanonical(metadata, workflowId) {
     && metadata.repository.startsWith(`${REQUIRED_MAIN_WORKFLOW.ruleset_source}/`);
 }
 
+/** Classify workflow source only after repository-local or required-workflow identity is proven exact. */
 function workflowRunSource(run, repository) {
   const workflowUrl = String(run?.workflow_url ?? "");
   const repositoryWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/workflows/`;
@@ -257,6 +261,7 @@ function workflowRunSource(run, repository) {
   return "unknown";
 }
 
+/** Bind workflow evidence to exactly one current PR association with the current head and base identities. */
 function workflowRunMatchesTargetPullRequest(
   run,
   expectedPullNumber,
@@ -382,6 +387,7 @@ function paginatedObjectItems(endpoint, key) {
   });
 }
 
+/** Retain only organization-owned required-workflow observations needed to prove canonical source authority. */
 function observedRequiredWorkflows(rules) {
   return (Array.isArray(rules) ? rules : [])
     .filter((rule) => (
@@ -401,6 +407,7 @@ function observedRequiredWorkflows(rules) {
     }));
 }
 
+/** Accept exactly one ruleset observation that matches the canonical required-workflow authority tuple. */
 function canonicalRequiredWorkflowObservation(rules) {
   const matches = observedRequiredWorkflows(rules).filter((workflow) => (
     workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
@@ -626,6 +633,7 @@ function listOpenPullRequests(repository) {
   return paginatedArray(`repos/${repository}/pulls?state=open&per_page=100`);
 }
 
+/** Assemble fail-closed current PR evidence only after complete changed-file, workflow, review, and status authority is observed. */
 function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLogin) {
   const pull = fetchPullRequest(repository, pullNumber);
   const headSha = String(pull?.head?.sha ?? "");
@@ -758,6 +766,7 @@ export function shouldDispatchProductDevelopment(apply, operationalErrorCount) {
     && operationalErrorCount === 0;
 }
 
+/** Revalidate the exact live head immediately before issuing a SHA-bound normal merge request. */
 function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const expectedHeadSha = snapshot.headSha;
   assertLiveHead(repository, snapshot.number, expectedHeadSha);
@@ -866,6 +875,7 @@ function writeReport(reportPath, report) {
   writeSummary(report);
 }
 
+/** Execute one commercial-readiness pass while preserving exact-head evidence and fail-closed merge authority. */
 export function main(argv = process.argv.slice(2)) {
   const { apply, reportPath } = parseArguments(argv);
   const repository = String(process.env.GITHUB_REPOSITORY ?? "").trim();
