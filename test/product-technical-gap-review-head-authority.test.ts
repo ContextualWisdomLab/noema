@@ -2,20 +2,23 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
-const STALE_730_EXACT = "#730 current exact `f8bf13702838131bcc586757348ef4a74564d9a1`";
+const CURRENT_730_EXACT = "#730 current exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
+const STALE_730_EXACT = "#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_GUIDE_AUTHORITY =
   "active operator guide documents the exact review-to-head `commit_id` binding and its fail-closed diagnostic";
 const REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "requires repository workflow URL id to equal the workflow run's `workflow_id`";
+const STATUS_PROJECTION_AUTHORITY =
+  "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
+  "issue #27; candidate #730 exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "repository workflow URL/workflow_id identity consistency";
+const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 
 function currentOpenLaneSection(baseline: string) {
   const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
@@ -31,7 +34,7 @@ function currentGovernanceRow(baseline: string) {
 }
 
 describe("product-technical gap review-head authority", () => {
-  it("binds active #730 authority to GitHub review commit identity and repository workflow identity", () => {
+  it("binds active #730 authority to GitHub review commit identity, repository workflow identity, and exact status projection", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -41,8 +44,10 @@ describe("product-technical gap review-head authority", () => {
     expect(section).toContain(REVIEW_HEAD_AUTHORITY);
     expect(section).toContain(REVIEW_GUIDE_AUTHORITY);
     expect(section).toContain(REPOSITORY_WORKFLOW_ID_AUTHORITY);
+    expect(section).toContain(STATUS_PROJECTION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_REVIEW_HEAD_AUTHORITY);
     expect(row).toContain(GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_STATUS_PROJECTION_AUTHORITY);
   });
 });
