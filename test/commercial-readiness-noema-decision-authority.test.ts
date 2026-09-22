@@ -37,8 +37,8 @@ describe("commercial readiness Noema decision authority", () => {
     expect(evaluatePullRequest(passingSnapshot())).toEqual({ action: "merge", reasons: [] });
   });
 
-  it.each(["APPROVE", "Approve", " approve "])(
-    "does not normalize non-canonical Noema decision %j into merge authority",
+  it.each(["APPROVE", "Approve"])(
+    "rejects non-canonical Noema decision %j as an explicit current-head decision",
     (decision) => {
       const snapshot = passingSnapshot();
       snapshot.noemaReviewDecision = decision;
@@ -46,10 +46,21 @@ describe("commercial readiness Noema decision authority", () => {
       const result = evaluatePullRequest(snapshot);
 
       expect(result.action).toBe("blocked");
-      expect(result.reasons.some((reason) => (
-        reason.code === "noema_current_head_approval_missing"
-        || reason.code === "noema_current_head_rejected"
-      ))).toBe(true);
+      expect(result.reasons).toContainEqual(expect.objectContaining({
+        code: "noema_current_head_rejected",
+      }));
     },
   );
+
+  it("does not normalize whitespace-padded approval into merge authority", () => {
+    const snapshot = passingSnapshot();
+    snapshot.noemaReviewDecision = " approve ";
+
+    const result = evaluatePullRequest(snapshot);
+
+    expect(result.action).toBe("request_review");
+    expect(result.reasons).toContainEqual(expect.objectContaining({
+      code: "noema_current_head_approval_missing",
+    }));
+  });
 });
