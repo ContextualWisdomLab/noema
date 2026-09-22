@@ -29,6 +29,15 @@ function normalized(value) {
   return String(value ?? "").trim();
 }
 
+/** Preserve authority-bearing API strings only when their serialization is already exact. */
+function exactAuthorityString(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim()
+    ? value
+    : "";
+}
+
 /** Preserve check-name authority only when GitHub supplied an exact string identity. */
 function exactCheckName(value) {
   return typeof value === "string" ? value : "";
@@ -43,27 +52,32 @@ function isTrustedGitHubActionsCheck(check) {
 }
 
 function validatePullRequestIdentity(snapshot, reasons) {
-  if (normalized(snapshot.state).toLowerCase() !== "open") {
+  const state = exactAuthorityString(snapshot.state);
+  if (state !== "open") {
     addReason(reasons, "pr_not_open", `Pull request state is ${normalized(snapshot.state) || "missing"}.`);
   }
   if (snapshot.draft !== false) {
     addReason(reasons, "pr_is_draft", "Pull request is draft or its draft state is unknown.");
   }
-  if (normalized(snapshot.baseRef) !== "main") {
+  const baseRef = exactAuthorityString(snapshot.baseRef);
+  if (baseRef !== "main") {
     addReason(
       reasons,
       "base_branch_not_main",
       `Pull request base is ${normalized(snapshot.baseRef) || "missing"}, not main.`,
     );
   }
-  if (normalized(snapshot.headRepository) !== normalized(snapshot.repository)) {
+  const repository = exactAuthorityString(snapshot.repository);
+  const headRepository = exactAuthorityString(snapshot.headRepository);
+  if (!repository || !headRepository || headRepository !== repository) {
     addReason(
       reasons,
       "head_repository_mismatch",
       `Head repository ${normalized(snapshot.headRepository) || "missing"} does not match ${normalized(snapshot.repository) || "missing"}.`,
     );
   }
-  if (!fullShaPattern.test(normalized(snapshot.headSha))) {
+  const headSha = exactAuthorityString(snapshot.headSha);
+  if (!fullShaPattern.test(headSha)) {
     addReason(
       reasons,
       "invalid_head_sha",
@@ -73,7 +87,8 @@ function validatePullRequestIdentity(snapshot, reasons) {
   if (snapshot.mergeable !== true) {
     addReason(reasons, "mergeable_not_true", "GitHub has not confirmed that the pull request is mergeable.");
   }
-  if (normalized(snapshot.mergeableState).toLowerCase() !== "clean") {
+  const mergeableState = exactAuthorityString(snapshot.mergeableState);
+  if (mergeableState !== "clean") {
     addReason(
       reasons,
       "merge_state_not_clean",
