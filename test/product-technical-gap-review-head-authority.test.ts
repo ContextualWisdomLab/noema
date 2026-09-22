@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
-const STALE_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
+const CURRENT_730_EXACT = "#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`";
+const STALE_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_STATE_AUTHORITY =
@@ -14,6 +14,8 @@ const REVIEW_GUIDE_MUTATION_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
 const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
+const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
+  "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
 const REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "requires repository workflow URL id to equal the workflow run's `workflow_id`";
 const STATUS_PROJECTION_AUTHORITY =
@@ -22,12 +24,13 @@ const RETRY_CHRONOLOGY_AUTHORITY =
   "fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
+  "issue #27; candidate #730 exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REVIEW_STATE_AUTHORITY = "exact GitHub review state authority";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
 const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
+const GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY = "exact Noema review marker serialization authority";
 const GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "repository workflow URL/workflow_id identity consistency";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
@@ -47,7 +50,7 @@ function currentGovernanceRow(baseline: string) {
 }
 
 describe("product-technical gap review-head authority", () => {
-  it("binds active #730 authority to review identity/state/decision, workflow identity, status projection, and retry chronology", () => {
+  it("binds active #730 authority to review identity/state/decision, marker serialization, workflow identity, status projection, and retry chronology", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -59,6 +62,7 @@ describe("product-technical gap review-head authority", () => {
     expect(section).toContain(REVIEW_GUIDE_AUTHORITY);
     expect(section).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(section).toContain(NOEMA_DECISION_AUTHORITY);
+    expect(section).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(section).toContain(REPOSITORY_WORKFLOW_ID_AUTHORITY);
     expect(section).toContain(STATUS_PROJECTION_AUTHORITY);
     expect(section).toContain(RETRY_CHRONOLOGY_AUTHORITY);
@@ -67,6 +71,7 @@ describe("product-technical gap review-head authority", () => {
     expect(row).toContain(GOVERNANCE_REVIEW_STATE_AUTHORITY);
     expect(row).toContain(GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_DECISION_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY);
     expect(row).toContain(GOVERNANCE_STATUS_PROJECTION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY);
