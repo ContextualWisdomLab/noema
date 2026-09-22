@@ -14,13 +14,14 @@ describe("commercial readiness Commit Status projection doctoring", () => {
     expect(resultAuthority).toContain("preserves exact Commit Status context/state identity before terminal merge-authority evaluation");
   });
 
-  it("keeps the production docstring scope code-current at 34 authority-bearing functions", () => {
+  it("keeps the production docstring scope code-current at 38 authority-bearing functions", () => {
     const docstringAuthority = readFileSync(DOCSTRING_DOCTORING_PATH, "utf8");
 
-    expect(docstringAuthority).toContain("34개 authority-bearing production 함수");
+    expect(docstringAuthority).toContain("38개 authority-bearing production 함수");
     expect(docstringAuthority).toContain("`latestStatuses()`");
-    expect(docstringAuthority).toContain("17개");
-    expect(docstringAuthority).toContain("8개");
-    expect(docstringAuthority).toContain("9개");
+    expect(docstringAuthority).toContain("`assertLiveHead()`");
+    expect(docstringAuthority).toContain("scripts/hourly-commercial-readiness.mjs`: 20개");
+    expect(docstringAuthority).toContain("scripts/lib/commercial-readiness-loop.mjs`: 9개");
+    expect(docstringAuthority).toContain("scripts/lib/main-governance-audit.mjs`: 9개");
   });
 });
