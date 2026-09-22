@@ -13,10 +13,10 @@ describe("commercial readiness operator workflow-provenance contract", () => {
     expect(section).toContain("App id `15368`");
     expect(section).toContain("check_suite.id");
     expect(section).toContain("check_suite_id");
-    expect(section).toContain("event=`pull_request`");
+    expect(section).toContain("event=pull_request");
     expect(section).toContain("pull_requests");
     expect(section).toContain("head_sha");
-    expect(section).toContain("base.ref=`main`");
+    expect(section).toContain("base.ref=main");
     expect(section).toContain("base.sha");
     expect(section).toContain(".github/workflows/ci.yml");
     expect(section).toContain(".github/workflows/reviewer-ci.yml");
@@ -26,5 +26,9 @@ describe("commercial readiness operator workflow-provenance contract", () => {
     expect(section).toContain("self-modified-workflow");
     expect(section).toContain("untrusted-workflow");
     expect(section).toContain("changed_files");
+    expect(section).toContain("operational_error");
+    expect(section).toContain("ContextualWisdomLab/.github");
+    expect(section).toContain("repository id `1274066402`");
+    expect(section).toContain("refs/heads/main");
   });
 });

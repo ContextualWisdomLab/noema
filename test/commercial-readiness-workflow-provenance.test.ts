@@ -11,11 +11,24 @@ const headSha = "a".repeat(40);
 const pullNumber = 730;
 const baseRef = "main";
 const baseSha = "c".repeat(40);
+const canonicalRequiredWorkflowMetadata = Object.freeze({
+  workflow_id: 311017545,
+  repository: "ContextualWisdomLab/.github",
+  repository_id: 1_274_066_402,
+  path: ".github/workflows/security-scan.yml",
+  ref: "refs/heads/main",
+  sha: null,
+  ruleset_source_type: "Organization",
+  ruleset_source: "ContextualWisdomLab",
+  state: "active",
+});
 
 function run({
   suiteId,
   path,
   workflowUrl,
+  workflowId = 0,
+  requiredWorkflowMetadata = null,
   event = "pull_request",
   runHeadSha = headSha,
   associatedPullNumbers = [pullNumber],
@@ -26,6 +39,8 @@ function run({
   suiteId: number;
   path: string;
   workflowUrl: string;
+  workflowId?: number;
+  requiredWorkflowMetadata?: typeof canonicalRequiredWorkflowMetadata | null;
   event?: string;
   runHeadSha?: string;
   associatedPullNumbers?: number[];
@@ -37,6 +52,8 @@ function run({
     check_suite_id: suiteId,
     path,
     workflow_url: workflowUrl,
+    workflow_id: workflowId,
+    required_workflow_metadata: requiredWorkflowMetadata,
     event,
     head_sha: runHeadSha,
     pull_requests: associatedPullNumbers.map((number) => ({
@@ -96,12 +113,14 @@ describe("commercial readiness workflow provenance", () => {
       .toBe("untrusted-producer");
   });
 
-  it("admits bundled scanner checks only from the organization-required Security Scan run", () => {
+  it("admits bundled scanner checks only from the canonical organization-required Security Scan source", () => {
     const authorities = workflowAuthorityByCheckSuite([
       run({
         suiteId: 21,
         path: ".github/workflows/security-scan.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/required_workflows/311017545`,
+        workflowId: 311017545,
+        requiredWorkflowMetadata: canonicalRequiredWorkflowMetadata,
       }),
       run({
         suiteId: 22,
@@ -112,6 +131,32 @@ describe("commercial readiness workflow provenance", () => {
 
     expect(commercialCheckAppSlug(check("scorecard", 21), authorities, [])).toBe("github-actions");
     expect(commercialCheckAppSlug(check("osv-scan", 22), authorities, [])).toBe("untrusted-workflow");
+  });
+
+  it("rejects target-repository required-workflow URLs without canonical source metadata", () => {
+    const authorities = workflowAuthorityByCheckSuite([
+      run({
+        suiteId: 23,
+        path: ".github/workflows/security-scan.yml",
+        workflowUrl: `https://api.github.com/repos/${repository}/actions/required_workflows/311017545`,
+        workflowId: 311017545,
+      }),
+      run({
+        suiteId: 24,
+        path: ".github/workflows/security-scan.yml",
+        workflowUrl: `https://api.github.com/repos/${repository}/actions/required_workflows/311017545`,
+        workflowId: 311017545,
+        requiredWorkflowMetadata: {
+          ...canonicalRequiredWorkflowMetadata,
+          repository_id: 999_999_999,
+        },
+      }),
+    ], repository, headSha, pullNumber, baseRef, baseSha);
+
+    expect(commercialCheckAppSlug(check("trivy-fs", 23), authorities, []))
+      .toBe("untrusted-workflow");
+    expect(commercialCheckAppSlug(check("dependency-review", 24), authorities, []))
+      .toBe("untrusted-workflow");
   });
 
   it("fails closed on missing, stale, non-PR, or malformed workflow-run authority", () => {
