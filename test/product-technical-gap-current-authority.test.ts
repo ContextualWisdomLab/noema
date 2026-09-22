@@ -20,6 +20,10 @@ const CURRENT_730_APP_ID_AUTHORITY =
   "requires canonical GitHub Actions App id `15368` from the Noema owner contract";
 const CURRENT_730_PR_IDENTITY_AUTHORITY =
   "requires exact pull-request state/base/repository/head SHA/mergeable-state identity without whitespace normalization";
+const CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY =
+  "Issue #27 remains live repository governance authority for ruleset, review/conversation, history, deletion, and bypass control-plane evidence";
+const CURRENT_REVIEWER_APP_AUTHORITY =
+  "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
   "issue #27; candidate #730 exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`";
@@ -126,6 +130,8 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_PRODUCER_AUTHORITY);
     expect(section).toContain(CURRENT_730_APP_ID_AUTHORITY);
     expect(section).toContain(CURRENT_730_PR_IDENTITY_AUTHORITY);
+    expect(section).toContain(CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY);
+    expect(section).toContain(CURRENT_REVIEWER_APP_AUTHORITY);
     expect(section).not.toContain(OPEN_727);
   });
 
