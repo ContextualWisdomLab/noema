@@ -2,13 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `c1d76b6e44fbd7234535acd26391aa958dec2f80`";
-const STALE_730_EXACT = "#730 current exact `071dcc92dd5afbfaf5e0499edc5d07d781f1a302`";
+const CURRENT_730_EXACT = "#730 current exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
+const STALE_730_EXACT = "#730 current exact `c1d76b6e44fbd7234535acd26391aa958dec2f80`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
+const REVIEW_GUIDE_AUTHORITY =
+  "active operator guide documents the exact review-to-head `commit_id` binding and its fail-closed diagnostic";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `c1d76b6e44fbd7234535acd26391aa958dec2f80`";
+  "issue #27; candidate #730 exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 
 function currentOpenLaneSection(baseline: string) {
@@ -25,7 +27,7 @@ function currentGovernanceRow(baseline: string) {
 }
 
 describe("product-technical gap review-head authority", () => {
-  it("binds active #730 authority to GitHub review commit identity", () => {
+  it("binds active #730 authority to GitHub review commit identity and operator guidance", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -33,6 +35,7 @@ describe("product-technical gap review-head authority", () => {
     expect(section).toContain(CURRENT_730_EXACT);
     expect(section).not.toContain(STALE_730_EXACT);
     expect(section).toContain(REVIEW_HEAD_AUTHORITY);
+    expect(section).toContain(REVIEW_GUIDE_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_REVIEW_HEAD_AUTHORITY);
   });
