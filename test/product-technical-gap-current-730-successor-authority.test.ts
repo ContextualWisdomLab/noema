@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "b6cb069ffb8c498a9d096f5209f5d0ac93400ce6";
+const CURRENT_730_EXACT = "c23b3d186925e63a11f6777139995d37fce190ef";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -14,6 +14,8 @@ const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const PRODUCTION_DOCSTRING_AUTHORITY =
   "100% 38-function authority-bearing production docstring scope contract";
+const HOSTED_RED_TEST_CONTRACT_AUTHORITY =
+  "hosted RED test-contract RCA preserves missing-approval versus explicit-rejection semantics, fail-closed missing retry chronology, and the 38-function direct-JSDoc gate without changing production merge authority";
 
 const authoritySources = [
   "test/product-technical-gap-current-authority.test.ts",
@@ -34,6 +36,7 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
+    expect(baseline).toContain(HOSTED_RED_TEST_CONTRACT_AUTHORITY);
   });
 
   it("moves every changed authority fixture to the same current #730 exact", () => {
