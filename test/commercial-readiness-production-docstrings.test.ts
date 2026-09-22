@@ -17,13 +17,19 @@ describe("commercial-readiness touched production docstrings", () => {
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
+      "checkRunChronologicalOrder",
+      "checkRunSuiteKey",
       "latestCheckRunsBySuite",
       "requiredWorkflowRunId",
       "requiredWorkflowMetadataIsCanonical",
       "workflowRunSource",
       "workflowRunMatchesTargetPullRequest",
+      "workflowAuthorityByCheckSuite",
+      "commercialCheckAppSlug",
       "observedRequiredWorkflows",
       "canonicalRequiredWorkflowObservation",
+      "bindRequiredWorkflowMetadata",
+      "parseNoemaReviewDecision",
       "fetchPullRequestSnapshot",
       "mergePullRequest",
       "main",
@@ -33,6 +39,8 @@ describe("commercial-readiness touched production docstrings", () => {
 
     const evaluator = readFileSync("scripts/lib/commercial-readiness-loop.mjs", "utf8");
     for (const functionName of [
+      "exactAuthorityString",
+      "exactCheckName",
       "isTrustedGitHubActionsCheck",
       "validatePullRequestIdentity",
       "validateRequiredCheckProducers",
@@ -40,6 +48,21 @@ describe("commercial-readiness touched production docstrings", () => {
       "validateObservedChecks",
     ]) {
       expectDirectJsDoc(evaluator, functionName);
+    }
+
+    const governance = readFileSync("scripts/lib/main-governance-audit.mjs", "utf8");
+    for (const functionName of [
+      "exactAuthorityString",
+      "positiveInteger",
+      "ruleParameters",
+      "addCheck",
+      "rulesOfType",
+      "observedWorkflowControls",
+      "isCanonicalRequiredWorkflow",
+      "emptyObservedControls",
+      "evaluateMainGovernanceRules",
+    ]) {
+      expectDirectJsDoc(governance, functionName);
     }
   });
 });
