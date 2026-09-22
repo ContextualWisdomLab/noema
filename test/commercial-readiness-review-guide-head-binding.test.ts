@@ -24,4 +24,15 @@ describe("commercial-readiness review guide head binding", () => {
     expect(guide).toContain("`noema_current_head_approval_missing`");
     expect(guide).toContain("GitHub `commit_id`가 exact current head인지");
   });
+
+  it("documents exact GitHub review state compatibility as merge authority", () => {
+    const guide = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
+    const section = reviewSection(guide);
+
+    expect(section).toContain("GitHub review `state`");
+    expect(section).toContain("`APPROVED`");
+    expect(section).toContain("`CHANGES_REQUESTED`");
+    expect(section).toContain("누락·소문자·incompatible");
+    expect(guide).toContain("marker decision과 GitHub review `state`");
+  });
 });
