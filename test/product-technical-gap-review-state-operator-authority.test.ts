@@ -1,14 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
-const STALE_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
+const CURRENT_730_EXACT = "#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`";
+const STALE_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const REVIEW_STATE_MAPPING_TEST_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
 const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
+const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
+  "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
 const APPROVAL_MAPPING = "`approve`→`APPROVED`";
 const BLOCKING_MAPPING = "`request_changes`/`blocked`→`CHANGES_REQUESTED`";
 
@@ -17,7 +19,7 @@ function hasExactReviewStateMappings(baseline: string): boolean {
 }
 
 describe("product-technical gap review-state operator authority", () => {
-  it("binds the active commercial baseline to the current #730 review-state and decision contracts", () => {
+  it("binds the active commercial baseline to the current #730 review-state, decision, and marker contracts", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain(CURRENT_730_EXACT);
@@ -25,6 +27,7 @@ describe("product-technical gap review-state operator authority", () => {
     expect(baseline).toContain(REVIEW_STATE_OPERATOR_AUTHORITY);
     expect(baseline).toContain(REVIEW_STATE_MAPPING_TEST_AUTHORITY);
     expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(hasExactReviewStateMappings(baseline)).toBe(true);
   });
 
