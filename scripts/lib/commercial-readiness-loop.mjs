@@ -39,7 +39,7 @@ function addReason(reasons, code, detail) {
 }
 
 function isTrustedGitHubActionsCheck(check) {
-  return normalized(check?.appSlug).toLowerCase() === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
+  return check?.appSlug === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
 }
 
 function validatePullRequestIdentity(snapshot, reasons) {
