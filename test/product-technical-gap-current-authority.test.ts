@@ -8,8 +8,8 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
-const STALE_730_EXACT = "#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
+const CURRENT_730_EXACT = "#730 current exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
+const STALE_730_EXACT = "#730 current exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -18,6 +18,8 @@ const CURRENT_730_PRODUCER_AUTHORITY =
   "requires exact GitHub Actions producer identity without trim/case normalization";
 const CURRENT_730_CHECK_SUITE_IDENTITY_AUTHORITY =
   "requires exact check-suite retry grouping without check-name or producer normalization and timestamp-first retry chronology before opaque check-run ids";
+const CURRENT_730_RETRY_CHRONOLOGY_AUTHORITY =
+  "fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence";
 const CURRENT_730_APP_ID_AUTHORITY =
   "requires canonical GitHub Actions App id `15368` from the Noema owner contract";
 const CURRENT_730_PR_IDENTITY_AUTHORITY =
@@ -35,18 +37,19 @@ const CURRENT_730_CHECK_RESULT_AUTHORITY =
 const CURRENT_730_STATUS_PROJECTION_AUTHORITY =
   "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
 const CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY =
-  "100% 34-function authority-bearing production docstring scope contract";
+  "100% 35-function authority-bearing production docstring scope contract";
 const CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY =
   "Issue #27 remains live repository governance authority for ruleset, pull-request, review/conversation, history, deletion, and bypass control-plane evidence";
 const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
+  "issue #27; candidate #730 exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
 const GOVERNANCE_CHECK_SUITE_IDENTITY_AUTHORITY = "exact check-suite retry identity + timestamp-first retry chronology";
+const GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY = "fail-closed unknown retry chronology";
 const GOVERNANCE_APP_ID_AUTHORITY = "canonical GitHub Actions App id";
 const GOVERNANCE_PR_IDENTITY_AUTHORITY = "exact pull-request identity authority";
 const GOVERNANCE_REQUIRED_WORKFLOW_SOURCE_AUTHORITY = "canonical required-workflow source authority";
@@ -60,7 +63,7 @@ const GOVERNANCE_CHECK_RESULT_AUTHORITY =
   "exact Check Run/Commit Status terminal result authority";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY =
-  "100% 34-function authority-bearing production docstring scope contract";
+  "100% 35-function authority-bearing production docstring scope contract";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -96,6 +99,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_CONTROL_PLANE_OWNER)
     && governanceRows[0].includes(GOVERNANCE_PRODUCER_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_SUITE_IDENTITY_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_APP_ID_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_PR_IDENTITY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_REQUIRED_WORKFLOW_SOURCE_AUTHORITY)
@@ -156,6 +160,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_CHECK_NAME_AUTHORITY);
     expect(section).toContain(CURRENT_730_PRODUCER_AUTHORITY);
     expect(section).toContain(CURRENT_730_CHECK_SUITE_IDENTITY_AUTHORITY);
+    expect(section).toContain(CURRENT_730_RETRY_CHRONOLOGY_AUTHORITY);
     expect(section).toContain(CURRENT_730_APP_ID_AUTHORITY);
     expect(section).toContain(CURRENT_730_PR_IDENTITY_AUTHORITY);
     expect(section).toContain(CURRENT_730_REQUIRED_WORKFLOW_SOURCE_AUTHORITY);
