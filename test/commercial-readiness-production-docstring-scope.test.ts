@@ -28,6 +28,7 @@ const evaluatorAuthorityFunctions = [
   "validateRequiredCheckProducers",
   "validateRequiredChecks",
   "validateObservedChecks",
+  "validateChecks",
 ];
 
 const governanceAuthorityFunctions = [
