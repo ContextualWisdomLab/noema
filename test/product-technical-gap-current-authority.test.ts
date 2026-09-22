@@ -8,11 +8,13 @@ const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586
 const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `2b063eb621b1b40413de20b8853b5dcb1ddd0d45`";
-const STALE_730_EXACT = "#730 current exact `68cf8c6a55c80a201ca22dc23bbae128a312e19b`";
+const CURRENT_730_EXACT = "#730 current exact `948c93a042e0c5541368e9542b7aaafe803f71b2`";
+const STALE_730_EXACT = "#730 current exact `2b063eb621b1b40413de20b8853b5dcb1ddd0d45`";
+const CURRENT_730_PR_BOUND_PROVENANCE =
+  "requires one explicit `pull_requests` association matching both target PR number and exact head SHA";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `2b063eb621b1b40413de20b8853b5dcb1ddd0d45`";
+  "issue #27; candidate #730 exact `948c93a042e0c5541368e9542b7aaafe803f71b2`";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -105,6 +107,7 @@ describe("product-technical gap current authority", () => {
     expect(section).not.toContain(STALE_726_EXACT);
     expect(section).toContain(CURRENT_730_EXACT);
     expect(section).not.toContain(STALE_730_EXACT);
+    expect(section).toContain(CURRENT_730_PR_BOUND_PROVENANCE);
     expect(section).not.toContain(OPEN_727);
   });
 
