@@ -508,6 +508,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
+/** Accept a Noema decision only when GitHub binds the review itself to the exact head SHA. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -520,7 +521,7 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     if (!isTrustedNoemaBot(review, trustedReviewerLogin)) {
       continue;
     }
-    if (review?.commit_id && review.commit_id !== expectedHeadSha) {
+    if (review?.commit_id !== expectedHeadSha) {
       continue;
     }
     const body = String(review?.body ?? "");
