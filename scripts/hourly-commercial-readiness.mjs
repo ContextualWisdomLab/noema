@@ -5,7 +5,10 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluatePullRequest } from "./lib/commercial-readiness-loop.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { REQUIRED_MAIN_CHECK_INTEGRATION_ID } from "./lib/main-governance-audit.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_WORKFLOW,
+} from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
@@ -206,13 +209,46 @@ export function latestCheckRunsBySuite(checkRuns) {
   });
 }
 
+function requiredWorkflowRunId(run, repository) {
+  const workflowUrl = String(run?.workflow_url ?? "");
+  const requiredWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/required_workflows/`;
+  if (!workflowUrl.startsWith(requiredWorkflowPrefix)) {
+    return null;
+  }
+  const suffix = workflowUrl.slice(requiredWorkflowPrefix.length);
+  if (!/^[1-9][0-9]*$/.test(suffix)) {
+    return null;
+  }
+  const workflowId = Number(suffix);
+  return Number.isSafeInteger(workflowId)
+    && workflowId > 0
+    && run?.workflow_id === workflowId
+    ? workflowId
+    : null;
+}
+
+function requiredWorkflowMetadataIsCanonical(metadata, workflowId) {
+  return metadata?.workflow_id === workflowId
+    && metadata?.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && metadata?.path === REQUIRED_MAIN_WORKFLOW.path
+    && metadata?.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && metadata?.sha === REQUIRED_MAIN_WORKFLOW.sha
+    && metadata?.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+    && metadata?.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source
+    && metadata?.state === "active"
+    && typeof metadata?.repository === "string"
+    && metadata.repository.startsWith(`${REQUIRED_MAIN_WORKFLOW.ruleset_source}/`);
+}
+
 function workflowRunSource(run, repository) {
   const workflowUrl = String(run?.workflow_url ?? "");
   const repositoryWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/workflows/`;
-  const requiredWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/required_workflows/`;
-  if (workflowUrl.startsWith(requiredWorkflowPrefix)) {
-    const suffix = workflowUrl.slice(requiredWorkflowPrefix.length);
-    return /^[1-9][0-9]*$/.test(suffix) ? "required_workflow" : "unknown";
+  const requiredWorkflowId = requiredWorkflowRunId(run, repository);
+  if (requiredWorkflowId !== null) {
+    return requiredWorkflowMetadataIsCanonical(
+      run?.required_workflow_metadata,
+      requiredWorkflowId,
+    ) ? "required_workflow" : "unknown";
   }
   if (workflowUrl.startsWith(repositoryWorkflowPrefix)) {
     const suffix = workflowUrl.slice(repositoryWorkflowPrefix.length);
@@ -343,6 +379,98 @@ function paginatedObjectItems(endpoint, key) {
       throw new TypeError(`Paginated GitHub page is missing ${key}.`);
     }
     return items;
+  });
+}
+
+function observedRequiredWorkflows(rules) {
+  return (Array.isArray(rules) ? rules : [])
+    .filter((rule) => (
+      rule?.type === "workflows"
+      && rule?.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+      && rule?.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source
+    ))
+    .flatMap((rule) => {
+      const workflows = rule?.parameters?.workflows;
+      return Array.isArray(workflows) ? workflows : [];
+    })
+    .map((workflow) => ({
+      repository_id: workflow?.repository_id,
+      path: workflow?.path,
+      ref: workflow?.ref,
+      sha: workflow?.sha === undefined ? null : workflow.sha,
+    }));
+}
+
+function canonicalRequiredWorkflowObservation(rules) {
+  const matches = observedRequiredWorkflows(rules).filter((workflow) => (
+    workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && workflow.path === REQUIRED_MAIN_WORKFLOW.path
+    && workflow.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && workflow.sha === REQUIRED_MAIN_WORKFLOW.sha
+  ));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** Resolve target required-workflow IDs through the live canonical owner repository and active main rules. */
+function bindRequiredWorkflowMetadata(repository, workflowRuns) {
+  const runs = Array.isArray(workflowRuns) ? workflowRuns : [];
+  const requiredIds = new Set(
+    runs.map((run) => requiredWorkflowRunId(run, repository)).filter((id) => id !== null),
+  );
+  if (requiredIds.size === 0) {
+    return runs;
+  }
+
+  const rules = paginatedArray(`repos/${repository}/rules/branches/main?per_page=100`);
+  const requiredWorkflow = canonicalRequiredWorkflowObservation(rules);
+  if (!requiredWorkflow) {
+    return runs;
+  }
+
+  const sourceRepository = runGhJson([
+    "api",
+    `repositories/${REQUIRED_MAIN_WORKFLOW.repository_id}`,
+  ]);
+  if (
+    sourceRepository?.id !== REQUIRED_MAIN_WORKFLOW.repository_id
+    || sourceRepository?.owner?.login !== REQUIRED_MAIN_WORKFLOW.ruleset_source
+    || typeof sourceRepository?.full_name !== "string"
+  ) {
+    return runs;
+  }
+
+  const sourceWorkflows = paginatedObjectItems(
+    `repos/${sourceRepository.full_name}/actions/workflows?per_page=100`,
+    "workflows",
+  );
+  const canonicalWorkflowIds = new Set(sourceWorkflows
+    .filter((workflow) => (
+      workflow?.path === REQUIRED_MAIN_WORKFLOW.path
+      && workflow?.state === "active"
+      && Number.isSafeInteger(workflow?.id)
+      && workflow.id > 0
+    ))
+    .map((workflow) => workflow.id));
+
+  return runs.map((run) => {
+    const workflowId = requiredWorkflowRunId(run, repository);
+    if (workflowId === null || !canonicalWorkflowIds.has(workflowId)) {
+      return run;
+    }
+    return {
+      ...run,
+      required_workflow_metadata: {
+        workflow_id: workflowId,
+        repository: sourceRepository.full_name,
+        repository_id: sourceRepository.id,
+        path: requiredWorkflow.path,
+        ref: requiredWorkflow.ref,
+        sha: requiredWorkflow.sha,
+        ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+        ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+        state: "active",
+      },
+    };
   });
 }
 
@@ -516,11 +644,12 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     `repos/${repository}/commits/${headSha}/check-runs?filter=all&per_page=100`,
     "check_runs",
   ));
+  const workflowRuns = paginatedObjectItems(
+    `repos/${repository}/actions/runs?head_sha=${headSha}&event=pull_request&per_page=100`,
+    "workflow_runs",
+  );
   const workflowAuthorities = workflowAuthorityByCheckSuite(
-    paginatedObjectItems(
-      `repos/${repository}/actions/runs?head_sha=${headSha}&event=pull_request&per_page=100`,
-      "workflow_runs",
-    ),
+    bindRequiredWorkflowMetadata(repository, workflowRuns),
     repository,
     headSha,
     pullNumber,
