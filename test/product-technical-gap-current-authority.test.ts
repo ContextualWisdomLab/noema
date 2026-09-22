@@ -3,16 +3,13 @@ import { describe, expect, it } from "vitest";
 
 const CONVERGENCE_HEADING = "## Protected private-reporting authority convergence — merged PRs #722 + #723 + #724";
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_PROTECTED_MAIN = "main@c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9";
-const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
-const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
-const CURRENT_726_HOSTED_GREEN =
-  "application CI `35661566966`, reviewer-ci `35661566947`, required Security Scan `35661566955`, and patch-validator-image `35661566946` are terminal SUCCESS";
-const CURRENT_726_REVIEW_PENDING = "Fresh independent current-head review remains required";
+const CURRENT_PROTECTED_MAIN = "main@ca32ae2eb8c5ce73af2769d6a58a7ac714503251";
+const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`";
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
+const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`";
-const STALE_730_EXACT = "#730 current exact `4fa3839c9ca43d8bb8a7747114928296688251fe`";
+const CURRENT_730_EXACT = "#730 current exact `3ddf3e5fbaca4128eef1eba0d09bb81e07ffa398`";
+const STALE_730_EXACT = "#730 current exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -29,23 +26,22 @@ const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`";
+  "issue #27; candidate #730 exact `3ddf3e5fbaca4128eef1eba0d09bb81e07ffa398`";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
 const GOVERNANCE_APP_ID_AUTHORITY = "canonical GitHub Actions App id";
 const GOVERNANCE_PR_IDENTITY_AUTHORITY = "exact pull-request identity authority";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
+const PRIVATE_REPORTING_PROTECTED_OWNER = "protected #722 + #723 + #724 + #726 / issue #73";
 const PRIVATE_REPORTING_DATED_VISIBILITY =
   "dated 2026-09-22 signed-out `Report a vulnerability` visibility + bounded public observation evidenced";
 const PRIVATE_REPORTING_REMAINING_GAPS =
   "direct submission form, fresh protected receipt, staffing/notification, benign private case, release/deployment evidence open";
 const PRIVATE_REPORTING_NEXT_ACTION =
-  "#726 current-head independent review 종료 후 normal merge 검토; #73에서 fresh protected receipt, direct submission form, staffing/notification, benign private case, buyer-safe receipt를 owner별로 독립 수집";
+  "#73에서 fresh protected receipt, direct submission form, staffing/notification, benign private case, buyer-safe receipt를 owner별로 독립 수집";
 
-/**
- * Isolates the dated convergence authority so duplicated historical text cannot satisfy current-evidence assertions.
- */
+/** Isolates the dated convergence authority so historical text cannot satisfy current-evidence assertions. */
 function convergenceSection(baseline: string) {
   const start = baseline.indexOf(CONVERGENCE_HEADING);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -53,9 +49,7 @@ function convergenceSection(baseline: string) {
   return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
 }
 
-/**
- * Isolates live open-lane authority from dated convergence history.
- */
+/** Isolates live open-lane authority from dated convergence history. */
 function currentOpenLaneSection(baseline: string) {
   const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
   expect(start).toBeGreaterThanOrEqual(0);
@@ -63,16 +57,9 @@ function currentOpenLaneSection(baseline: string) {
   return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
 }
 
-/**
- * Requires one commercial governance row to carry both candidate identity and next action.
- *
- * Historical prose elsewhere in the baseline is predecessor evidence only and
- * must not satisfy the current P0 register contract.
- */
+/** Requires one commercial governance row to carry candidate identity and current authority. */
 function hasCurrentGovernanceCandidate(baseline: string): boolean {
-  const governanceRows = baseline
-    .split("\n")
-    .filter((line) => line.startsWith(GOVERNANCE_ROW_PREFIX));
+  const governanceRows = baseline.split("\n").filter((line) => line.startsWith(GOVERNANCE_ROW_PREFIX));
   return governanceRows.length === 1
     && governanceRows[0].includes(GOVERNANCE_CANDIDATE)
     && governanceRows[0].includes(GOVERNANCE_PRODUCER_AUTHORITY)
@@ -81,18 +68,15 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
 }
 
-/**
- * Requires the active private-reporting P0 row itself to carry the newest dated
- * reporter-surface observation and the still-open operational evidence classes.
- */
+/** Requires the private-reporting row to reflect protected integration while keeping operational gaps open. */
 function hasCurrentPrivateReportingObservation(baseline: string): boolean {
-  const privateReportingRows = baseline
-    .split("\n")
-    .filter((line) => line.startsWith(PRIVATE_REPORTING_ROW_PREFIX));
-  return privateReportingRows.length === 1
-    && privateReportingRows[0].includes(PRIVATE_REPORTING_DATED_VISIBILITY)
-    && privateReportingRows[0].includes(PRIVATE_REPORTING_REMAINING_GAPS)
-    && privateReportingRows[0].includes(PRIVATE_REPORTING_NEXT_ACTION);
+  const rows = baseline.split("\n").filter((line) => line.startsWith(PRIVATE_REPORTING_ROW_PREFIX));
+  return rows.length === 1
+    && rows[0].includes(PRIVATE_REPORTING_PROTECTED_OWNER)
+    && rows[0].includes(PRIVATE_REPORTING_DATED_VISIBILITY)
+    && rows[0].includes(PRIVATE_REPORTING_REMAINING_GAPS)
+    && rows[0].includes(PRIVATE_REPORTING_NEXT_ACTION)
+    && !rows[0].includes("candidate #726");
 }
 
 describe("product-technical gap current authority", () => {
@@ -115,19 +99,17 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain("PR #726 exact `1f5a5a120ea803184649e24e0ad6fc7b3419df63`");
     expect(section).toContain("PR #727 exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`");
     expect(section).toContain(MERGED_727);
+    expect(section).toContain(MERGED_726);
     expect(section).toContain(CURRENT_PROTECTED_MAIN);
-    expect(section).toContain("#728 and #727 are protected history, not open candidates");
-    expect(section).not.toContain("PR #728 exact `5deb783fd0985f374630112a92b921bb2f420356`");
+    expect(section).toContain("Issues #27/#29 own enforceable review/App-governance closure");
   });
 
-  it("binds current #726/#730 exact authority only inside the active open-lane section", () => {
+  it("keeps merged #726 out of the active open-lane section and binds current #730", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
 
-    expect(section).toContain(CURRENT_726_EXACT);
-    expect(section).not.toContain(STALE_726_EXACT);
-    expect(section).toContain(CURRENT_726_HOSTED_GREEN);
-    expect(section).toContain(CURRENT_726_REVIEW_PENDING);
+    expect(section).not.toContain(OPEN_726);
+    expect(section).not.toContain(OPEN_727);
     expect(section).toContain(CURRENT_730_EXACT);
     expect(section).not.toContain(STALE_730_EXACT);
     expect(section).toContain(CURRENT_730_PR_BOUND_PROVENANCE);
@@ -137,13 +119,10 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_PR_IDENTITY_AUTHORITY);
     expect(section).toContain(CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY);
     expect(section).toContain(CURRENT_REVIEWER_APP_AUTHORITY);
-    expect(section).not.toContain(OPEN_727);
   });
 
   it("records the current protected-main governance candidate in the commercial gap register", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
-
-    expect(hasCurrentGovernanceCandidate(baseline)).toBe(true);
+    expect(hasCurrentGovernanceCandidate(readFileSync("docs/product-technical-gap-baseline.md", "utf8"))).toBe(true);
   });
 
   it("does not let duplicated historical prose satisfy current governance-row authority", () => {
@@ -152,14 +131,11 @@ describe("product-technical gap current authority", () => {
       `Historical predecessor next step: ${GOVERNANCE_NEXT_ACTION}`,
       `${GOVERNANCE_ROW_PREFIX} Security workflow 하나로 통제를 과대 주장할 위험 | issue #27 | external control evidence open | live ruleset evidence | admin/owner control을 독립 검증 |`,
     ].join("\n");
-
     expect(hasCurrentGovernanceCandidate(hostileBaseline)).toBe(false);
   });
 
-  it("binds the dated external-reporter observation to the active private-reporting P0 row", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
-
-    expect(hasCurrentPrivateReportingObservation(baseline)).toBe(true);
+  it("binds protected #726 source integration and still-open operational evidence to the active row", () => {
+    expect(hasCurrentPrivateReportingObservation(readFileSync("docs/product-technical-gap-baseline.md", "utf8"))).toBe(true);
   });
 
   it("does not let historical reporter-observation prose satisfy the active private-reporting row", () => {
@@ -167,15 +143,13 @@ describe("product-technical gap current authority", () => {
       `Historical observation: ${PRIVATE_REPORTING_DATED_VISIBILITY}`,
       `Historical remaining gaps: ${PRIVATE_REPORTING_REMAINING_GAPS}`,
       `Historical next action: ${PRIVATE_REPORTING_NEXT_ACTION}`,
-      `${PRIVATE_REPORTING_ROW_PREFIX} setting receipt가 운영 증거로 과대 승격될 위험 | issue #73; candidate #726 | external reporter visibility open | protected observation | collect remaining evidence |`,
+      `${PRIVATE_REPORTING_ROW_PREFIX} setting receipt가 운영 증거로 과대 승격될 위험 | issue #73 | external reporter visibility open | protected observation | collect remaining evidence |`,
     ].join("\n");
-
     expect(hasCurrentPrivateReportingObservation(hostileBaseline)).toBe(false);
   });
 
   it("keeps release observation current without promoting absence into release completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
-
     expect(baseline).toContain("Dated release observation for this repair (2026-09-22 KST)는 GitHub Releases **0건**이다.");
     expect(baseline).not.toContain("Dated release observation for this repair (2026-09-21 KST)는 GitHub Releases **0건**이다.");
     expect(baseline).toContain("GitHub release collection에 immutable Noema release가 실제 존재하기 전");
