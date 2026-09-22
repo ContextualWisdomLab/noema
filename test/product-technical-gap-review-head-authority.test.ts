@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
-const STALE_730_EXACT = "#730 current exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
+const CURRENT_730_EXACT = "#730 current exact `4670f9b84968c0be0abb5594f9a38d8d8ef75aa7`";
+const STALE_730_EXACT = "#730 current exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
+const REVIEW_STATE_AUTHORITY =
+  "requires exact GitHub review state authority without case normalization";
 const REVIEW_GUIDE_AUTHORITY =
   "active operator guide documents the exact review-to-head `commit_id` binding and its fail-closed diagnostic";
 const REPOSITORY_WORKFLOW_ID_AUTHORITY =
@@ -16,8 +18,9 @@ const RETRY_CHRONOLOGY_AUTHORITY =
   "fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
+  "issue #27; candidate #730 exact `4670f9b84968c0be0abb5594f9a38d8d8ef75aa7`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
+const GOVERNANCE_REVIEW_STATE_AUTHORITY = "exact GitHub review state authority";
 const GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "repository workflow URL/workflow_id identity consistency";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
@@ -37,7 +40,7 @@ function currentGovernanceRow(baseline: string) {
 }
 
 describe("product-technical gap review-head authority", () => {
-  it("binds active #730 authority to review identity, repository workflow identity, status projection, and retry chronology", () => {
+  it("binds active #730 authority to review identity/state, workflow identity, status projection, and retry chronology", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -45,12 +48,14 @@ describe("product-technical gap review-head authority", () => {
     expect(section).toContain(CURRENT_730_EXACT);
     expect(section).not.toContain(STALE_730_EXACT);
     expect(section).toContain(REVIEW_HEAD_AUTHORITY);
+    expect(section).toContain(REVIEW_STATE_AUTHORITY);
     expect(section).toContain(REVIEW_GUIDE_AUTHORITY);
     expect(section).toContain(REPOSITORY_WORKFLOW_ID_AUTHORITY);
     expect(section).toContain(STATUS_PROJECTION_AUTHORITY);
     expect(section).toContain(RETRY_CHRONOLOGY_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_REVIEW_HEAD_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_REVIEW_STATE_AUTHORITY);
     expect(row).toContain(GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY);
     expect(row).toContain(GOVERNANCE_STATUS_PROJECTION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY);
