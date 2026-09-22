@@ -681,6 +681,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     state: String(pull?.state ?? ""),
     draft: pull?.draft,
     baseRef,
+    baseSha,
     headRepository: String(pull?.head?.repo?.full_name ?? ""),
     headSha,
     mergeable: pull?.mergeable,
@@ -697,7 +698,8 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
   };
 }
 
-function assertLiveHead(repository, pullNumber, expectedHeadSha) {
+/** Revalidate exact live head identity and, when supplied, base SHA immediately before an authority-bearing write. */
+function assertLiveHead(repository, pullNumber, expectedHeadSha, expectedBaseSha = null) {
   const live = fetchPullRequest(repository, pullNumber);
   if (
     !live
@@ -705,9 +707,11 @@ function assertLiveHead(repository, pullNumber, expectedHeadSha) {
     || live?.base?.ref !== "main"
     || live?.head?.sha !== expectedHeadSha
     || live?.head?.repo?.full_name !== repository
+    || (expectedBaseSha !== null && live?.base?.sha !== expectedBaseSha)
   ) {
     throw new Error(
-      `Pull request #${pullNumber} changed before the write; expected open main ${expectedHeadSha}.`,
+      `Pull request #${pullNumber} changed before the write; expected open main ${expectedHeadSha}`
+      + (expectedBaseSha === null ? "." : ` on base ${expectedBaseSha}.`),
     );
   }
 }
@@ -777,6 +781,7 @@ function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
       `Pull request #${snapshot.number} no longer satisfies the exact-head merge decision.`,
     );
   }
+  assertLiveHead(repository, snapshot.number, expectedHeadSha, freshSnapshot.baseSha);
   const payload = {
     commit_title: `${snapshot.title} (#${snapshot.number})`,
     commit_message: "Merged by Noema's hourly commercial-readiness loop after exact-head validation.",
