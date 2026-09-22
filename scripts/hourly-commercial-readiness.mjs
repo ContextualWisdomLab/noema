@@ -22,6 +22,38 @@ const activeWorkflowRunStatuses = new Set([
   "queued",
   "in_progress",
 ]);
+const requiredCheckWorkflowAuthority = Object.freeze({
+  verify: Object.freeze({
+    path: ".github/workflows/ci.yml",
+    source: "repository_workflow",
+    protectedFromPullRequestMutation: true,
+  }),
+  reviewer: Object.freeze({
+    path: ".github/workflows/reviewer-ci.yml",
+    source: "repository_workflow",
+    protectedFromPullRequestMutation: true,
+  }),
+  scorecard: Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "osv-scan": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "trivy-fs": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "dependency-review": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+});
 
 function bound(value, limit = MAX_REPORT_DETAIL_CHARS) {
   const text = String(value ?? "")
@@ -170,6 +202,74 @@ export function latestCheckRunsBySuite(checkRuns) {
     }
     return Number(left?.id || 0) - Number(right?.id || 0);
   });
+}
+
+function workflowRunSource(run, repository) {
+  const workflowUrl = String(run?.workflow_url ?? "");
+  const repositoryWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/workflows/`;
+  const requiredWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/required_workflows/`;
+  if (workflowUrl.startsWith(requiredWorkflowPrefix)) {
+    const suffix = workflowUrl.slice(requiredWorkflowPrefix.length);
+    return /^[1-9][0-9]*$/.test(suffix) ? "required_workflow" : "unknown";
+  }
+  if (workflowUrl.startsWith(repositoryWorkflowPrefix)) {
+    const suffix = workflowUrl.slice(repositoryWorkflowPrefix.length);
+    return /^[1-9][0-9]*$/.test(suffix) ? "repository_workflow" : "unknown";
+  }
+  return "unknown";
+}
+
+/** Bind each check suite to the exact current-head Actions workflow run that produced it. */
+export function workflowAuthorityByCheckSuite(workflowRuns, repository, expectedHeadSha) {
+  const authorityBySuite = new Map();
+  if (!repositoryPattern.test(String(repository ?? "")) || !fullShaPattern.test(String(expectedHeadSha ?? ""))) {
+    return authorityBySuite;
+  }
+  for (const run of Array.isArray(workflowRuns) ? workflowRuns : []) {
+    const suiteId = Number(run?.check_suite_id);
+    if (!Number.isSafeInteger(suiteId) || suiteId <= 0) {
+      continue;
+    }
+    const authority = (
+      run?.event === "pull_request"
+      && run?.head_sha === expectedHeadSha
+    ) ? {
+        path: String(run?.path ?? ""),
+        source: workflowRunSource(run, repository),
+      }
+      : { path: "", source: "unknown" };
+    if (authorityBySuite.has(suiteId)) {
+      authorityBySuite.set(suiteId, { path: "", source: "unknown" });
+      continue;
+    }
+    authorityBySuite.set(suiteId, authority);
+  }
+  return authorityBySuite;
+}
+
+/** Preserve the GitHub Actions producer only when the required check has canonical workflow provenance. */
+export function commercialCheckAppSlug(check, workflowAuthorities, changedPaths) {
+  const appSlug = String(check?.app?.slug ?? "");
+  const name = String(check?.name ?? "").trim();
+  const expected = requiredCheckWorkflowAuthority[name];
+  if (!expected || appSlug.trim().toLowerCase() !== "github-actions") {
+    return appSlug;
+  }
+  const suiteId = Number(check?.check_suite?.id);
+  const authority = workflowAuthorities instanceof Map
+    ? workflowAuthorities.get(suiteId)
+    : null;
+  if (!authority || authority.path !== expected.path || authority.source !== expected.source) {
+    return "untrusted-workflow";
+  }
+  if (
+    expected.protectedFromPullRequestMutation
+    && Array.isArray(changedPaths)
+    && changedPaths.includes(expected.path)
+  ) {
+    return "self-modified-workflow";
+  }
+  return appSlug;
 }
 
 function paginatedArray(endpoint) {
@@ -348,12 +448,28 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
   if (!fullShaPattern.test(headSha)) {
     throw new Error(`Pull request #${pullNumber} did not expose a full head SHA.`);
   }
-  const checkRuns = latestCheckRunsBySuite(paginatedObjectItems(
+  const changedFiles = paginatedArray(
+    `repos/${repository}/pulls/${pullNumber}/files?per_page=100`,
+  );
+  if (!Number.isSafeInteger(pull?.changed_files) || pull.changed_files !== changedFiles.length) {
+    throw new Error(`Pull request #${pullNumber} changed-file evidence is incomplete.`);
+  }
+  const changedPaths = changedFiles.map((file) => String(file?.filename ?? ""));
+  const rawCheckRuns = latestCheckRunsBySuite(paginatedObjectItems(
     `repos/${repository}/commits/${headSha}/check-runs?filter=all&per_page=100`,
     "check_runs",
-  )).map((check) => ({
+  ));
+  const workflowAuthorities = workflowAuthorityByCheckSuite(
+    paginatedObjectItems(
+      `repos/${repository}/actions/runs?head_sha=${headSha}&event=pull_request&per_page=100`,
+      "workflow_runs",
+    ),
+    repository,
+    headSha,
+  );
+  const checkRuns = rawCheckRuns.map((check) => ({
     name: String(check?.name ?? ""),
-    appSlug: String(check?.app?.slug ?? ""),
+    appSlug: commercialCheckAppSlug(check, workflowAuthorities, changedPaths),
     status: String(check?.status ?? ""),
     conclusion: check?.conclusion == null ? null : String(check.conclusion),
   }));
