@@ -168,8 +168,8 @@ function validateRequiredChecks(checkRuns, reasons) {
       continue;
     }
     for (const check of matches) {
-      const status = normalized(check.status).toLowerCase();
-      const conclusion = normalized(check.conclusion).toLowerCase();
+      const status = exactAuthorityString(check?.status);
+      const conclusion = exactAuthorityString(check?.conclusion);
       if (status !== "completed") {
         addReason(
           reasons,
@@ -199,8 +199,8 @@ function validateObservedChecks(checkRuns, reasons) {
     if (requiredNames.has(name)) {
       continue;
     }
-    const status = normalized(check?.status).toLowerCase();
-    const conclusion = normalized(check?.conclusion).toLowerCase();
+    const status = exactAuthorityString(check?.status);
+    const conclusion = exactAuthorityString(check?.conclusion);
     if (reviewDependentCheckNames.has(name) && trustedActionsCheck) {
       if (status !== "completed") {
         addReason(
