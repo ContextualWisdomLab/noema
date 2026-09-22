@@ -160,11 +160,12 @@ function checkRunChronologicalOrder(left, right) {
   return leftId - rightId;
 }
 
+/** Build an exact API identity key without normalizing check-name or producer authority. */
 function checkRunSuiteKey(check) {
   const checkId = Number(check?.id);
   const suiteId = Number(check?.check_suite?.id);
-  const name = String(check?.name ?? "").trim();
-  const appSlug = String(check?.app?.slug ?? "").trim().toLowerCase();
+  const name = typeof check?.name === "string" ? check.name : "";
+  const appSlug = typeof check?.app?.slug === "string" ? check.app.slug : "";
   if (
     !Number.isSafeInteger(checkId)
     || checkId <= 0
