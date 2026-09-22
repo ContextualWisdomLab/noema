@@ -6,6 +6,9 @@ const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22
 const CURRENT_PROTECTED_MAIN = "main@c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9";
 const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
+const CURRENT_726_HOSTED_GREEN =
+  "application CI `35661566966`, reviewer-ci `35661566947`, required Security Scan `35661566955`, and patch-validator-image `35661566946` are terminal SUCCESS";
+const CURRENT_726_REVIEW_PENDING = "Fresh independent current-head review remains required";
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
 const CURRENT_730_EXACT = "#730 current exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`";
@@ -38,7 +41,7 @@ const PRIVATE_REPORTING_DATED_VISIBILITY =
 const PRIVATE_REPORTING_REMAINING_GAPS =
   "direct submission form, fresh protected receipt, staffing/notification, benign private case, release/deployment evidence open";
 const PRIVATE_REPORTING_NEXT_ACTION =
-  "#73에서 fresh protected receipt, direct submission form, staffing/notification, benign private case, buyer-safe receipt를 owner별로 독립 수집";
+  "#726 current-head independent review 종료 후 normal merge 검토; #73에서 fresh protected receipt, direct submission form, staffing/notification, benign private case, buyer-safe receipt를 owner별로 독립 수집";
 
 /**
  * Isolates the dated convergence authority so duplicated historical text cannot satisfy current-evidence assertions.
@@ -123,6 +126,8 @@ describe("product-technical gap current authority", () => {
 
     expect(section).toContain(CURRENT_726_EXACT);
     expect(section).not.toContain(STALE_726_EXACT);
+    expect(section).toContain(CURRENT_726_HOSTED_GREEN);
+    expect(section).toContain(CURRENT_726_REVIEW_PENDING);
     expect(section).toContain(CURRENT_730_EXACT);
     expect(section).not.toContain(STALE_730_EXACT);
     expect(section).toContain(CURRENT_730_PR_BOUND_PROVENANCE);
