@@ -47,6 +47,7 @@
     "security:evidence": "node scripts/security-validation-evidence.mjs",
     "security:private-reporting-audit": "node scripts/private-vulnerability-reporting-audit.mjs",
     "security:private-reporting-authority": "node scripts/private-vulnerability-reporting-receipt-authority.mjs",
+    "security:private-reporting-external-surface-audit": "node scripts/private-vulnerability-reporting-external-surface-audit.mjs",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
