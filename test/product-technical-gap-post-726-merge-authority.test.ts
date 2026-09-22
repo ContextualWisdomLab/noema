@@ -19,16 +19,17 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
-    expect(active).not.toContain("#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`");
+    expect(active).toContain("#730 current exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
+    expect(active).not.toContain("#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
     expect(active).toContain("requires exact canonical Noema decision token without whitespace or case normalization");
     expect(active).toContain("requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization");
+    expect(active).toContain("revalidates the freshly evaluated base SHA immediately before the normal merge write");
     expect(active).toContain("requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization");
     expect(active).toContain("preserves exact Commit Status context/state identity before terminal merge-authority evaluation");
     expect(active).toContain("fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence");
     expect(active).toContain("executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings");
-    expect(active).toContain("100% 37-function authority-bearing production docstring scope contract");
+    expect(active).toContain("100% 38-function authority-bearing production docstring scope contract");
   });
 
   it("moves private-reporting source ownership from candidate to protected history", () => {
@@ -45,15 +46,16 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
-    expect(row).not.toContain("candidate #730 exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`");
+    expect(row).toContain("candidate #730 exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
+    expect(row).not.toContain("candidate #730 exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
     expect(row).toContain("fail-closed unknown retry chronology");
     expect(row).toContain("exact canonical Noema decision token authority");
     expect(row).toContain("exact Noema review marker serialization authority");
+    expect(row).toContain("fresh-evaluated base-SHA merge-write revalidation");
     expect(row).toContain("exact Check Run/Commit Status terminal result authority");
     expect(row).toContain("exact Commit Status collection projection identity");
     expect(row).toContain("independently rejects missing approval and missing blocking marker-to-state mappings");
-    expect(row).toContain("100% 37-function authority-bearing production docstring scope contract");
+    expect(row).toContain("100% 38-function authority-bearing production docstring scope contract");
   });
 });
