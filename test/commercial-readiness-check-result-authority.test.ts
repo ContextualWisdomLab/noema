@@ -75,9 +75,12 @@ describe("commercial readiness check-result authority", () => {
     },
   );
 
-  it.each([" success ", "SUCCESS"])(
+  it.each([
+    [" success ", "Status external-status is missing."],
+    ["SUCCESS", "Status external-status is SUCCESS."],
+  ])(
     "does not normalize commit-status state %j into successful merge authority",
-    (state) => {
+    (state, detail) => {
       const snapshot = passingSnapshot();
       snapshot.statuses = [{ context: "external-status", state }];
 
@@ -86,7 +89,7 @@ describe("commercial readiness check-result authority", () => {
       expect(result.action).toBe("blocked");
       expect(result.reasons).toContainEqual({
         code: "status_not_success",
-        detail: "Status external-status is missing.",
+        detail,
       });
     },
   );
