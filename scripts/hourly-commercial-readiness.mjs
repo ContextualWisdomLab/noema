@@ -493,15 +493,6 @@ function bindRequiredWorkflowMetadata(repository, workflowRuns) {
   });
 }
 
-function chronologicalReviewOrder(left, right) {
-  const leftTime = Date.parse(left?.submitted_at || "") || 0;
-  const rightTime = Date.parse(right?.submitted_at || "") || 0;
-  if (leftTime !== rightTime) {
-    return leftTime - rightTime;
-  }
-  return Number(left?.id || 0) - Number(right?.id || 0);
-}
-
 function isTrustedNoemaBot(review, trustedReviewerLogin) {
   const login = String(review?.user?.login ?? "").toLowerCase();
   const expectedLogin = String(trustedReviewerLogin ?? "").toLowerCase();
@@ -510,10 +501,10 @@ function isTrustedNoemaBot(review, trustedReviewerLogin) {
     && login === expectedLogin;
 }
 
-/** Preserve exact reviewer login/state authority so malformed lookalikes cannot dismiss or replace a canonical decision. */
+/** Preserve exact reviewer login/state authority in GitHub REST list order so later blockers cannot be reordered away. */
 export function latestReviewStates(reviews) {
   const decisions = new Map();
-  for (const review of [...(Array.isArray(reviews) ? reviews : [])].sort(chronologicalReviewOrder)) {
+  for (const review of Array.isArray(reviews) ? reviews : []) {
     const reviewer = typeof review?.user?.login === "string" ? review.user.login : "";
     const state = typeof review?.state === "string" ? review.state : "";
     if (!reviewer) {
@@ -528,7 +519,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept a Noema decision only when GitHub binds the review itself to the exact head SHA. */
+/** Accept the latest exact-head Noema decision in GitHub REST list order without synthesizing review chronology. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -567,7 +558,6 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     }
     candidates.push({ ...review, decision });
   }
-  candidates.sort(chronologicalReviewOrder);
   return candidates.at(-1)?.decision ?? null;
 }
 
