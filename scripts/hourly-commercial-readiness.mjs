@@ -510,11 +510,12 @@ function isTrustedNoemaBot(review, trustedReviewerLogin) {
     && login === expectedLogin;
 }
 
+/** Preserve exact reviewer login/state authority so malformed lookalikes cannot dismiss or replace a canonical decision. */
 export function latestReviewStates(reviews) {
   const decisions = new Map();
   for (const review of [...(Array.isArray(reviews) ? reviews : [])].sort(chronologicalReviewOrder)) {
-    const reviewer = String(review?.user?.login ?? "").trim();
-    const state = String(review?.state ?? "").toUpperCase();
+    const reviewer = typeof review?.user?.login === "string" ? review.user.login : "";
+    const state = typeof review?.state === "string" ? review.state : "";
     if (!reviewer) {
       continue;
     }
