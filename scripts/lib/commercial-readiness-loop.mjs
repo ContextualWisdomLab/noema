@@ -99,6 +99,7 @@ function validatePullRequestIdentity(snapshot, reasons) {
   }
 }
 
+/** Require canonical review evidence and exact Noema decision tokens before granting merge authority. */
 function validateReviews(snapshot, reasons) {
   const unresolvedThreadCount = Number(snapshot.unresolvedThreadCount);
   if (!Number.isInteger(unresolvedThreadCount) || unresolvedThreadCount < 0) {
@@ -121,7 +122,7 @@ function validateReviews(snapshot, reasons) {
     }
   }
 
-  const noemaDecision = normalized(snapshot.noemaReviewDecision).toLowerCase();
+  const noemaDecision = exactAuthorityString(snapshot.noemaReviewDecision);
   if (!noemaDecision) {
     addReason(
       reasons,
