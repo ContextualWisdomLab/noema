@@ -17,6 +17,7 @@ describe("commercial-readiness touched production docstrings", () => {
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
+      "checkRunTimestamp",
       "checkRunChronologicalOrder",
       "checkRunSuiteKey",
       "latestCheckRunsBySuite",
