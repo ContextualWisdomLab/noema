@@ -2,21 +2,24 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
-const STALE_730_EXACT = "#730 current exact `8146360fc10ce23da50344d605138a4d783d77e5`";
+const CURRENT_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
+const STALE_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
 const STATUS_PROJECTION_AUTHORITY =
   "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
 const RETRY_CHRONOLOGY_AUTHORITY =
   "fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence";
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
+const NOEMA_DECISION_AUTHORITY =
+  "requires exact canonical Noema decision token without whitespace or case normalization";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
+  "issue #27; candidate #730 exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY = "fail-closed unknown retry chronology";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
+const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
 
 describe("product-technical gap commit-status projection authority", () => {
   function currentOpenLaneSection(baseline: string) {
@@ -32,7 +35,7 @@ describe("product-technical gap commit-status projection authority", () => {
     return rows[0];
   }
 
-  it("binds the active commercial authority to exact Commit Status projection and retry chronology", () => {
+  it("binds the active commercial authority to exact Commit Status projection, retry chronology, and Noema decision identity", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -42,9 +45,11 @@ describe("product-technical gap commit-status projection authority", () => {
     expect(section).toContain(STATUS_PROJECTION_AUTHORITY);
     expect(section).toContain(RETRY_CHRONOLOGY_AUTHORITY);
     expect(section).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
+    expect(section).toContain(NOEMA_DECISION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_STATUS_PROJECTION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY);
     expect(row).toContain(GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_NOEMA_DECISION_AUTHORITY);
   });
 });
