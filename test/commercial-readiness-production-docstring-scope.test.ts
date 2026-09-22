@@ -15,6 +15,7 @@ const hourlyAuthorityFunctions = [
   "observedRequiredWorkflows",
   "canonicalRequiredWorkflowObservation",
   "bindRequiredWorkflowMetadata",
+  "latestReviewStates",
   "parseNoemaReviewDecision",
   "latestStatuses",
   "fetchPullRequestSnapshot",
