@@ -46,6 +46,7 @@ describe("commercial-readiness touched production docstrings", () => {
       "exactCheckName",
       "isTrustedGitHubActionsCheck",
       "validatePullRequestIdentity",
+      "validateReviews",
       "validateRequiredCheckProducers",
       "validateRequiredChecks",
       "validateObservedChecks",
