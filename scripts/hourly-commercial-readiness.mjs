@@ -561,18 +561,10 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
   return candidates.at(-1)?.decision ?? null;
 }
 
-/** Preserve exact Commit Status context/state identity before terminal merge-authority evaluation. */
+/** Preserve GitHub REST reverse-chronological Commit Status order without synthesizing timestamp chronology. */
 export function latestStatuses(statuses) {
   const latestByContext = new Map();
-  const ordered = [...(Array.isArray(statuses) ? statuses : [])].sort((left, right) => {
-    const leftTime = Date.parse(left?.created_at || "") || 0;
-    const rightTime = Date.parse(right?.created_at || "") || 0;
-    if (leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return Number(right?.id || 0) - Number(left?.id || 0);
-  });
-  for (const status of ordered) {
+  for (const status of Array.isArray(statuses) ? statuses : []) {
     const context = typeof status?.context === "string" ? status.context : "";
     if (context && !latestByContext.has(context)) {
       latestByContext.set(context, {
