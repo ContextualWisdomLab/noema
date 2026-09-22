@@ -82,6 +82,8 @@ describe("hourly commercial readiness script", () => {
         name: "ci",
         status: "completed",
         conclusion: "success",
+        started_at: "2026-09-22T00:00:00Z",
+        completed_at: "2026-09-22T00:00:30Z",
         check_suite: { id: 30 },
         app: { slug: "github-actions" },
       },
@@ -90,6 +92,8 @@ describe("hourly commercial readiness script", () => {
         name: "ci",
         status: "in_progress",
         conclusion: null,
+        started_at: "2026-09-22T00:01:00Z",
+        completed_at: null,
         check_suite: { id: 30 },
         app: { slug: "github-actions" },
       },
@@ -98,6 +102,29 @@ describe("hourly commercial readiness script", () => {
     expect(latest).toEqual([
       expect.objectContaining({ id: 11, name: "ci", status: "in_progress" }),
     ]);
+  });
+
+  it("fails closed when check-run chronology metadata is incomplete", () => {
+    expect(() => latestCheckRunsBySuite([
+      {
+        id: 10,
+        name: "ci",
+        status: "completed",
+        conclusion: "success",
+        check_suite: { id: 30 },
+        app: { slug: "github-actions" },
+      },
+      {
+        id: 11,
+        name: "ci",
+        status: "in_progress",
+        conclusion: null,
+        started_at: "2026-09-22T00:01:00Z",
+        completed_at: null,
+        check_suite: { id: 30 },
+        app: { slug: "github-actions" },
+      },
+    ])).toThrow("Check run chronology metadata is incomplete for id 10.");
   });
 
   it("fails closed when a check run omits suite identity metadata", () => {
