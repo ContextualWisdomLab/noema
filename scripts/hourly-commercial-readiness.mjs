@@ -146,21 +146,13 @@ function checkRunTimestamp(check) {
   );
 }
 
+/** Order retries by GitHub's timestamp semantics, using opaque check-run ids only as tie-breakers. */
 function checkRunChronologicalOrder(left, right) {
-  const leftId = Number(left?.id);
-  const rightId = Number(right?.id);
-  if (
-    Number.isSafeInteger(leftId)
-    && Number.isSafeInteger(rightId)
-    && leftId !== rightId
-  ) {
-    return leftId - rightId;
-  }
   const timeDelta = checkRunTimestamp(left) - checkRunTimestamp(right);
   if (timeDelta !== 0) {
     return timeDelta;
   }
-  return leftId - rightId;
+  return Number(left?.id) - Number(right?.id);
 }
 
 /** Build an exact API identity key without normalizing check-name or producer authority. */
