@@ -23,6 +23,7 @@ describe("commercial readiness operator workflow-provenance contract", () => {
     expect(section).toContain(".github/workflows/security-scan.yml");
     expect(section).toContain("repository_workflow");
     expect(section).toContain("required_workflow");
+    expect(section).toContain("Target repository의 `/actions/workflows/<id>` URL의 `<id>`와 동일한 workflow-run `workflow_id`");
     expect(section).toContain("self-modified-workflow");
     expect(section).toContain("untrusted-workflow");
     expect(section).toContain("changed_files");
