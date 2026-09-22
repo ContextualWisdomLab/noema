@@ -163,7 +163,7 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`와 manifes
 2. `EXTERNAL_GATE_REMAINS`이면 public artifact만으로 누락된 prerequisite를 추정하지 않습니다. Repository 관리자 제어면과 access-controlled `maintainer-app-readiness` 증거에서 maintenance activation, App configuration, reviewer identity를 각각 확인합니다.
 3. Configuration 복구 시 `GITHUB_TOKEN` fallback이나 permission 확대를 추가하지 않습니다.
 4. `commercial-readiness-loop-report`에서 각 PR의 reason code를 확인합니다.
-5. `required_check_missing`이 있으면 workflow trigger, `app.slug=github-actions`, ruleset context 이름을 점검합니다.
+5. `required_check_missing`이 있으면 workflow trigger와 exact `app.slug=github-actions`, App id `15368`, `check_suite.id` / `check_suite_id`, PR/head/base, canonical workflow path/source, repository-workflow URL id/`workflow_id`, `changed_files` completeness, `self-modified-workflow`, ruleset context 이름을 함께 점검합니다.
 6. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 7. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
 8. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
