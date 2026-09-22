@@ -2,16 +2,20 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
-const STALE_730_EXACT = "#730 current exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
+const CURRENT_730_EXACT = "#730 current exact `c74e3488566baf9616050988944a77bb94b3177d`";
+const STALE_730_EXACT = "#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_GUIDE_AUTHORITY =
   "active operator guide documents the exact review-to-head `commit_id` binding and its fail-closed diagnostic";
+const REPOSITORY_WORKFLOW_ID_AUTHORITY =
+  "requires repository workflow URL id to equal the workflow run's `workflow_id`";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
+  "issue #27; candidate #730 exact `c74e3488566baf9616050988944a77bb94b3177d`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
+const GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY =
+  "repository workflow URL/workflow_id identity consistency";
 
 function currentOpenLaneSection(baseline: string) {
   const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
@@ -27,7 +31,7 @@ function currentGovernanceRow(baseline: string) {
 }
 
 describe("product-technical gap review-head authority", () => {
-  it("binds active #730 authority to GitHub review commit identity and operator guidance", () => {
+  it("binds active #730 authority to GitHub review commit identity and repository workflow identity", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
     const section = currentOpenLaneSection(baseline);
     const row = currentGovernanceRow(baseline);
@@ -36,7 +40,9 @@ describe("product-technical gap review-head authority", () => {
     expect(section).not.toContain(STALE_730_EXACT);
     expect(section).toContain(REVIEW_HEAD_AUTHORITY);
     expect(section).toContain(REVIEW_GUIDE_AUTHORITY);
+    expect(section).toContain(REPOSITORY_WORKFLOW_ID_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_REVIEW_HEAD_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY);
   });
 });
