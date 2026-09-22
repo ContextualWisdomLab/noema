@@ -244,7 +244,15 @@ function workflowRunSource(run, repository) {
   }
   if (workflowUrl.startsWith(repositoryWorkflowPrefix)) {
     const suffix = workflowUrl.slice(repositoryWorkflowPrefix.length);
-    return /^[1-9][0-9]*$/.test(suffix) ? "repository_workflow" : "unknown";
+    if (!/^[1-9][0-9]*$/.test(suffix)) {
+      return "unknown";
+    }
+    const workflowId = Number(suffix);
+    return Number.isSafeInteger(workflowId)
+      && workflowId > 0
+      && run?.workflow_id === workflowId
+      ? "repository_workflow"
+      : "unknown";
   }
   return "unknown";
 }
