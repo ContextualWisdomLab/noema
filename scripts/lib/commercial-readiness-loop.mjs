@@ -233,6 +233,7 @@ function validateObservedChecks(checkRuns, reasons) {
   }
 }
 
+/** Require exact terminal check and commit-status evidence before any result can become merge authority. */
 function validateChecks(snapshot, reasons) {
   const checkRuns = asArray(snapshot.checkRuns);
   validateRequiredCheckProducers(checkRuns, reasons);
@@ -241,7 +242,7 @@ function validateChecks(snapshot, reasons) {
 
   for (const statusContext of asArray(snapshot.statuses)) {
     const context = normalized(statusContext?.context) || "unnamed status";
-    const state = normalized(statusContext?.state).toLowerCase();
+    const state = exactAuthorityString(statusContext?.state);
     if (state !== "success") {
       addReason(
         reasons,
