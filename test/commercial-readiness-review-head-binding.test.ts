@@ -61,4 +61,47 @@ describe("commercial-readiness review head binding", () => {
       { reviewer: "human-reviewer", state: "CHANGES_REQUESTED" },
     ]);
   });
+
+  it("preserves GitHub REST review-list chronology when a later blocker omits submitted_at", () => {
+    expect(latestReviewStates([
+      {
+        id: 301,
+        submitted_at: "2026-09-22T08:00:00Z",
+        state: "APPROVED",
+        user: { login: "human-reviewer" },
+      },
+      {
+        id: 302,
+        submitted_at: null,
+        state: "CHANGES_REQUESTED",
+        user: { login: "human-reviewer" },
+      },
+    ])).toEqual([
+      { reviewer: "human-reviewer", state: "CHANGES_REQUESTED" },
+    ]);
+  });
+
+  it("preserves GitHub REST review-list chronology for exact-head Noema decisions", () => {
+    const laterBlocker = currentHeadApproval({
+      id: 402,
+      submitted_at: null,
+      state: "CHANGES_REQUESTED",
+      body: [
+        "Reviewer credential: `noema-github-app`",
+        `<!-- noema-review-gate head_sha=${currentHead} decision=request_changes -->`,
+      ].join("\n"),
+    });
+
+    expect(parseNoemaReviewDecision(
+      [
+        currentHeadApproval({
+          id: 401,
+          submitted_at: "2026-09-22T08:00:00Z",
+        }),
+        laterBlocker,
+      ],
+      currentHead,
+      trustedReviewer,
+    )).toBe("request_changes");
+  });
 });
