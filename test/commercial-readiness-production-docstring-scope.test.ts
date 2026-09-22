@@ -28,6 +28,7 @@ const evaluatorAuthorityFunctions = [
   "exactCheckName",
   "isTrustedGitHubActionsCheck",
   "validatePullRequestIdentity",
+  "validateReviews",
   "validateRequiredCheckProducers",
   "validateRequiredChecks",
   "validateObservedChecks",
