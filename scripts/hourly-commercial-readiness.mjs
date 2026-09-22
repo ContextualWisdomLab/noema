@@ -140,17 +140,28 @@ export function flattenArrayPages(pages) {
 }
 
 function checkRunTimestamp(check) {
-  return Math.max(
-    Date.parse(check?.completed_at || "") || 0,
-    Date.parse(check?.started_at || "") || 0,
-  );
+  const completedAt = typeof check?.completed_at === "string"
+    ? Date.parse(check.completed_at)
+    : Number.NaN;
+  const startedAt = typeof check?.started_at === "string"
+    ? Date.parse(check.started_at)
+    : Number.NaN;
+  const timestamps = [completedAt, startedAt].filter(Number.isFinite);
+  return timestamps.length === 0 ? null : Math.max(...timestamps);
 }
 
-/** Order retries by GitHub's timestamp semantics, using opaque check-run ids only as tie-breakers. */
+/** Order retries by GitHub's timestamp semantics; reject unknown chronology instead of inventing it. */
 function checkRunChronologicalOrder(left, right) {
-  const timeDelta = checkRunTimestamp(left) - checkRunTimestamp(right);
-  if (timeDelta !== 0) {
-    return timeDelta;
+  const leftTime = checkRunTimestamp(left);
+  const rightTime = checkRunTimestamp(right);
+  if (leftTime === null || rightTime === null) {
+    const invalid = leftTime === null ? left : right;
+    throw new TypeError(
+      `Check run chronology metadata is incomplete for id ${String(invalid?.id ?? "missing")}.`,
+    );
+  }
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
   }
   return Number(left?.id) - Number(right?.id);
 }
