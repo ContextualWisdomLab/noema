@@ -8,8 +8,8 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
-const STALE_730_EXACT = "#730 current exact `8146360fc10ce23da50344d605138a4d783d77e5`";
+const CURRENT_730_EXACT = "#730 current exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
+const STALE_730_EXACT = "#730 current exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -36,6 +36,8 @@ const CURRENT_730_REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const CURRENT_730_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
+const CURRENT_730_NOEMA_DECISION_AUTHORITY =
+  "requires exact canonical Noema decision token without whitespace or case normalization";
 const CURRENT_730_CHECK_RESULT_AUTHORITY =
   "requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization";
 const CURRENT_730_STATUS_PROJECTION_AUTHORITY =
@@ -45,14 +47,14 @@ const CURRENT_730_STATUS_ORDER_AUTHORITY =
 const CURRENT_730_REVIEW_ORDER_AUTHORITY =
   "preserves GitHub REST review-list chronology without synthesized `submitted_at`/id ordering";
 const CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY =
-  "100% 36-function authority-bearing production docstring scope contract";
+  "100% 37-function authority-bearing production docstring scope contract";
 const CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY =
   "Issue #27 remains live repository governance authority for ruleset, pull-request, review/conversation, history, deletion, and bypass control-plane evidence";
 const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `c9ed50e380d4498a4386a1b28c440aa4414991e6`";
+  "issue #27; candidate #730 exact `9037b4831db5b4b5658ca07c7149551c0f6b322a`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
@@ -70,13 +72,14 @@ const GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY =
 const GOVERNANCE_REVIEW_STATE_OPERATOR_AUTHORITY = "exact review-state operator contract";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
+const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
 const GOVERNANCE_CHECK_RESULT_AUTHORITY =
   "exact Check Run/Commit Status terminal result authority";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_STATUS_ORDER_AUTHORITY = "GitHub REST Commit Status reverse-chronological order authority";
 const GOVERNANCE_REVIEW_ORDER_AUTHORITY = "GitHub REST review-list chronology authority";
 const GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY =
-  "100% 36-function authority-bearing production docstring scope contract";
+  "100% 37-function authority-bearing production docstring scope contract";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -121,6 +124,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_REVIEW_STATE_OPERATOR_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_NOEMA_DECISION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_RESULT_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_STATUS_PROJECTION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_STATUS_ORDER_AUTHORITY)
@@ -186,6 +190,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_OPERATOR_DIAGNOSTIC_AUTHORITY);
     expect(section).toContain(CURRENT_730_REVIEW_STATE_OPERATOR_AUTHORITY);
     expect(section).toContain(CURRENT_730_REVIEW_GUIDE_MUTATION_AUTHORITY);
+    expect(section).toContain(CURRENT_730_NOEMA_DECISION_AUTHORITY);
     expect(section).toContain(CURRENT_730_CHECK_RESULT_AUTHORITY);
     expect(section).toContain(CURRENT_730_STATUS_PROJECTION_AUTHORITY);
     expect(section).toContain(CURRENT_730_STATUS_ORDER_AUTHORITY);
