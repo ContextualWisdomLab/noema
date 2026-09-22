@@ -32,4 +32,20 @@ describe("commercial readiness operator workflow-provenance contract", () => {
     expect(section).toContain("repository id `1274066402`");
     expect(section).toContain("refs/heads/main");
   });
+
+  it("keeps the required-check operator diagnostic aligned with fail-closed provenance", () => {
+    const guide = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
+    const start = guide.indexOf("## 운영 점검");
+    const section = guide.slice(start);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(section).toContain("`required_check_missing`");
+    expect(section).toContain("App id `15368`");
+    expect(section).toContain("`check_suite.id` / `check_suite_id`");
+    expect(section).toContain("PR/head/base");
+    expect(section).toContain("canonical workflow path/source");
+    expect(section).toContain("URL id/`workflow_id`");
+    expect(section).toContain("`changed_files`");
+    expect(section).toContain("`self-modified-workflow`");
+  });
 });
