@@ -139,6 +139,7 @@ export function flattenArrayPages(pages) {
   });
 }
 
+/** Preserve observed check-run time evidence without inventing chronology when GitHub omits it. */
 function checkRunTimestamp(check) {
   const completedAt = typeof check?.completed_at === "string"
     ? Date.parse(check.completed_at)
