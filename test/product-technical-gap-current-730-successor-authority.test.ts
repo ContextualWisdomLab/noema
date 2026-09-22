@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "c9ed50e380d4498a4386a1b28c440aa4414991e6";
+const CURRENT_730_EXACT = "9037b4831db5b4b5658ca07c7149551c0f6b322a";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
+const NOEMA_DECISION_AUTHORITY =
+  "requires exact canonical Noema decision token without whitespace or case normalization";
+const PRODUCTION_DOCSTRING_AUTHORITY =
+  "100% 37-function authority-bearing production docstring scope contract";
 
 const authoritySources = [
   "test/product-technical-gap-current-authority.test.ts",
@@ -22,6 +26,8 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(CURRENT_MARKER);
     expect(baseline).toContain(CURRENT_CANDIDATE);
     expect(baseline).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
+    expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
   });
 
   it("moves every changed authority fixture to the same current #730 exact", () => {
