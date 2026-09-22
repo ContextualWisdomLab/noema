@@ -19,8 +19,8 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `3ddf3e5fbaca4128eef1eba0d09bb81e07ffa398`");
-    expect(active).not.toContain("#730 current exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`");
+    expect(active).toContain("#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`");
+    expect(active).not.toContain("#730 current exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`");
   });
 
   it("moves private-reporting source ownership from candidate to protected history", () => {
@@ -37,7 +37,7 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `3ddf3e5fbaca4128eef1eba0d09bb81e07ffa398`");
-    expect(row).not.toContain("candidate #730 exact `85b4bf82e08f48fbb8a13cf91855771c5909c3cf`");
+    expect(row).toContain("candidate #730 exact `0400266a825a1a26d16c7ed02c1653709c13cd17`");
+    expect(row).not.toContain("candidate #730 exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`");
   });
 });

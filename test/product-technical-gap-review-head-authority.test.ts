@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
-const STALE_730_EXACT = "#730 current exact `c1d76b6e44fbd7234535acd26391aa958dec2f80`";
+const CURRENT_730_EXACT = "#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
+const STALE_730_EXACT = "#730 current exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_GUIDE_AUTHORITY =
   "active operator guide documents the exact review-to-head `commit_id` binding and its fail-closed diagnostic";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `b7d33d3b15b452c018cf1d96d364b052db24b35a`";
+  "issue #27; candidate #730 exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 
 function currentOpenLaneSection(baseline: string) {
