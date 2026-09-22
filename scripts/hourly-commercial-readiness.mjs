@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluatePullRequest } from "./lib/commercial-readiness-loop.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { REQUIRED_MAIN_CHECK_INTEGRATION_ID } from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
@@ -294,13 +295,19 @@ export function workflowAuthorityByCheckSuite(
   return authorityBySuite;
 }
 
-/** Preserve the GitHub Actions producer only when the required check has canonical workflow provenance. */
+/** Preserve the GitHub Actions producer only when the required check has canonical workflow provenance and App identity. */
 export function commercialCheckAppSlug(check, workflowAuthorities, changedPaths) {
   const appSlug = String(check?.app?.slug ?? "");
   const name = String(check?.name ?? "").trim();
   const expected = requiredCheckWorkflowAuthority[name];
-  if (!expected || appSlug.trim().toLowerCase() !== "github-actions") {
+  if (!expected) {
     return appSlug;
+  }
+  if (appSlug !== "github-actions") {
+    return appSlug;
+  }
+  if (check?.app?.id !== REQUIRED_MAIN_CHECK_INTEGRATION_ID) {
+    return "untrusted-producer";
   }
   const suiteId = Number(check?.check_suite?.id);
   const authority = workflowAuthorities instanceof Map
