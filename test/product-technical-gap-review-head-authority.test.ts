@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`";
-const STALE_730_EXACT = "#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`";
+const CURRENT_730_EXACT = "#730 current exact `c23b3d186925e63a11f6777139995d37fce190ef`";
+const STALE_730_EXACT = "#730 current exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_STATE_AUTHORITY =
@@ -26,7 +26,7 @@ const RETRY_CHRONOLOGY_AUTHORITY =
   "fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`";
+  "issue #27; candidate #730 exact `c23b3d186925e63a11f6777139995d37fce190ef`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REVIEW_STATE_AUTHORITY = "exact GitHub review state authority";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
