@@ -34,6 +34,7 @@ describe("commercial-readiness touched production docstrings", () => {
       "parseNoemaReviewDecision",
       "latestStatuses",
       "fetchPullRequestSnapshot",
+      "assertLiveHead",
       "mergePullRequest",
       "main",
     ]) {
