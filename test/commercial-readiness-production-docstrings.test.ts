@@ -46,6 +46,7 @@ describe("commercial-readiness touched production docstrings", () => {
       "validateRequiredCheckProducers",
       "validateRequiredChecks",
       "validateObservedChecks",
+      "validateChecks",
     ]) {
       expectDirectJsDoc(evaluator, functionName);
     }
