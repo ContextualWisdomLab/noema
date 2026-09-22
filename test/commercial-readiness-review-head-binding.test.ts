@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness.mjs";
+import {
+  latestReviewStates,
+  parseNoemaReviewDecision,
+} from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
 const trustedReviewer = "noema-reviewer[bot]";
@@ -38,5 +41,24 @@ describe("commercial-readiness review head binding", () => {
       currentHead,
       trustedReviewer,
     )).toBeNull();
+  });
+
+  it("does not let normalized reviewer identity/state dismiss a canonical change request", () => {
+    expect(latestReviewStates([
+      {
+        id: 201,
+        submitted_at: "2026-09-22T08:00:00Z",
+        state: "CHANGES_REQUESTED",
+        user: { login: "human-reviewer" },
+      },
+      {
+        id: 202,
+        submitted_at: "2026-09-22T08:10:00Z",
+        state: "dismissed",
+        user: { login: " human-reviewer " },
+      },
+    ])).toEqual([
+      { reviewer: "human-reviewer", state: "CHANGES_REQUESTED" },
+    ]);
   });
 });
