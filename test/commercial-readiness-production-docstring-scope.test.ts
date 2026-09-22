@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const hourlyAuthorityFunctions = [
+  "checkRunTimestamp",
   "checkRunChronologicalOrder",
   "checkRunSuiteKey",
   "latestCheckRunsBySuite",
