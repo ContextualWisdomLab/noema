@@ -29,6 +29,11 @@ function normalized(value) {
   return String(value ?? "").trim();
 }
 
+/** Preserve check-name authority only when GitHub supplied an exact string identity. */
+function exactCheckName(value) {
+  return typeof value === "string" ? value : "";
+}
+
 function addReason(reasons, code, detail) {
   reasons.push({ code, detail });
 }
@@ -118,7 +123,7 @@ function validateReviews(snapshot, reasons) {
 function validateRequiredCheckProducers(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
-    const name = normalized(check?.name);
+    const name = exactCheckName(check?.name);
     if (!requiredNames.has(name) || isTrustedGitHubActionsCheck(check)) {
       continue;
     }
@@ -133,7 +138,7 @@ function validateRequiredCheckProducers(checkRuns, reasons) {
 function validateRequiredChecks(checkRuns, reasons) {
   for (const requiredName of REQUIRED_CHECK_NAMES) {
     const matches = checkRuns.filter(
-      (check) => normalized(check?.name) === requiredName && isTrustedGitHubActionsCheck(check),
+      (check) => exactCheckName(check?.name) === requiredName && isTrustedGitHubActionsCheck(check),
     );
     if (matches.length === 0) {
       addReason(
@@ -166,7 +171,7 @@ function validateRequiredChecks(checkRuns, reasons) {
 function validateObservedChecks(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
-    const name = normalized(check?.name);
+    const name = exactCheckName(check?.name);
     if (!name) {
       continue;
     }
