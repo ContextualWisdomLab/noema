@@ -47,4 +47,26 @@ describe("commercial readiness check-name authority", () => {
       detail: "Required check verify is missing from the current head.",
     });
   });
+
+  it.each([" github-actions ", "GitHub-Actions"])(
+    "does not normalize producer identity %j into trusted GitHub Actions authority",
+    (appSlug) => {
+      const snapshot = passingSnapshot();
+      snapshot.checkRuns = snapshot.checkRuns.map((check) =>
+        check.name === "verify" ? { ...check, appSlug } : check,
+      );
+
+      const result = evaluatePullRequest(snapshot);
+
+      expect(result.action).toBe("blocked");
+      expect(result.reasons).toContainEqual({
+        code: "required_check_producer_collision",
+        detail: `Required check name verify was also produced by ${appSlug.trim()}.`,
+      });
+      expect(result.reasons).toContainEqual({
+        code: "required_check_missing",
+        detail: "Required check verify is missing from the current head.",
+      });
+    },
+  );
 });
