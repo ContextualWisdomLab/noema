@@ -74,4 +74,20 @@ describe("commercial readiness check-result authority", () => {
       expect(result.reasons.some((reason) => reason.code === code)).toBe(true);
     },
   );
+
+  it.each([" success ", "SUCCESS"])(
+    "does not normalize commit-status state %j into successful merge authority",
+    (state) => {
+      const snapshot = passingSnapshot();
+      snapshot.statuses = [{ context: "external-status", state }];
+
+      const result = evaluatePullRequest(snapshot);
+
+      expect(result.action).toBe("blocked");
+      expect(result.reasons).toContainEqual({
+        code: "status_not_success",
+        detail: "Status external-status is missing.",
+      });
+    },
+  );
 });
