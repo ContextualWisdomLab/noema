@@ -208,7 +208,7 @@ describe("hourly commercial readiness script", () => {
     expect(script).toContain("check-runs?filter=all&per_page=100");
     expect(script).not.toContain("check-runs?filter=latest");
     expect(script).toContain("latestCheckRunsBySuite(");
-    expect(script).toContain('appSlug: String(check?.app?.slug ?? "")');
+    expect(script).toContain("commercialCheckAppSlug(check, workflowAuthorities, changedPaths)");
     expect(script).toContain("statuses?per_page=100");
     expect(script).toContain("reviews?per_page=100");
     expect(script).toContain("reviewThreads(first:100,after:$endCursor)");
