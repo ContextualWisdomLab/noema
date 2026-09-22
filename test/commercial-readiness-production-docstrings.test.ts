@@ -30,6 +30,7 @@ describe("commercial-readiness touched production docstrings", () => {
       "canonicalRequiredWorkflowObservation",
       "bindRequiredWorkflowMetadata",
       "parseNoemaReviewDecision",
+      "latestStatuses",
       "fetchPullRequestSnapshot",
       "mergePullRequest",
       "main",
