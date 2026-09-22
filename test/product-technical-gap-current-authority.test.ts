@@ -8,8 +8,8 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
-const STALE_730_EXACT = "#730 current exact `f8bf13702838131bcc586757348ef4a74564d9a1`";
+const CURRENT_730_EXACT = "#730 current exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
+const STALE_730_EXACT = "#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -32,15 +32,17 @@ const CURRENT_730_OPERATOR_DIAGNOSTIC_AUTHORITY =
   "active `required_check_missing` operator diagnostic covers the full fail-closed provenance tuple";
 const CURRENT_730_CHECK_RESULT_AUTHORITY =
   "requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization";
+const CURRENT_730_STATUS_PROJECTION_AUTHORITY =
+  "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
 const CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY =
-  "production docstring scope successor RED `c2e7e94f8be970bdea502b1a2c385c8ae8edc6ba` + `68b3e439257b64f213d1064608ab7c3be73e60ec` → GREEN `46f6df9e9eb34fdd7abf62633bf7186d8348151c` executable contract covers all 33 authority-bearing production functions changed by #730 across the hourly loop, evaluator, and main-governance audit";
+  "100% 34-function authority-bearing production docstring scope contract";
 const CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY =
   "Issue #27 remains live repository governance authority for ruleset, pull-request, review/conversation, history, deletion, and bypass control-plane evidence";
 const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`";
+  "issue #27; candidate #730 exact `50d47dae5d9d10fcf13e383b16f89e05ca6e2aea`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
@@ -56,8 +58,9 @@ const GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY =
   "complete required-check operator diagnostic";
 const GOVERNANCE_CHECK_RESULT_AUTHORITY =
   "exact Check Run/Commit Status terminal result authority";
+const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY =
-  "100% 33-function authority-bearing production docstring scope contract";
+  "100% 34-function authority-bearing production docstring scope contract";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -100,6 +103,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_OPERATOR_GUIDE_REPOSITORY_WORKFLOW_ID_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_RESULT_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_STATUS_PROJECTION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
 }
@@ -159,6 +163,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_OPERATOR_GUIDE_AUTHORITY);
     expect(section).toContain(CURRENT_730_OPERATOR_DIAGNOSTIC_AUTHORITY);
     expect(section).toContain(CURRENT_730_CHECK_RESULT_AUTHORITY);
+    expect(section).toContain(CURRENT_730_STATUS_PROJECTION_AUTHORITY);
     expect(section).toContain(CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY);
     expect(section).toContain(CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY);
     expect(section).toContain(CURRENT_REVIEWER_APP_AUTHORITY);
