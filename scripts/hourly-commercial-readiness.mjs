@@ -558,6 +558,7 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
   return candidates.at(-1)?.decision ?? null;
 }
 
+/** Preserve exact Commit Status context/state identity before terminal merge-authority evaluation. */
 export function latestStatuses(statuses) {
   const latestByContext = new Map();
   const ordered = [...(Array.isArray(statuses) ? statuses : [])].sort((left, right) => {
@@ -569,11 +570,11 @@ export function latestStatuses(statuses) {
     return Number(right?.id || 0) - Number(left?.id || 0);
   });
   for (const status of ordered) {
-    const context = String(status?.context ?? "").trim();
+    const context = typeof status?.context === "string" ? status.context : "";
     if (context && !latestByContext.has(context)) {
       latestByContext.set(context, {
         context,
-        state: String(status?.state ?? "").toLowerCase(),
+        state: typeof status?.state === "string" ? status.state : "",
       });
     }
   }
