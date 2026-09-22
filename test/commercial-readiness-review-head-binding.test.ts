@@ -31,4 +31,12 @@ describe("commercial-readiness review head binding", () => {
       trustedReviewer,
     )).toBeNull();
   });
+
+  it("does not normalize a non-canonical GitHub review state into approval authority", () => {
+    expect(parseNoemaReviewDecision(
+      [currentHeadApproval({ state: "approved" })],
+      currentHead,
+      trustedReviewer,
+    )).toBeNull();
+  });
 });
