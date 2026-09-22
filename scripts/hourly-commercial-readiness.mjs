@@ -219,8 +219,19 @@ function workflowRunSource(run, repository) {
   return "unknown";
 }
 
-function workflowRunMatchesTargetPullRequest(run, expectedPullNumber, expectedHeadSha) {
-  if (!Number.isSafeInteger(expectedPullNumber) || expectedPullNumber <= 0) {
+function workflowRunMatchesTargetPullRequest(
+  run,
+  expectedPullNumber,
+  expectedHeadSha,
+  expectedBaseRef,
+  expectedBaseSha,
+) {
+  if (
+    !Number.isSafeInteger(expectedPullNumber)
+    || expectedPullNumber <= 0
+    || expectedBaseRef !== "main"
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
+  ) {
     return false;
   }
   const pullRequests = Array.isArray(run?.pull_requests) ? run.pull_requests : [];
@@ -229,15 +240,19 @@ function workflowRunMatchesTargetPullRequest(run, expectedPullNumber, expectedHe
   }
   const association = pullRequests[0];
   return association?.number === expectedPullNumber
-    && association?.head?.sha === expectedHeadSha;
+    && association?.head?.sha === expectedHeadSha
+    && association?.base?.ref === expectedBaseRef
+    && association?.base?.sha === expectedBaseSha;
 }
 
-/** Bind each check suite to the exact current-head, current-PR Actions workflow run that produced it. */
+/** Bind each check suite to the exact current-head, current-base, current-PR Actions workflow run that produced it. */
 export function workflowAuthorityByCheckSuite(
   workflowRuns,
   repository,
   expectedHeadSha,
   expectedPullNumber,
+  expectedBaseRef,
+  expectedBaseSha,
 ) {
   const authorityBySuite = new Map();
   if (
@@ -245,6 +260,8 @@ export function workflowAuthorityByCheckSuite(
     || !fullShaPattern.test(String(expectedHeadSha ?? ""))
     || !Number.isSafeInteger(expectedPullNumber)
     || expectedPullNumber <= 0
+    || expectedBaseRef !== "main"
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
   ) {
     return authorityBySuite;
   }
@@ -256,7 +273,13 @@ export function workflowAuthorityByCheckSuite(
     const authority = (
       run?.event === "pull_request"
       && run?.head_sha === expectedHeadSha
-      && workflowRunMatchesTargetPullRequest(run, expectedPullNumber, expectedHeadSha)
+      && workflowRunMatchesTargetPullRequest(
+        run,
+        expectedPullNumber,
+        expectedHeadSha,
+        expectedBaseRef,
+        expectedBaseSha,
+      )
     ) ? {
         path: String(run?.path ?? ""),
         source: workflowRunSource(run, repository),
@@ -469,6 +492,8 @@ function listOpenPullRequests(repository) {
 function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLogin) {
   const pull = fetchPullRequest(repository, pullNumber);
   const headSha = String(pull?.head?.sha ?? "");
+  const baseRef = String(pull?.base?.ref ?? "");
+  const baseSha = String(pull?.base?.sha ?? "");
   if (!fullShaPattern.test(headSha)) {
     throw new Error(`Pull request #${pullNumber} did not expose a full head SHA.`);
   }
@@ -491,6 +516,8 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     repository,
     headSha,
     pullNumber,
+    baseRef,
+    baseSha,
   );
   const checkRuns = rawCheckRuns.map((check) => ({
     name: String(check?.name ?? ""),
@@ -511,7 +538,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     title: bound(pull?.title || `Pull request #${pullNumber}`, 240),
     state: String(pull?.state ?? ""),
     draft: pull?.draft,
-    baseRef: String(pull?.base?.ref ?? ""),
+    baseRef,
     headRepository: String(pull?.head?.repo?.full_name ?? ""),
     headSha,
     mergeable: pull?.mergeable,
