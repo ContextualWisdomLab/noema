@@ -1,0 +1,30 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+describe("commercial readiness operator workflow-provenance contract", () => {
+  it("documents the complete fail-closed required-check provenance tuple", () => {
+    const guide = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
+    const start = guide.indexOf("## 필수 병합 근거");
+    const end = guide.indexOf("## 리뷰와 head 결속", start);
+    const section = guide.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(section).toContain("App id `15368`");
+    expect(section).toContain("check_suite.id");
+    expect(section).toContain("check_suite_id");
+    expect(section).toContain("event=`pull_request`");
+    expect(section).toContain("pull_requests");
+    expect(section).toContain("head_sha");
+    expect(section).toContain("base.ref=`main`");
+    expect(section).toContain("base.sha");
+    expect(section).toContain(".github/workflows/ci.yml");
+    expect(section).toContain(".github/workflows/reviewer-ci.yml");
+    expect(section).toContain(".github/workflows/security-scan.yml");
+    expect(section).toContain("repository_workflow");
+    expect(section).toContain("required_workflow");
+    expect(section).toContain("self-modified-workflow");
+    expect(section).toContain("untrusted-workflow");
+    expect(section).toContain("changed_files");
+  });
+});
