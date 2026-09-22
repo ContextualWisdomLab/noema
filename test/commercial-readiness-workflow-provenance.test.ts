@@ -4,6 +4,7 @@ import {
   commercialCheckAppSlug,
   workflowAuthorityByCheckSuite,
 } from "../scripts/hourly-commercial-readiness.mjs";
+import { REQUIRED_MAIN_CHECK_INTEGRATION_ID } from "../scripts/lib/main-governance-audit.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const headSha = "a".repeat(40);
@@ -46,10 +47,14 @@ function run({
   };
 }
 
-function check(name: string, suiteId: number) {
+function check(
+  name: string,
+  suiteId: number,
+  appId = REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+) {
   return {
     name,
-    app: { slug: "github-actions" },
+    app: { id: appId, slug: "github-actions" },
     check_suite: { id: suiteId },
   };
 }
@@ -76,6 +81,19 @@ describe("commercial readiness workflow provenance", () => {
       authorities,
       [".github/workflows/ci.yml"],
     )).toBe("self-modified-workflow");
+  });
+
+  it("rejects the canonical GitHub Actions slug when the producer App id is not canonical", () => {
+    const authorities = workflowAuthorityByCheckSuite([
+      run({
+        suiteId: 13,
+        path: ".github/workflows/ci.yml",
+        workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+      }),
+    ], repository, headSha, pullNumber, baseRef, baseSha);
+
+    expect(commercialCheckAppSlug(check("verify", 13, 99999), authorities, []))
+      .toBe("untrusted-producer");
   });
 
   it("admits bundled scanner checks only from the organization-required Security Scan run", () => {
