@@ -19,8 +19,8 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
-    expect(active).not.toContain("#730 current exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
+    expect(active).toContain("#730 current exact `c23b3d186925e63a11f6777139995d37fce190ef`");
+    expect(active).not.toContain("#730 current exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
     expect(active).toContain("requires exact canonical Noema decision token without whitespace or case normalization");
     expect(active).toContain("requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization");
@@ -30,6 +30,7 @@ describe("post-726 protected authority convergence", () => {
     expect(active).toContain("fails closed when same-suite retry chronology lacks parseable `started_at`/`completed_at` evidence");
     expect(active).toContain("executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings");
     expect(active).toContain("100% 38-function authority-bearing production docstring scope contract");
+    expect(active).toContain("hosted RED test-contract RCA preserves missing-approval versus explicit-rejection semantics, fail-closed missing retry chronology, and the 38-function direct-JSDoc gate without changing production merge authority");
   });
 
   it("moves private-reporting source ownership from candidate to protected history", () => {
@@ -46,8 +47,8 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
-    expect(row).not.toContain("candidate #730 exact `35bbcb95c9e42d07c602ea100da7605f7c0f240d`");
+    expect(row).toContain("candidate #730 exact `c23b3d186925e63a11f6777139995d37fce190ef`");
+    expect(row).not.toContain("candidate #730 exact `b6cb069ffb8c498a9d096f5209f5d0ac93400ce6`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
     expect(row).toContain("fail-closed unknown retry chronology");
     expect(row).toContain("exact canonical Noema decision token authority");
