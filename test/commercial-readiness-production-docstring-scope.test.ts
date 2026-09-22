@@ -19,6 +19,7 @@ const hourlyAuthorityFunctions = [
   "parseNoemaReviewDecision",
   "latestStatuses",
   "fetchPullRequestSnapshot",
+  "assertLiveHead",
   "mergePullRequest",
   "main",
 ];
