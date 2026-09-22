@@ -16,7 +16,7 @@ const MAX_GH_OUTPUT_BYTES = 16 * 1024 * 1024;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const botLoginPattern = /^[A-Za-z0-9-]+\[bot\]$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
-const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/gi;
+const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/g;
 const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
 const reviewThreadQuery = "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}";
 const activeWorkflowRunStatuses = new Set([
@@ -519,7 +519,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept the latest exact-head Noema decision in GitHub REST list order without synthesizing review chronology. */
+/** Accept the latest exact-head Noema decision only from canonical marker tokens in GitHub REST list order. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -545,10 +545,10 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     while ((marker = noemaMarkerPattern.exec(body)) !== null) {
       latestMarker = marker;
     }
-    if (!latestMarker || latestMarker[1].toLowerCase() !== expectedHeadSha.toLowerCase()) {
+    if (!latestMarker || latestMarker[1] !== expectedHeadSha) {
       continue;
     }
-    const decision = latestMarker[2].toLowerCase();
+    const decision = latestMarker[2];
     const state = typeof review?.state === "string" ? review.state : "";
     const compatible = decision === "approve"
       ? state === "APPROVED"
