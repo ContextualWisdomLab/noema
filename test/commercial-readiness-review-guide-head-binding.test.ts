@@ -50,9 +50,11 @@ describe("commercial-readiness review guide head binding", () => {
     const swapped = section
       .replace(APPROVAL_MAPPING, "`approve`는 정확한 `CHANGES_REQUESTED`")
       .replace(BLOCKING_MAPPING, "`request_changes`와 `blocked`는 정확한 `APPROVED`");
+    const missingApprovalMapping = section.replace(APPROVAL_MAPPING, "");
     const missingBlockingMapping = section.replace(BLOCKING_MAPPING, "");
 
     expect(hasExactReviewStateMappings(swapped)).toBe(false);
+    expect(hasExactReviewStateMappings(missingApprovalMapping)).toBe(false);
     expect(hasExactReviewStateMappings(missingBlockingMapping)).toBe(false);
   });
 });
