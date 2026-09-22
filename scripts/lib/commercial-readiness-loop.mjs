@@ -47,10 +47,12 @@ function addReason(reasons, code, detail) {
   reasons.push({ code, detail });
 }
 
+/** Trust required-check producer authority only when the projected App slug is already canonical. */
 function isTrustedGitHubActionsCheck(check) {
   return check?.appSlug === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
 }
 
+/** Fail closed when the pull request identity tuple differs from the exact merge target authority. */
 function validatePullRequestIdentity(snapshot, reasons) {
   const state = exactAuthorityString(snapshot.state);
   if (state !== "open") {
@@ -135,6 +137,7 @@ function validateReviews(snapshot, reasons) {
   }
 }
 
+/** Detect required-check name collisions before a noncanonical producer can satisfy check authority. */
 function validateRequiredCheckProducers(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
@@ -150,6 +153,7 @@ function validateRequiredCheckProducers(checkRuns, reasons) {
   }
 }
 
+/** Require every canonical check name to have current trusted evidence and a successful terminal result. */
 function validateRequiredChecks(checkRuns, reasons) {
   for (const requiredName of REQUIRED_CHECK_NAMES) {
     const matches = checkRuns.filter(
@@ -183,6 +187,7 @@ function validateRequiredChecks(checkRuns, reasons) {
   }
 }
 
+/** Retain non-required check evidence while keeping review-dependent and optional failures fail closed. */
 function validateObservedChecks(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
