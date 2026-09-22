@@ -79,4 +79,29 @@ describe("commercial readiness check-suite identity", () => {
     expect(latest[0]?.id).toBe(100);
     expect(latest[0]?.conclusion).toBe("failure");
   });
+
+  it("fails closed when same-suite retry chronology lacks an observable timestamp", () => {
+    expect(() => latestCheckRunsBySuite([
+      {
+        id: 300,
+        name: "verify",
+        status: "completed",
+        conclusion: "success",
+        started_at: "2026-09-22T10:00:00Z",
+        completed_at: "2026-09-22T10:01:00Z",
+        check_suite: { id: 33 },
+        app: { slug: "github-actions" },
+      },
+      {
+        id: 301,
+        name: "verify",
+        status: "completed",
+        conclusion: "failure",
+        started_at: null,
+        completed_at: null,
+        check_suite: { id: 33 },
+        app: { slug: "github-actions" },
+      },
+    ])).toThrow("Check run chronology metadata is incomplete for id 301.");
+  });
 });
