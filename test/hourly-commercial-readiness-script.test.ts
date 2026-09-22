@@ -17,6 +17,7 @@ import {
 } from "../scripts/lib/commercial-readiness-loop.mjs";
 import {
   latestCheckRunsBySuite,
+  latestStatuses,
   main,
   parseNoemaReviewDecision,
   redactSensitiveValue,
@@ -109,6 +110,31 @@ describe("hourly commercial readiness script", () => {
         app: { slug: "github-actions" },
       },
     ])).toThrow("Check run identity metadata is incomplete for id 10.");
+  });
+
+  it("preserves exact commit-status context and state authority before evaluation", () => {
+    const statuses = latestStatuses([
+      {
+        id: 1,
+        context: "policy",
+        state: "failure",
+        created_at: "2026-09-22T00:00:00Z",
+      },
+      {
+        id: 2,
+        context: " policy ",
+        state: "SUCCESS",
+        created_at: "2026-09-22T00:01:00Z",
+      },
+    ]);
+
+    expect(statuses).toEqual([
+      { context: " policy ", state: "SUCCESS" },
+      { context: "policy", state: "failure" },
+    ]);
+    const decision = evaluatePullRequest(snapshot({ statuses }));
+    expect(decision.action).toBe("blocked");
+    expect(decision.reasons.filter((reason) => reason.code === "status_not_success")).toHaveLength(2);
   });
 
   it("fails closed when exact-head required checks are missing", () => {
