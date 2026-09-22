@@ -19,10 +19,10 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `f8bf13702838131bcc586757348ef4a74564d9a1`");
-    expect(active).not.toContain("#730 current exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`");
+    expect(active).toContain("#730 current exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`");
+    expect(active).not.toContain("#730 current exact `f8bf13702838131bcc586757348ef4a74564d9a1`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
-    expect(active).toContain("requires exact check status/conclusion enum authority without whitespace or case normalization");
+    expect(active).toContain("requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization");
   });
 
   it("moves private-reporting source ownership from candidate to protected history", () => {
@@ -39,9 +39,9 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `f8bf13702838131bcc586757348ef4a74564d9a1`");
-    expect(row).not.toContain("candidate #730 exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`");
+    expect(row).toContain("candidate #730 exact `e7ec8d0dc71d31342f0514fef5578f04123caa1a`");
+    expect(row).not.toContain("candidate #730 exact `f8bf13702838131bcc586757348ef4a74564d9a1`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
-    expect(row).toContain("exact check status/conclusion authority");
+    expect(row).toContain("exact Check Run/Commit Status terminal result authority");
   });
 });
