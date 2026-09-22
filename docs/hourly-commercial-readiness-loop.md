@@ -87,9 +87,15 @@ read-only activation preflight
 - `trivy-fs`
 - `dependency-review`
 
-필수 check는 이름만 일치해서는 안 되며 GitHub Check Runs 응답의 `app.slug`가 `github-actions`여야 합니다. 제3자 App이 같은 이름의 성공 check를 게시해도 필수 gate를 충족하지 못하며, 동일 이름의 신뢰된 check가 여러 개면 모두 성공해야 합니다.
+필수 check는 이름만 일치해서는 안 됩니다. GitHub Check Runs 응답의 이름과 `app.slug`가 각각 canonical 이름과 `github-actions`에 정확히 일치해야 하며, producer App id도 Noema governance owner contract의 App id `15368`과 같아야 합니다. 공백·대소문자 정규화로 lookalike producer를 승격하지 않습니다. 제3자 App이 같은 이름의 성공 check를 게시해도 필수 gate를 충족하지 못합니다.
 
-Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재실행 이력 때문에 과거 실패가 영구 차단하지 않도록 동일한 `check_suite.id`·`app.slug`·check 이름 안에서는 가장 최신 attempt만 유효하게 평가합니다. 반면 서로 다른 check suite가 같은 이름을 게시한 경우에는 각각 독립적인 필수 근거로 유지해, 중복 workflow나 별도 suite의 실패·대기를 숨기지 않습니다. suite 또는 producer 식별자가 불완전한 check는 제거하지 않고 관측 check로 남겨 실패-폐쇄 처리합니다.
+Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재실행 이력 때문에 과거 실패가 영구 차단하지 않도록 동일한 `check_suite.id`·producer·check 이름 안에서는 가장 최신 attempt만 유효하게 평가합니다. 반면 서로 다른 check suite가 같은 이름을 게시한 경우에는 각각 독립적인 필수 근거로 유지해, 중복 workflow나 별도 suite의 실패·대기를 숨기지 않습니다. suite 또는 producer 식별자가 불완전한 check는 제거하지 않고 관측 check로 남겨 실패-폐쇄 처리합니다.
+
+필수 check의 `check_suite.id`는 Actions workflow-run의 `check_suite_id`와 결합되어야 합니다. 해당 run은 `event=`pull_request``이고 `head_sha`가 평가 중인 exact head여야 하며, `pull_requests` 배열에는 정확히 하나의 association만 있어야 합니다. 그 association의 PR number와 head SHA가 평가 대상 PR/head와 일치하고 `base.ref=`main`` 및 `base.sha`가 현재 PR base와 정확히 같아야 합니다. 다른 PR, 다른 head, stale base, 잘못된 base ref, association 누락·중복, duplicate suite는 `untrusted-workflow`로 실패 폐쇄합니다.
+
+Workflow source도 check별 canonical owner를 따라야 합니다. `verify`는 `.github/workflows/ci.yml`, `reviewer`는 `.github/workflows/reviewer-ci.yml`의 `repository_workflow`여야 합니다. `scorecard`, `osv-scan`, `trivy-fs`, `dependency-review`는 organization-required `.github/workflows/security-scan.yml`의 `required_workflow`여야 합니다. 다른 path·source 또는 malformed `workflow_url`은 `untrusted-workflow`입니다.
+
+PR의 changed-file pagination은 GitHub PR payload의 `changed_files`와 개수가 정확히 일치해야 합니다. 이 증거가 불완전하면 merge admission을 계속하지 않고 operational error로 실패합니다. 또한 같은 PR이 `.github/workflows/ci.yml` 또는 `.github/workflows/reviewer-ci.yml`을 수정한 경우 해당 repository-local check는 자기 gate 구현으로 자신을 인증할 수 없으므로 `self-modified-workflow`로 처리합니다. Organization-required Security Scan은 Noema source-copy가 아니라 required-workflow provenance로 소비합니다.
 
 `reviewer-ci`는 path filter 없이 모든 PR에서 실행되어 100% line/branch coverage와 100% docstring coverage를 유지합니다. 추가로 관측된 check/status도 성공해야 합니다.
 
