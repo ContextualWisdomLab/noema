@@ -164,7 +164,14 @@ function checkRunChronologicalOrder(left, right) {
   if (leftTime !== rightTime) {
     return leftTime - rightTime;
   }
-  return Number(left?.id) - Number(right?.id);
+  const leftId = Number(left?.id);
+  const rightId = Number(right?.id);
+  if (leftId === rightId) {
+    return 0;
+  }
+  throw new TypeError(
+    `Check run chronology is ambiguous for ids ${String(left?.id ?? "missing")} and ${String(right?.id ?? "missing")}.`,
+  );
 }
 
 /** Build an exact API identity key without normalizing check-name or producer authority. */
