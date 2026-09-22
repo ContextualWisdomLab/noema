@@ -83,11 +83,13 @@ describe("commercial readiness workflow provenance", () => {
         suiteId: 11,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
       }),
       run({
         suiteId: 12,
         path: ".github/workflows/reviewer-ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/311182356`,
+        workflowId: 311182356,
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
 
@@ -100,12 +102,27 @@ describe("commercial readiness workflow provenance", () => {
     )).toBe("self-modified-workflow");
   });
 
+  it("rejects a repository-workflow URL whose numeric identity disagrees with workflow_id", () => {
+    const authorities = workflowAuthorityByCheckSuite([
+      run({
+        suiteId: 14,
+        path: ".github/workflows/ci.yml",
+        workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 311182356,
+      }),
+    ], repository, headSha, pullNumber, baseRef, baseSha);
+
+    expect(commercialCheckAppSlug(check("verify", 14), authorities, []))
+      .toBe("untrusted-workflow");
+  });
+
   it("rejects the canonical GitHub Actions slug when the producer App id is not canonical", () => {
     const authorities = workflowAuthorityByCheckSuite([
       run({
         suiteId: 13,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
 
@@ -126,6 +143,7 @@ describe("commercial readiness workflow provenance", () => {
         suiteId: 22,
         path: ".github/workflows/security-scan.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/999999999`,
+        workflowId: 999999999,
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
 
@@ -165,12 +183,14 @@ describe("commercial readiness workflow provenance", () => {
         suiteId: 31,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         runHeadSha: "b".repeat(40),
       }),
       run({
         suiteId: 32,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         event: "push",
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
@@ -186,18 +206,21 @@ describe("commercial readiness workflow provenance", () => {
         suiteId: 41,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         associatedPullNumbers: [731],
       }),
       run({
         suiteId: 42,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         associatedPullNumbers: [pullNumber, 731],
       }),
       run({
         suiteId: 43,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         associatedHeadSha: "b".repeat(40),
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
@@ -213,12 +236,14 @@ describe("commercial readiness workflow provenance", () => {
         suiteId: 51,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         associatedBaseSha: "d".repeat(40),
       }),
       run({
         suiteId: 52,
         path: ".github/workflows/ci.yml",
         workflowUrl: `https://api.github.com/repos/${repository}/actions/workflows/305751493`,
+        workflowId: 305751493,
         associatedBaseRef: "develop",
       }),
     ], repository, headSha, pullNumber, baseRef, baseSha);
