@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `c74e3488566baf9616050988944a77bb94b3177d`";
-const STALE_730_EXACT = "#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`";
+const CURRENT_730_EXACT = "#730 current exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`";
+const STALE_730_EXACT = "#730 current exact `ab97a0185f845af27f2b2ffb30cdd64d4f17d44b`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_GUIDE_AUTHORITY =
@@ -12,7 +12,7 @@ const REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "requires repository workflow URL id to equal the workflow run's `workflow_id`";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `c74e3488566baf9616050988944a77bb94b3177d`";
+  "issue #27; candidate #730 exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REPOSITORY_WORKFLOW_ID_AUTHORITY =
   "repository workflow URL/workflow_id identity consistency";
