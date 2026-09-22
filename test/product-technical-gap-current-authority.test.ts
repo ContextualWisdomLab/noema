@@ -8,8 +8,8 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `5a7f50326415a86cfc483031900383edc9211672`";
-const STALE_730_EXACT = "#730 current exact `9e7abdcf3814e209c6c96b9c3c7e1c2484af9440`";
+const CURRENT_730_EXACT = "#730 current exact `b131ee030fca8cf66050023a270d7375b246d352`";
+const STALE_730_EXACT = "#730 current exact `5a7f50326415a86cfc483031900383edc9211672`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -36,6 +36,8 @@ const CURRENT_730_CHECK_RESULT_AUTHORITY =
   "requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization";
 const CURRENT_730_STATUS_PROJECTION_AUTHORITY =
   "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
+const CURRENT_730_STATUS_ORDER_AUTHORITY =
+  "preserves GitHub REST reverse-chronological Commit Status order without synthesized timestamp/id chronology";
 const CURRENT_730_REVIEW_ORDER_AUTHORITY =
   "preserves GitHub REST review-list chronology without synthesized `submitted_at`/id ordering";
 const CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY =
@@ -46,7 +48,7 @@ const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `5a7f50326415a86cfc483031900383edc9211672`";
+  "issue #27; candidate #730 exact `b131ee030fca8cf66050023a270d7375b246d352`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
@@ -64,6 +66,7 @@ const GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY =
 const GOVERNANCE_CHECK_RESULT_AUTHORITY =
   "exact Check Run/Commit Status terminal result authority";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
+const GOVERNANCE_STATUS_ORDER_AUTHORITY = "GitHub REST Commit Status reverse-chronological order authority";
 const GOVERNANCE_REVIEW_ORDER_AUTHORITY = "GitHub REST review-list chronology authority";
 const GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY =
   "100% 36-function authority-bearing production docstring scope contract";
@@ -111,6 +114,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_OPERATOR_DIAGNOSTIC_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_RESULT_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_STATUS_PROJECTION_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_STATUS_ORDER_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_REVIEW_ORDER_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_PRODUCTION_DOCSTRING_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
@@ -173,6 +177,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_OPERATOR_DIAGNOSTIC_AUTHORITY);
     expect(section).toContain(CURRENT_730_CHECK_RESULT_AUTHORITY);
     expect(section).toContain(CURRENT_730_STATUS_PROJECTION_AUTHORITY);
+    expect(section).toContain(CURRENT_730_STATUS_ORDER_AUTHORITY);
     expect(section).toContain(CURRENT_730_REVIEW_ORDER_AUTHORITY);
     expect(section).toContain(CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY);
     expect(section).toContain(CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY);
