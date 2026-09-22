@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "9037b4831db5b4b5658ca07c7149551c0f6b322a";
+const CURRENT_730_EXACT = "35bbcb95c9e42d07c602ea100da7605f7c0f240d";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
   "executable guide contract independently rejects missing approval and missing blocking marker-to-state mappings";
 const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
+const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
+  "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
 const PRODUCTION_DOCSTRING_AUTHORITY =
   "100% 37-function authority-bearing production docstring scope contract";
 
@@ -27,6 +29,7 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(CURRENT_CANDIDATE);
     expect(baseline).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
   });
 
