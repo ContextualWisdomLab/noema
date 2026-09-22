@@ -33,12 +33,14 @@ const CURRENT_730_OPERATOR_DIAGNOSTIC_AUTHORITY =
 const CURRENT_730_PRODUCTION_DOCSTRING_AUTHORITY =
   "production docstring RED `3f54f08ada36dcaac16c350771fbd177967e6b87` → GREEN `9bc667b1c3be7339d77416b069e9fb48e974cd1e` executable contract covers all 15 authority-bearing production functions changed by #730";
 const CURRENT_GOVERNANCE_CONTROL_PLANE_AUTHORITY =
-  "Issue #27 remains live repository governance authority for ruleset, review/conversation, history, deletion, and bypass control-plane evidence";
+  "Issue #27 remains live repository governance authority for ruleset, pull-request, review/conversation, history, deletion, and bypass control-plane evidence";
 const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
   "issue #27; candidate #730 exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`";
+const GOVERNANCE_CONTROL_PLANE_OWNER =
+  "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
 const GOVERNANCE_CHECK_SUITE_IDENTITY_AUTHORITY = "exact check-suite retry identity + timestamp-first retry chronology";
 const GOVERNANCE_APP_ID_AUTHORITY = "canonical GitHub Actions App id";
@@ -84,6 +86,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
   const governanceRows = baseline.split("\n").filter((line) => line.startsWith(GOVERNANCE_ROW_PREFIX));
   return governanceRows.length === 1
     && governanceRows[0].includes(GOVERNANCE_CANDIDATE)
+    && governanceRows[0].includes(GOVERNANCE_CONTROL_PLANE_OWNER)
     && governanceRows[0].includes(GOVERNANCE_PRODUCER_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_SUITE_IDENTITY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_APP_ID_AUTHORITY)
