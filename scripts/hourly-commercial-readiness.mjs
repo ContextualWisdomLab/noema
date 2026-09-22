@@ -557,7 +557,7 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     const decision = latestMarker[2].toLowerCase();
-    const state = String(review?.state ?? "").toUpperCase();
+    const state = typeof review?.state === "string" ? review.state : "";
     const compatible = decision === "approve"
       ? state === "APPROVED"
       : state === "CHANGES_REQUESTED";
