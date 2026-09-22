@@ -219,10 +219,33 @@ function workflowRunSource(run, repository) {
   return "unknown";
 }
 
-/** Bind each check suite to the exact current-head Actions workflow run that produced it. */
-export function workflowAuthorityByCheckSuite(workflowRuns, repository, expectedHeadSha) {
+function workflowRunMatchesTargetPullRequest(run, expectedPullNumber, expectedHeadSha) {
+  if (!Number.isSafeInteger(expectedPullNumber) || expectedPullNumber <= 0) {
+    return false;
+  }
+  const pullRequests = Array.isArray(run?.pull_requests) ? run.pull_requests : [];
+  if (pullRequests.length !== 1) {
+    return false;
+  }
+  const association = pullRequests[0];
+  return association?.number === expectedPullNumber
+    && association?.head?.sha === expectedHeadSha;
+}
+
+/** Bind each check suite to the exact current-head, current-PR Actions workflow run that produced it. */
+export function workflowAuthorityByCheckSuite(
+  workflowRuns,
+  repository,
+  expectedHeadSha,
+  expectedPullNumber,
+) {
   const authorityBySuite = new Map();
-  if (!repositoryPattern.test(String(repository ?? "")) || !fullShaPattern.test(String(expectedHeadSha ?? ""))) {
+  if (
+    !repositoryPattern.test(String(repository ?? ""))
+    || !fullShaPattern.test(String(expectedHeadSha ?? ""))
+    || !Number.isSafeInteger(expectedPullNumber)
+    || expectedPullNumber <= 0
+  ) {
     return authorityBySuite;
   }
   for (const run of Array.isArray(workflowRuns) ? workflowRuns : []) {
@@ -233,6 +256,7 @@ export function workflowAuthorityByCheckSuite(workflowRuns, repository, expected
     const authority = (
       run?.event === "pull_request"
       && run?.head_sha === expectedHeadSha
+      && workflowRunMatchesTargetPullRequest(run, expectedPullNumber, expectedHeadSha)
     ) ? {
         path: String(run?.path ?? ""),
         source: workflowRunSource(run, repository),
@@ -466,6 +490,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     ),
     repository,
     headSha,
+    pullNumber,
   );
   const checkRuns = rawCheckRuns.map((check) => ({
     name: String(check?.name ?? ""),
