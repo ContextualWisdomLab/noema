@@ -8,18 +8,21 @@ const CURRENT_726_EXACT = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586
 const STALE_726_EXACT = "#726 current exact `9013887c1cc3eef6fe8b1d8385b002490848cc94`";
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `7e660a361832799c0b5071b1b556862dd3fdb28f`";
-const STALE_730_EXACT = "#730 current exact `e068b69bdddb6cce9c87c73e036e8fffb8d0d7c4`";
+const CURRENT_730_EXACT = "#730 current exact `4fa3839c9ca43d8bb8a7747114928296688251fe`";
+const STALE_730_EXACT = "#730 current exact `7e660a361832799c0b5071b1b556862dd3fdb28f`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
   "requires exact required check-name identity without whitespace normalization";
 const CURRENT_730_PRODUCER_AUTHORITY =
   "requires exact GitHub Actions producer identity without trim/case normalization";
+const CURRENT_730_PR_IDENTITY_AUTHORITY =
+  "requires exact pull-request state/base/repository/head SHA/mergeable-state identity without whitespace normalization";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `7e660a361832799c0b5071b1b556862dd3fdb28f`";
+  "issue #27; candidate #730 exact `4fa3839c9ca43d8bb8a7747114928296688251fe`";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
+const GOVERNANCE_PR_IDENTITY_AUTHORITY = "exact pull-request identity authority";
 const GOVERNANCE_NEXT_ACTION =
   "#730 current-head independent review + hosted gates 종료 후 normal merge 검토";
 const PRIVATE_REPORTING_ROW_PREFIX = "| P0 | Private vulnerability reporting operational evidence |";
@@ -63,6 +66,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
   return governanceRows.length === 1
     && governanceRows[0].includes(GOVERNANCE_CANDIDATE)
     && governanceRows[0].includes(GOVERNANCE_PRODUCER_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_PR_IDENTITY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NEXT_ACTION);
 }
 
@@ -116,6 +120,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_PR_BOUND_PROVENANCE);
     expect(section).toContain(CURRENT_730_CHECK_NAME_AUTHORITY);
     expect(section).toContain(CURRENT_730_PRODUCER_AUTHORITY);
+    expect(section).toContain(CURRENT_730_PR_IDENTITY_AUTHORITY);
     expect(section).not.toContain(OPEN_727);
   });
 
