@@ -19,8 +19,8 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `c74e3488566baf9616050988944a77bb94b3177d`");
-    expect(active).not.toContain("#730 current exact `0400266a825a1a26d16c7ed02c1653709c13cd17`");
+    expect(active).toContain("#730 current exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`");
+    expect(active).not.toContain("#730 current exact `ab97a0185f845af27f2b2ffb30cdd64d4f17d44b`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
   });
 
@@ -38,8 +38,8 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `c74e3488566baf9616050988944a77bb94b3177d`");
-    expect(row).not.toContain("candidate #730 exact `0400266a825a1a26d16c7ed02c1653709c13cd17`");
+    expect(row).toContain("candidate #730 exact `4bc5743b2fbf0055fb9889bd7af89d9789a833ef`");
+    expect(row).not.toContain("candidate #730 exact `ab97a0185f845af27f2b2ffb30cdd64d4f17d44b`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
   });
 });
