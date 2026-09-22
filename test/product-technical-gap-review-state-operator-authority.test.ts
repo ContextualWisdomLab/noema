@@ -29,9 +29,11 @@ describe("product-technical gap review-state operator authority", () => {
     const swapped = baseline
       .replace(APPROVAL_MAPPING, "`approve`→`CHANGES_REQUESTED`")
       .replace(BLOCKING_MAPPING, "`request_changes`/`blocked`→`APPROVED`");
+    const missingApprovalMapping = baseline.replace(APPROVAL_MAPPING, "");
     const missingBlockingMapping = baseline.replace(BLOCKING_MAPPING, "");
 
     expect(hasExactReviewStateMappings(swapped)).toBe(false);
+    expect(hasExactReviewStateMappings(missingApprovalMapping)).toBe(false);
     expect(hasExactReviewStateMappings(missingBlockingMapping)).toBe(false);
   });
 });
