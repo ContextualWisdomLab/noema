@@ -526,7 +526,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept the latest exact-head Noema decision only from canonical marker tokens in GitHub REST list order. */
+/** Accept the latest exact-head Noema decision only from one unambiguous canonical marker in GitHub REST list order. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -547,15 +547,15 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     noemaMarkerPattern.lastIndex = 0;
+    const markers = [];
     let marker;
-    let latestMarker = null;
     while ((marker = noemaMarkerPattern.exec(body)) !== null) {
-      latestMarker = marker;
+      markers.push(marker);
     }
-    if (!latestMarker || latestMarker[1] !== expectedHeadSha) {
+    if (markers.length !== 1 || markers[0][1] !== expectedHeadSha) {
       continue;
     }
-    const decision = latestMarker[2];
+    const decision = markers[0][2];
     const state = typeof review?.state === "string" ? review.state : "";
     const compatible = decision === "approve"
       ? state === "APPROVED"
