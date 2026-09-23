@@ -580,10 +580,7 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     }
     const markerStart = body.lastIndexOf(markerEnvelopes[0]);
     const credentialPrefix = body.slice(0, markerStart);
-    const publisherCredentialBound = (
-      credentialPrefix.endsWith(`- ${noemaCredentialMarker}\n\n`)
-      || credentialPrefix.endsWith(`${noemaCredentialMarker}\n`)
-    );
+    const publisherCredentialBound = credentialPrefix.endsWith(`- ${noemaCredentialMarker}\n\n`);
     if (!publisherCredentialBound) {
       continue;
     }
