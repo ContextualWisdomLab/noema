@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
 const CURRENT_730_EXACT = "#730 current exact `3e7a631c25a8de78c9987181d1e7632c4b091638`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
@@ -28,6 +29,12 @@ const BLOCKING_MAPPING = "`request_changes`/`blocked`→`CHANGES_REQUESTED`";
 
 function hasExactReviewStateMappings(baseline: string): boolean {
   return baseline.includes(APPROVAL_MAPPING) && baseline.includes(BLOCKING_MAPPING);
+}
+
+function currentOpenLaneBounds(baseline: string): [number, number] {
+  const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
+  const nextHeading = baseline.indexOf("\n## ", start + CURRENT_OPEN_LANE_HEADING.length);
+  return [start, nextHeading === -1 ? baseline.length : nextHeading];
 }
 
 describe("product-technical gap review-state operator authority", () => {
@@ -60,5 +67,23 @@ describe("product-technical gap review-state operator authority", () => {
     expect(hasExactReviewStateMappings(swapped)).toBe(false);
     expect(hasExactReviewStateMappings(missingApprovalMapping)).toBe(false);
     expect(hasExactReviewStateMappings(missingBlockingMapping)).toBe(false);
+  });
+
+  it("does not let historical duplicate mappings mask their removal from the active open-lane section", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const [start, end] = currentOpenLaneBounds(baseline);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const active = baseline.slice(start, end)
+      .replace(APPROVAL_MAPPING, "")
+      .replace(BLOCKING_MAPPING, "");
+    const hostile = [
+      APPROVAL_MAPPING,
+      BLOCKING_MAPPING,
+      baseline.slice(0, start),
+      active,
+      baseline.slice(end),
+    ].join("\n");
+
+    expect(hasExactReviewStateMappings(hostile)).toBe(false);
   });
 });
