@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
+const currentBase = "b".repeat(40);
 const trustedReviewerLogin = "noema-reviewer[bot]";
+const baseLine = `- Base SHA: \`${currentBase}\``;
 const credential = "- Reviewer credential: `noema-github-app`";
 const approvalMarker = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
-const canonicalApprovalBody = [credential, "", approvalMarker].join("\n");
+const canonicalApprovalBody = [baseLine, credential, "", approvalMarker].join("\n");
 
 function review(id: number, state: string, body: string) {
   return {
@@ -26,6 +28,7 @@ describe("Noema malformed-successor review authority", () => {
     expect(parseNoemaReviewDecision(
       [olderApproval],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBe("approve");
   });
@@ -35,23 +38,29 @@ describe("Noema malformed-successor review authority", () => {
     const laterMalformedApproval = review(
       2,
       "APPROVED",
-      [credential, "", approvalMarker, approvalMarker].join("\n"),
+      [baseLine, credential, "", approvalMarker, approvalMarker].join("\n"),
     );
 
     expect(parseNoemaReviewDecision(
       [olderApproval, laterMalformedApproval],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
 
   it("does not fall back to an older approval when a later trusted gate review loses its credential marker", () => {
     const olderApproval = review(1, "APPROVED", canonicalApprovalBody);
-    const laterUncredentialedApproval = review(2, "APPROVED", approvalMarker);
+    const laterUncredentialedApproval = review(
+      2,
+      "APPROVED",
+      [baseLine, approvalMarker].join("\n"),
+    );
 
     expect(parseNoemaReviewDecision(
       [olderApproval, laterUncredentialedApproval],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
