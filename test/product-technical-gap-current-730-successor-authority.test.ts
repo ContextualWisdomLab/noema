@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "7873a1b0a1de434b167e98819a6701c18d2c34fe";
+const CURRENT_730_EXACT = "ca3e01edf5bea005ff451b469521abab3d9e72be";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -14,6 +14,8 @@ const NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_MARKER_CASE_ENVELOPE_AUTHORITY =
   "counts case-variant marker-like Noema envelopes as ambiguity while keeping canonical marker validation case-sensitive";
+const NOEMA_REVIEWER_LOGIN_AUTHORITY =
+  "requires exact configured Noema reviewer login identity without case folding";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
 const GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY =
@@ -54,6 +56,7 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_CASE_ENVELOPE_AUTHORITY);
+    expect(baseline).toContain(NOEMA_REVIEWER_LOGIN_AUTHORITY);
     expect(baseline).toContain(NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(baseline).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
     expect(baseline).toContain(NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
