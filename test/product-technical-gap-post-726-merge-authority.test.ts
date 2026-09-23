@@ -19,7 +19,7 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `51d3d1bd77742f5eccf75ce6167faa11cb97f24f`");
+    expect(active).toContain("#730 current exact `caeeee70de9221b582cb2b9e0e2c1b77b9c10d27`");
     expect(active).not.toContain("#730 current exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
     expect(active).toContain("requires exact canonical Noema decision token without whitespace or case normalization");
@@ -57,7 +57,7 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `51d3d1bd77742f5eccf75ce6167faa11cb97f24f`");
+    expect(row).toContain("candidate #730 exact `caeeee70de9221b582cb2b9e0e2c1b77b9c10d27`");
     expect(row).not.toContain("candidate #730 exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
     expect(row).toContain("fail-closed unknown retry chronology");
