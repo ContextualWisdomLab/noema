@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "0521249b047dc5f0c3f53247769fd52ce7422178";
+const CURRENT_730_EXACT = "6bc9f0462748cceda34c5d258f11cb40efb6401d";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -16,6 +16,8 @@ const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
 const GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY =
   "preserves generic reviewer-state projection while malformed credentialed exact-head Noema gate successors revoke prior approval";
+const NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
+  "revokes prior Noema approval when a later trusted exact-head canonical gate marker loses its reviewer credential while preserving ordinary review comments";
 const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const PRODUCTION_DOCSTRING_AUTHORITY =
@@ -49,6 +51,7 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(baseline).toContain(NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(baseline).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
     expect(baseline).toContain(HOSTED_RED_TEST_CONTRACT_AUTHORITY);
