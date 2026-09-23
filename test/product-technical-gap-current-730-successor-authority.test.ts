@@ -72,13 +72,6 @@ const authoritySources = [
   "test/product-technical-gap-commit-status-projection-authority.test.ts",
 ];
 
-/** Mirrors the predecessor whole-document authority check so the hostile case can expose its false PASS. */
-function hasCurrent730SuccessorAuthority(baseline: string): boolean {
-  return activeAuthorities.every((authority) => baseline.includes(authority))
-    && baseline.includes(CURRENT_CANDIDATE)
-    && !baseline.includes(STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY);
-}
-
 function currentOpenLaneSection(baseline: string): string {
   const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
   if (start < 0) {
@@ -86,6 +79,21 @@ function currentOpenLaneSection(baseline: string): string {
   }
   const end = baseline.indexOf(`\n${COMMERCIAL_GAP_HEADING}`, start + CURRENT_OPEN_LANE_HEADING.length);
   return baseline.slice(start, end === -1 ? baseline.length : end);
+}
+
+function protectedMainGovernanceRow(baseline: string): string {
+  return baseline
+    .split("\n")
+    .find((line) => line.startsWith("| P0 | Protected-main governance closure |")) ?? "";
+}
+
+/** Prevents historical prose or another P0 row from satisfying current #730 authority. */
+function hasCurrent730SuccessorAuthority(baseline: string): boolean {
+  const active = currentOpenLaneSection(baseline);
+  const governanceRow = protectedMainGovernanceRow(baseline);
+  return activeAuthorities.every((authority) => active.includes(authority))
+    && governanceRow.includes(CURRENT_CANDIDATE)
+    && !active.includes(STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY);
 }
 
 describe("commercial baseline follows the current #730 successor", () => {
