@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
+const currentBase = "b".repeat(40);
 const trustedReviewerLogin = "noema-reviewer[bot]";
+const baseLine = `- Base SHA: \`${currentBase}\``;
 const canonicalMarker = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
 
 function reviewWithBody(body: string) {
@@ -18,10 +20,11 @@ function reviewWithBody(body: string) {
 }
 
 describe("Noema review credential position authority", () => {
-  it("accepts the publisher-owned credential line immediately before the canonical marker", () => {
+  it("accepts the publisher-owned base and credential lines immediately before the canonical marker", () => {
     const body = [
       "## Noema PydanticAI review",
       "",
+      baseLine,
       "- Reviewer credential: `noema-github-app`",
       "",
       canonicalMarker,
@@ -30,6 +33,7 @@ describe("Noema review credential position authority", () => {
     expect(parseNoemaReviewDecision(
       [reviewWithBody(body)],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBe("approve");
   });
@@ -40,6 +44,7 @@ describe("Noema review credential position authority", () => {
       [
         "Summary mentions Reviewer credential: `noema-github-app` as untrusted prose.",
         "",
+        baseLine,
         canonicalMarker,
       ].join("\n"),
     ],
@@ -48,6 +53,7 @@ describe("Noema review credential position authority", () => {
       [
         "Reviewer credential: `noema-github-app`",
         "",
+        baseLine,
         "- Reviewer credential: `NOEMA_REVIEW_TOKEN`",
         "",
         canonicalMarker,
@@ -56,6 +62,7 @@ describe("Noema review credential position authority", () => {
     [
       "bare exact credential line immediately before the marker",
       [
+        baseLine,
         "Reviewer credential: `noema-github-app`",
         canonicalMarker,
       ].join("\n"),
@@ -64,6 +71,7 @@ describe("Noema review credential position authority", () => {
     expect(parseNoemaReviewDecision(
       [reviewWithBody(body)],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
