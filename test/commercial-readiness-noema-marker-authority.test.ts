@@ -13,7 +13,8 @@ function approvalReview(marker: string) {
     state: "APPROVED",
     user: { login: trustedReviewerLogin, type: "Bot" },
     body: [
-      "Reviewer credential: `noema-github-app`",
+      "- Reviewer credential: `noema-github-app`",
+      "",
       marker,
     ].join("\n"),
   };
