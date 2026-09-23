@@ -2,8 +2,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
+const CURRENT_730_SHA = "e58f41198f6f723c0318c075e8869edff1395c4f";
+const CURRENT_730_EXACT = `#730 current exact \`${CURRENT_730_SHA}\``;
+const CURRENT_GOVERNANCE_CANDIDATE = `candidate #730 exact \`${CURRENT_730_SHA}\``;
 const STALE_730_EXACT = "#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`";
+const PRIOR_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
+const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const REVIEW_STATE_MAPPING_TEST_AUTHORITY =
@@ -43,12 +47,18 @@ function hasExactReviewStateMappings(baseline: string): boolean {
   return active.includes(APPROVAL_MAPPING) && active.includes(BLOCKING_MAPPING);
 }
 
+/** Mirrors the predecessor identity check so duplicate current candidates are exposed by the hostile fixture. */
+function hasUniqueCurrent730Identity(baseline: string): boolean {
+  return baseline.includes(CURRENT_730_EXACT)
+    && baseline.includes(CURRENT_GOVERNANCE_CANDIDATE)
+    && !baseline.includes(STALE_730_EXACT);
+}
+
 describe("product-technical gap review-state operator authority", () => {
   it("binds the active commercial baseline to the current #730 review and merge-write contracts", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain(CURRENT_730_EXACT);
-    expect(baseline).not.toContain(STALE_730_EXACT);
+    expect(hasUniqueCurrent730Identity(baseline)).toBe(true);
     expect(baseline).toContain(REVIEW_STATE_OPERATOR_AUTHORITY);
     expect(baseline).toContain(REVIEW_STATE_MAPPING_TEST_AUTHORITY);
     expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
@@ -61,6 +71,18 @@ describe("product-technical gap review-state operator authority", () => {
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(EQUAL_TIMESTAMP_RETRY_AUTHORITY);
     expect(hasExactReviewStateMappings(baseline)).toBe(true);
+  });
+
+  it("rejects duplicate prior #730 identities in both active authority locations", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const hostile = baseline
+      .replace(CURRENT_730_EXACT, `${CURRENT_730_EXACT}; ${PRIOR_730_EXACT}`)
+      .replace(
+        CURRENT_GOVERNANCE_CANDIDATE,
+        `${CURRENT_GOVERNANCE_CANDIDATE}; ${PRIOR_GOVERNANCE_CANDIDATE}`,
+      );
+
+    expect(hasUniqueCurrent730Identity(hostile)).toBe(false);
   });
 
   it("does not let swapped or missing marker-to-state authority satisfy the active open-lane section", () => {
