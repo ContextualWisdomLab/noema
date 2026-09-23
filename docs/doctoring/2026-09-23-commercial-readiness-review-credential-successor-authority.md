@@ -6,7 +6,7 @@ Status: Proposed; exact-head hosted verification and formal Noema review remain 
 
 ## Problem
 
-`parseNoemaReviewDecision()` consumes GitHub's chronological pull-request review list and projects the latest trustworthy Noema gate decision for the exact current head. The predecessor correctly revoked an older approval when a later credentialed exact-head gate was malformed, dismissed, or incompatible with its GitHub review state. It did not revoke that approval when the later trusted exact-head review contained a canonical `noema-review-gate` marker but omitted the required `Reviewer credential: `noema-github-app`` marker.
+`parseNoemaReviewDecision()` consumes GitHub's chronological pull-request review list and projects the latest trustworthy Noema gate decision for the exact current head. The predecessor correctly revoked an older approval when a later credentialed exact-head gate was malformed, dismissed, or incompatible with its GitHub review state. It did not revoke that approval when the later trusted exact-head review contained a canonical `noema-review-gate` marker but omitted the required Noema reviewer credential marker (`Reviewer credential: noema-github-app`).
 
 That sequence could leave the older `approve` decision active even though a later gate-shaped review had lost one of Noema's authentication predicates. Generic review-state projection would still observe the later GitHub `APPROVED` state, so downstream validation could not distinguish the stale credentialed approval from the later uncredentialed gate attempt. This was a merge-authority false-PASS condition.
 
@@ -28,7 +28,7 @@ GitHub. (2026). *REST API endpoints for pull request reviews*. GitHub Docs. http
 For each trusted exact-head review, `parseNoemaReviewDecision()` now parses canonical gate markers before deciding whether the review is relevant to Noema gate authority.
 
 - If neither the exact credential marker nor a canonical gate marker is present, the review is ordinary review traffic and does not alter the current Noema gate decision.
-- If a canonical gate marker is present without the exact credential marker, the current Noema gate decision is revoked and the review cannot grant replacement authority.
+- If a canonical Noema gate marker is present without the exact credential marker, the current Noema gate decision is revoked and the review cannot grant replacement authority.
 - If the credential marker is present, the prior fail-closed path remains: the current decision is cleared first, then exactly one exact-head canonical marker whose decision is compatible with the GitHub review state may establish the replacement decision.
 
 This keeps ordinary comments non-authoritative while ensuring that a later gate-shaped review cannot silently fall back to an older approval after losing its credential predicate.
