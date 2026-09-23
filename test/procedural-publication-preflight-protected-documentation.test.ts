@@ -6,7 +6,7 @@ const canonicalDocuments = [
   "docs/PRD.md",
   "docs/TRD.md",
   "docs/TRACEABILITY.md",
-  "docs/product-technical-gap-baseline.md",
+  "docs/history/product-technical-gap-baseline-20260921.md",
 ] as const;
 
 describe("protected procedural publication-preflight documentation authority", () => {
@@ -21,7 +21,7 @@ describe("protected procedural publication-preflight documentation authority", (
     const prd = readFileSync("docs/PRD.md", "utf8");
     const trd = readFileSync("docs/TRD.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
 
     for (const content of [architecture, prd, trd, traceability, baseline]) {
