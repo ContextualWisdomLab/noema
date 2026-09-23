@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `7873a1b0a1de434b167e98819a6701c18d2c34fe`";
+const CURRENT_730_EXACT = "#730 current exact `ca3e01edf5bea005ff451b469521abab3d9e72be`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const STATUS_PROJECTION_AUTHORITY =
   "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
@@ -28,7 +28,7 @@ const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `7873a1b0a1de434b167e98819a6701c18d2c34fe`";
+  "issue #27; candidate #730 exact `ca3e01edf5bea005ff451b469521abab3d9e72be`";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY = "fail-closed unknown retry chronology";
 const GOVERNANCE_EQUAL_TIMESTAMP_RETRY_AUTHORITY = "fail-closed equal-timestamp retry ambiguity";
