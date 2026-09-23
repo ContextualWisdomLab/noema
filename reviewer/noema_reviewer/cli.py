@@ -361,7 +361,7 @@ def run_review(
     """
     resolved_factory = agent_factory or build_agent
     resolved_loader = manifest_loader or _load_manifest
-    resolved_publisher = publisher
+    resolved_publisher = publisher or _publish
 
     manifest = resolved_loader(args)
     print(
@@ -385,23 +385,7 @@ def run_review(
         out.write(serialized + "\n")
 
     if args.publish:
-        if resolved_publisher is None:
-            event = publish_verdict(
-                manifest.repo,
-                manifest.pr_number,
-                verdict,
-                manifest.head_sha,
-                token_source=args.token_source,
-                base_sha=manifest.base_sha,
-            )
-        else:
-            event = resolved_publisher(
-                manifest.repo,
-                manifest.pr_number,
-                verdict,
-                manifest.head_sha,
-                args.token_source,
-            )
+        event = resolved_publisher(manifest.repo, manifest.pr_number, verdict, manifest.head_sha, args.token_source)
         out.write(f"Published Noema {event} review for {manifest.repo}#{manifest.pr_number}.\n")
 
     if verdict.verdict is Verdict.APPROVE:
