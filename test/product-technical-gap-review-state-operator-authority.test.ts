@@ -5,7 +5,6 @@ const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22
 const CURRENT_730_SHA = "e58f41198f6f723c0318c075e8869edff1395c4f";
 const CURRENT_730_EXACT = `#730 current exact \`${CURRENT_730_SHA}\``;
 const CURRENT_GOVERNANCE_CANDIDATE = `candidate #730 exact \`${CURRENT_730_SHA}\``;
-const STALE_730_EXACT = "#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`";
 const PRIOR_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
@@ -42,16 +41,30 @@ function currentOpenLaneSection(baseline: string): string {
   return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
 }
 
+function protectedMainGovernanceRow(baseline: string): string {
+  return baseline
+    .split("\n")
+    .find((line) => line.startsWith("| P0 | Protected-main governance closure |")) ?? "";
+}
+
 function hasExactReviewStateMappings(baseline: string): boolean {
   const active = currentOpenLaneSection(baseline);
   return active.includes(APPROVAL_MAPPING) && active.includes(BLOCKING_MAPPING);
 }
 
-/** Mirrors the predecessor identity check so duplicate current candidates are exposed by the hostile fixture. */
+/** Requires one current #730 identity in each live authority location, rejecting every stale duplicate. */
 function hasUniqueCurrent730Identity(baseline: string): boolean {
-  return baseline.includes(CURRENT_730_EXACT)
-    && baseline.includes(CURRENT_GOVERNANCE_CANDIDATE)
-    && !baseline.includes(STALE_730_EXACT);
+  const active = currentOpenLaneSection(baseline);
+  const governanceRow = protectedMainGovernanceRow(baseline);
+  const activeIdentities = [...active.matchAll(/#730 current exact `([0-9a-f]{40})`/g)]
+    .map((match) => match[1]);
+  const governanceCandidates = [...governanceRow.matchAll(/candidate #730 exact `([0-9a-f]{40})`/g)]
+    .map((match) => match[1]);
+
+  return activeIdentities.length === 1
+    && activeIdentities[0] === CURRENT_730_SHA
+    && governanceCandidates.length === 1
+    && governanceCandidates[0] === CURRENT_730_SHA;
 }
 
 describe("product-technical gap review-state operator authority", () => {
