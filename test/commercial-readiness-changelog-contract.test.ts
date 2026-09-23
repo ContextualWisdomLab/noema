@@ -5,11 +5,14 @@ const CHANGELOG_PATH = "CHANGELOG.md";
 
 /** Isolate the active Unreleased section so historical entries cannot satisfy the current change contract. */
 function unreleasedSection(markdown: string): string {
-  const match = markdown.match(/^## Unreleased\s*$([\s\S]*?)(?=^##\s|\z)/m);
-  if (!match) {
+  const heading = "## Unreleased";
+  const headingIndex = markdown.indexOf(heading);
+  if (headingIndex < 0) {
     throw new Error("CHANGELOG.md is missing the ## Unreleased section.");
   }
-  return match[1];
+  const contentStart = headingIndex + heading.length;
+  const nextHeading = markdown.indexOf("\n## ", contentStart);
+  return markdown.slice(contentStart, nextHeading < 0 ? markdown.length : nextHeading);
 }
 
 describe("commercial readiness changelog contract", () => {
