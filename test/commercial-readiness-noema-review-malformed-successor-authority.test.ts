@@ -19,6 +19,16 @@ function review(id: number, state: string, body: string) {
 }
 
 describe("Noema malformed-successor review authority", () => {
+  it("does not let a passing malformed-successor test hide a non-authoritative predecessor fixture", () => {
+    const olderApproval = review(1, "APPROVED", [credential, approvalMarker].join("\n"));
+
+    expect(parseNoemaReviewDecision(
+      [olderApproval],
+      currentHead,
+      trustedReviewerLogin,
+    )).toBe("approve");
+  });
+
   it("does not fall back to an older approval when a later trusted gate review has ambiguous marker cardinality", () => {
     const olderApproval = review(1, "APPROVED", [credential, approvalMarker].join("\n"));
     const laterMalformedApproval = review(
