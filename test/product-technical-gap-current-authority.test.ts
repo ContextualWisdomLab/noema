@@ -8,7 +8,7 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `3e7a631c25a8de78c9987181d1e7632c4b091638`";
+const CURRENT_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
@@ -48,6 +48,8 @@ const CURRENT_730_NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
 const CURRENT_730_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
   "revokes prior Noema approval when a later trusted exact-head canonical gate marker loses its reviewer credential while preserving ordinary review comments";
+const CURRENT_730_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY =
+  "requires the literal bullet reviewer credential line plus one blank line immediately before the canonical Noema marker and rejects bare credential lines";
 const CURRENT_730_MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const CURRENT_730_CHECK_RESULT_AUTHORITY =
@@ -66,7 +68,7 @@ const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `3e7a631c25a8de78c9987181d1e7632c4b091638`";
+  "issue #27; candidate #730 exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
@@ -91,6 +93,8 @@ const GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY = "exact-one marker-like Noe
 const GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY = "trusted exact-head DISMISSED review revocation authority";
 const GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
   "uncredentialed canonical Noema gate successor revocation authority";
+const GOVERNANCE_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY =
+  "canonical bullet reviewer-credential serialization authority";
 const GOVERNANCE_MERGE_BASE_SHA_AUTHORITY = "fresh-evaluated base-SHA merge-write revalidation";
 const GOVERNANCE_CHECK_RESULT_AUTHORITY =
   "exact Check Run/Commit Status terminal result authority";
@@ -149,6 +153,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_MERGE_BASE_SHA_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_CHECK_RESULT_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_STATUS_PROJECTION_AUTHORITY)
@@ -221,6 +226,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
+    expect(section).toContain(CURRENT_730_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY);
     expect(section).toContain(CURRENT_730_MERGE_BASE_SHA_AUTHORITY);
     expect(section).toContain(CURRENT_730_CHECK_RESULT_AUTHORITY);
     expect(section).toContain(CURRENT_730_STATUS_PROJECTION_AUTHORITY);
