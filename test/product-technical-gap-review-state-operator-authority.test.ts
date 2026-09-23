@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
-const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
+const CURRENT_730_EXACT = "#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`";
+const STALE_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const REVIEW_STATE_MAPPING_TEST_AUTHORITY =
