@@ -19,8 +19,8 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
-    expect(active).not.toContain("#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
+    expect(active).toContain("#730 current exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`");
+    expect(active).not.toContain("#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
     expect(active).toContain("requires exact canonical Noema decision token without whitespace or case normalization");
     expect(active).toContain("requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization");
@@ -31,6 +31,7 @@ describe("post-726 protected authority convergence", () => {
     expect(active).toContain("revokes prior Noema approval when a later trusted exact-head canonical gate marker loses its reviewer credential while preserving ordinary review comments");
     expect(active).toContain("requires reviewer credential authority at the canonical marker-adjacent publisher position so earlier body echoes cannot mask a missing or different publisher credential");
     expect(active).toContain("requires the literal bullet reviewer credential line plus one blank line immediately before the canonical Noema marker and rejects bare credential lines");
+    expect(active).toContain("requires formal Noema review authority to bind the exact evaluated base SHA as publisher-owned serialization and revalidate live state/head/base before publication");
     expect(active).toContain("revalidates the freshly evaluated base SHA immediately before the normal merge write");
     expect(active).toContain("requires exact Check Run status/conclusion and Commit Status state authority without whitespace or case normalization");
     expect(active).toContain("preserves exact Commit Status context/state identity before terminal merge-authority evaluation");
@@ -55,8 +56,8 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
-    expect(row).not.toContain("candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
+    expect(row).toContain("candidate #730 exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`");
+    expect(row).not.toContain("candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
     expect(row).toContain("fail-closed unknown retry chronology");
     expect(row).toContain("fail-closed equal-timestamp retry ambiguity");
@@ -69,6 +70,7 @@ describe("post-726 protected authority convergence", () => {
     expect(row).toContain("uncredentialed canonical Noema gate successor revocation authority");
     expect(row).toContain("marker-adjacent reviewer credential authority");
     expect(row).toContain("canonical bullet reviewer-credential serialization authority");
+    expect(row).toContain("exact evaluated-base Noema review authority");
     expect(row).toContain("fresh-evaluated base-SHA merge-write revalidation");
     expect(row).toContain("exact Check Run/Commit Status terminal result authority");
     expect(row).toContain("exact Commit Status collection projection identity");
