@@ -65,8 +65,8 @@ class StubRunner:
             return json.dumps(
                 {"title": "PR title", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
             )
-        if "{state: .state, head: .head.sha}" in joined:
-            return json.dumps({"state": "open", "head": HEAD_SHA})
+        if "{state: .state, head: .head.sha, base: .base.sha}" in joined:
+            return json.dumps({"state": "open", "head": HEAD_SHA, "base": BASE_SHA})
         if "/files" in joined:
             return "\n".join(json.dumps(path) for path in ("x.py", "y.py")) + "\n"
         if "/contents/" in joined:
@@ -603,8 +603,8 @@ def test_publish_verdict_refuses_stale_head() -> None:
 
         def __call__(self, args, stdin=None):
             """Override only the current-head guard response."""
-            if "{state: .state, head: .head.sha}" in " ".join(args):
-                return json.dumps({"state": "open", "head": "c" * 40})
+            if "{state: .state, head: .head.sha, base: .base.sha}" in " ".join(args):
+                return json.dumps({"state": "open", "head": "c" * 40, "base": BASE_SHA})
             return super().__call__(args, stdin)
 
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
