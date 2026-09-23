@@ -21,7 +21,7 @@ function listItem(document: string, prefix: string): string {
 describe("protected #710 release source authority", () => {
   it("converges protected #710 into changelog and product-gap authority", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const heading = "## Protected exact-main release admission — merged PR #710";
     const changelogAuthority = listItem(section(changelog, "## Unreleased"), "- Protected #710 ");
     const authority = section(baseline, heading);
