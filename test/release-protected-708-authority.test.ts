@@ -34,7 +34,7 @@ describe("protected #708 release authority", () => {
 
   it("converges protected #708 into changelog and product-gap authority", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const heading = "## Protected immutable-release draft publication — merged PR #708";
     const changelogAuthority = listItem(section(changelog, "## Unreleased"), "- Protected #708 ");
     const authority = section(baseline, heading);
