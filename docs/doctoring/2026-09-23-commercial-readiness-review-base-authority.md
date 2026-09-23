@@ -26,18 +26,23 @@ Executable RED `e003ec81fe7f9d3890b54cac2525fdbe6c01c360` added `test/commercial
 
 An initial CLI-only trial `5cdf74e676e18d11ce103e8ff0904d07565c831b` was intentionally restored by ordinary-forward commit `70f06b15ab848347ea354be0ea9ba88b4640a738` because changing only the caller would leave publisher and consumer contracts inconsistent. The net compare from the RED through that restore retained only the RED contract.
 
+A later fresh review found a second boundary mismatch after the production path had become base-bound: the injectable `Publisher` seam and `_publish()` adapter still exposed only five arguments. That meant offline tests and any injected publisher could observe head authority without the evaluated base even though the production default passed `manifest.base_sha`. Executable RED `c504f92ff31c226c220b69c10b147a96b6f886ea` requires the injected publication call to carry the evaluated base as a sixth argument. Production repair `f3c37497310db1b62edc3ae5931ab5741e5d2a98` makes that seam head/base-bound, and `82c75ffaa3b85a1f5d974ae3c1e3539b787346f0` updates the pre-existing `_publish()` adapter regression so it exercises and asserts the same base propagation instead of the obsolete head-only signature.
+
 ## Decision
 
 The repair is split across the actual authority boundaries and then converged:
 
 - `01392b5721bb2ee322ac7adbbb445db9e9cb21b8` changes `parseNoemaReviewDecision()` to require `expectedBaseSha`. A canonical Noema decision now requires the publisher-owned tail to contain the exact `- Base SHA: <sha>` line immediately before the exact reviewer credential, blank line, and canonical gate marker. `fetchPullRequestSnapshot()` supplies the live PR `baseSha` to that admission function.
 - `8d5d2816ab810e8b822d896c7572a3bef8084195` changes the reviewer publisher. When a base is supplied, `render_review_body()` serializes it, and `publish_verdict()` re-reads live pull-request `{state, head, base}` immediately before POST and refuses publication if any bound identity changed.
-- `50c156ef373e1cf2fbb7c8c04575b8f0026c55a8` carries `manifest.base_sha` from the production CLI into `publish_verdict()`. The injectable five-argument publisher seam used by unit tests remains unchanged; production does not omit the manifest base.
+- `50c156ef373e1cf2fbb7c8c04575b8f0026c55a8` carries `manifest.base_sha` from the production CLI into `publish_verdict()`.
 - Subsequent focused test repairs ordinary-forward the existing reviewer-login, marker serialization/cardinality, credential-position, dismissal, malformed-successor, and review-order/head regressions so their hostile cases continue to exercise their intended predicate instead of passing merely because base authority is absent.
 - `7a7b7338c8150ac97f4c7ff0ff54525979e84466` adds a focused current-base/stale-head regression so stale `commit_id` rejection remains independently executable under the new base-bound protocol.
 - `36d5264b6a65f942fae0e53afe4fd1ad13c21222` repairs a test-contract false confidence in the legacy head-only negative fixture: the predecessor invoked the now four-argument parser with only three arguments, so `null` could be produced by argument misbinding rather than by rejection of head-only authority. The fixture now supplies the current base explicitly and therefore exercises the intended missing-base serialization predicate.
+- `c504f92ff31c226c220b69c10b147a96b6f886ea` makes the injectable publication seam itself executable authority by requiring the evaluated base to reach an injected publisher.
+- `f3c37497310db1b62edc3ae5931ab5741e5d2a98` changes `Publisher`, `_publish()`, and the injected branch of `run_review()` to carry `base_sha` as the sixth argument and forward it to `publish_verdict()`.
+- `82c75ffaa3b85a1f5d974ae3c1e3539b787346f0` ordinary-forwards the pre-existing `_publish()` unit test to the base-bound signature and asserts that `base_sha` reaches GitHub I/O.
 
-The resulting authority tuple is therefore reviewer identity + exact GitHub review state + exact review `commit_id` + exact evaluated base + canonical publisher serialization + canonical marker cardinality. None of those fields substitutes for the hosted check/workflow evidence or the live merge-write revalidation.
+The resulting authority tuple is therefore reviewer identity + exact GitHub review state + exact review `commit_id` + exact evaluated base + canonical publisher serialization + canonical marker cardinality. Production and injected publication paths now carry the same evaluated-base authority. None of those fields substitutes for the hosted check/workflow evidence or the live merge-write revalidation.
 
 ## Alternatives rejected
 
@@ -45,10 +50,13 @@ The resulting authority tuple is therefore reviewer identity + exact GitHub revi
 2. Depend on repository stale-review dismissal. Rejected because live repository policy may not provide that control, and application protocol correctness must not silently depend on an optional policy setting.
 3. Re-run review only when the head changes. Rejected because the defect is specifically a base-only movement with an unchanged head.
 4. Encode the base only in model prose. Rejected because model-controlled prose is not publisher authority. The base must be in the exact publisher-owned tail consumed by the admission parser.
+5. Leave the injectable publisher head-only because production is correct. Rejected because the injectable seam is the offline executable contract for publication wiring; allowing it to omit the evaluated base creates test false confidence and permits alternate callers to bypass the protocol invariant.
 
 ## Risk, effect, and follow-up
 
 This change is intentionally fail closed. Existing head-only Noema review bodies cannot authorize a merge after this protocol version. A new current-head review must be produced by the repaired publisher against the current evaluated base.
+
+The whole-file `cli.py` update used for `f3c37497310db1b62edc3ae5931ab5741e5d2a98` also normalized the terminal newline state. The semantic production diff was separately inspected and was limited to the publisher type, `_publish()` base forwarding, and injected `run_review()` base propagation; no unrelated executable behavior was intentionally changed.
 
 Source and test convergence is not merge evidence. The exact current head still requires all applicable hosted gates to reach terminal GREEN, unresolved review threads to be zero, and a fresh independent formal Noema review using the repaired protocol. Protected-main integration, immutable release, SBOM/provenance/reproducibility, deployment, recovery rehearsal, and buyer evidence remain separate later gates.
 
@@ -58,4 +66,4 @@ GitHub. (2026). *REST API endpoints for pull request reviews*. GitHub Docs. Revi
 
 GitHub. (2026). *REST API endpoints for pull requests*. GitHub Docs. Pull-request resources expose current head and base identities used by Noema's live publication and merge preflights. https://docs.github.com/en/rest/pulls/pulls
 
-Owner source: `scripts/hourly-commercial-readiness.mjs::parseNoemaReviewDecision`, `reviewer/noema_reviewer/github_io.py::{render_review_body,publish_verdict}`, and `reviewer/noema_reviewer/cli.py::run_review`.
+Owner source: `scripts/hourly-commercial-readiness.mjs::parseNoemaReviewDecision`, `reviewer/noema_reviewer/github_io.py::{render_review_body,publish_verdict}`, and `reviewer/noema_reviewer/cli.py::{_publish,run_review}`.
