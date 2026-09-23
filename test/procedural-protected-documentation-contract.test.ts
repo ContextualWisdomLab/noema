@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const document = (path: string): string => readFileSync(path, "utf8");
+const historicalBaseline = (): string => document("docs/history/product-technical-gap-baseline-20260921.md");
 
 const section = (source: string, heading: string): string => {
   const lines = source.split("\n");
@@ -75,7 +76,7 @@ describe("protected procedural documentation authority", () => {
   it("records the protected current-state response bound without promoting deployment authority", () => {
     const changelog = document("CHANGELOG.md");
     const adr = document("docs/adr/0017-procedural-graph-guidance.md");
-    const baseline = document("docs/product-technical-gap-baseline.md");
+    const baseline = historicalBaseline();
 
     expect(changelog).toContain("PR #652");
     expect(changelog).toContain("1 MiB retained-byte ceiling");
@@ -122,7 +123,7 @@ describe("protected procedural documentation authority", () => {
       "### 2.4 Protected procedural graph advisory runtime",
     );
     const baselineSection = section(
-      document("docs/product-technical-gap-baseline.md"),
+      historicalBaseline(),
       "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
     );
     const adoptionSection = section(
@@ -175,7 +176,7 @@ describe("protected procedural documentation authority", () => {
       "### 2.4 Protected procedural graph advisory runtime",
     );
     const baselineSection = section(
-      document("docs/product-technical-gap-baseline.md"),
+      historicalBaseline(),
       "## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597 + #601 + #603 + #652 + #663 + #678 + #714 + #719",
     );
     const adoptionSection = section(
