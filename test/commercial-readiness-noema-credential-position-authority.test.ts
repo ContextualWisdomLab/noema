@@ -53,6 +53,13 @@ describe("Noema review credential position authority", () => {
         canonicalMarker,
       ].join("\n"),
     ],
+    [
+      "bare exact credential line immediately before the marker",
+      [
+        "Reviewer credential: `noema-github-app`",
+        canonicalMarker,
+      ].join("\n"),
+    ],
   ])("fails closed when %s", (_label, body) => {
     expect(parseNoemaReviewDecision(
       [reviewWithBody(body)],
