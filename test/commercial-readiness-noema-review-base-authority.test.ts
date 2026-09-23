@@ -47,6 +47,7 @@ describe("Noema review live-base authority", () => {
     expect(parseNoemaReviewDecision(
       [approvedReview(legacyHeadOnlyBody())],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
