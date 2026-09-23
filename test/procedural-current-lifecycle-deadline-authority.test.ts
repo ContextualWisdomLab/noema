@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected procedural current-lifecycle deadline documentation authority", () => {
   it("records protected #699 without promoting Workflow / Task or production authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/agent-runtime/procedural-current-lifecycle.ts", "utf8");
 
