@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
-const STALE_730_EXACT = "#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`";
+const CURRENT_730_EXACT = "#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
+const STALE_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
 const REVIEW_STATE_AUTHORITY =
@@ -16,6 +16,8 @@ const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
+const NOEMA_MARKER_WHITESPACE_AUTHORITY =
+  "requires the literal single-line Noema review marker spacing without whitespace normalization";
 const NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
@@ -38,13 +40,14 @@ const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
   "fails closed when distinct same-suite retries have identical observed chronology instead of ordering by opaque Check Run ids";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
+  "issue #27; candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REVIEW_STATE_AUTHORITY = "exact GitHub review state authority";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
 const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
 const GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY = "exact Noema review marker serialization authority";
+const GOVERNANCE_NOEMA_MARKER_WHITESPACE_AUTHORITY = "literal single-line Noema marker spacing authority";
 const GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY = "exact-one marker-like Noema review envelope authority";
 const GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY = "trusted exact-head DISMISSED review revocation authority";
 const GOVERNANCE_GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY = "generic reviewer-state projection preservation authority";
@@ -86,6 +89,7 @@ describe("product-technical gap review-head authority", () => {
     expect(section).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(section).toContain(NOEMA_DECISION_AUTHORITY);
     expect(section).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
+    expect(section).toContain(NOEMA_MARKER_WHITESPACE_AUTHORITY);
     expect(section).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(section).toContain(NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(section).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
@@ -102,6 +106,7 @@ describe("product-technical gap review-head authority", () => {
     expect(row).toContain(GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_DECISION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_NOEMA_MARKER_WHITESPACE_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(row).toContain(GOVERNANCE_GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
