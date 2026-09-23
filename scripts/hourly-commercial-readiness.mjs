@@ -570,15 +570,21 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     currentDecision = null;
-    if (!hasCredential) {
-      continue;
-    }
     if (
       markerEnvelopes.length !== 1
       || markers.length !== 1
       || markers[0][0] !== markerEnvelopes[0]
       || markers[0][1] !== expectedHeadSha
     ) {
+      continue;
+    }
+    const markerStart = body.lastIndexOf(markerEnvelopes[0]);
+    const credentialPrefix = body.slice(0, markerStart);
+    const publisherCredentialBound = (
+      credentialPrefix.endsWith(`- ${noemaCredentialMarker}\n\n`)
+      || credentialPrefix.endsWith(`${noemaCredentialMarker}\n`)
+    );
+    if (!publisherCredentialBound) {
       continue;
     }
     const decision = markers[0][2];
