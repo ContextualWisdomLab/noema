@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_SHA = "11f3b6dda190f4a70dcc09951bf2009330f6e320";
+const CURRENT_730_SHA = "51d3d1bd77742f5eccf75ce6167faa11cb97f24f";
 const CURRENT_730_EXACT = `#730 current exact \`${CURRENT_730_SHA}\``;
 const CURRENT_GOVERNANCE_CANDIDATE = `candidate #730 exact \`${CURRENT_730_SHA}\``;
-const PRIOR_730_EXACT = "#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
-const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
+const PRIOR_730_EXACT = "#730 current exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`";
+const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const REVIEW_STATE_MAPPING_TEST_AUTHORITY =
@@ -29,6 +29,8 @@ const NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY =
   "requires the literal bullet reviewer credential line plus one blank line immediately before the canonical Noema marker and rejects bare credential lines";
 const NOEMA_REVIEW_BASE_AUTHORITY =
   "requires formal Noema review authority to bind the exact evaluated base SHA as publisher-owned serialization and revalidate live state/head/base before publication";
+const NOEMA_INJECTED_PUBLISHER_BASE_AUTHORITY =
+  "requires the injectable Noema publisher seam to receive the same evaluated base SHA as the production publication path";
 const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
@@ -87,6 +89,7 @@ describe("product-technical gap review-state operator authority", () => {
     expect(baseline).toContain(NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
     expect(baseline).toContain(NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY);
     expect(baseline).toContain(NOEMA_REVIEW_BASE_AUTHORITY);
+    expect(baseline).toContain(NOEMA_INJECTED_PUBLISHER_BASE_AUTHORITY);
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(EQUAL_TIMESTAMP_RETRY_AUTHORITY);
     expect(hasExactReviewStateMappings(baseline)).toBe(true);
