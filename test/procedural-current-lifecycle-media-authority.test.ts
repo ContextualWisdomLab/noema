@@ -69,7 +69,7 @@ describe("protected procedural current-lifecycle media documentation authority",
   });
 
   it("records protected #704 without promoting Workflow / Task or production authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/agent-runtime/procedural-current-lifecycle.ts", "utf8");
     const changelog704 = extractChangelog704Entry(changelog);
