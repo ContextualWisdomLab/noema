@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
 const COMMERCIAL_GAP_HEADING = "## Commercial gap register";
-const CURRENT_730_EXACT = "e58f41198f6f723c0318c075e8869edff1395c4f";
+const CURRENT_730_EXACT = "58fe85603548b3a901fb668bc971dd19a5b5d694";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -12,6 +12,8 @@ const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
+const NOEMA_MARKER_WHITESPACE_AUTHORITY =
+  "requires the literal single-line Noema review marker spacing without whitespace normalization";
 const NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_MARKER_CASE_ENVELOPE_AUTHORITY =
@@ -48,6 +50,7 @@ const activeAuthorities = [
   REVIEW_GUIDE_MUTATION_AUTHORITY,
   NOEMA_DECISION_AUTHORITY,
   NOEMA_MARKER_SERIALIZATION_AUTHORITY,
+  NOEMA_MARKER_WHITESPACE_AUTHORITY,
   NOEMA_MARKER_CARDINALITY_AUTHORITY,
   NOEMA_MARKER_CASE_ENVELOPE_AUTHORITY,
   NOEMA_REVIEWER_LOGIN_AUTHORITY,
