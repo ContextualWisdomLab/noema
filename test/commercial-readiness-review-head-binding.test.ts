@@ -6,7 +6,10 @@ import {
 } from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
+const currentBase = "b".repeat(40);
 const trustedReviewer = "noema-reviewer[bot]";
+const baseLine = `- Base SHA: \`${currentBase}\``;
+const credentialLine = "- Reviewer credential: `noema-github-app`";
 
 function currentHeadApproval(overrides = {}) {
   return {
@@ -16,7 +19,9 @@ function currentHeadApproval(overrides = {}) {
     state: "APPROVED",
     user: { login: trustedReviewer, type: "Bot" },
     body: [
-      "Reviewer credential: `noema-github-app`",
+      baseLine,
+      credentialLine,
+      "",
       `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`,
     ].join("\n"),
     ...overrides,
@@ -31,6 +36,7 @@ describe("commercial-readiness review head binding", () => {
     expect(parseNoemaReviewDecision(
       [review],
       currentHead,
+      currentBase,
       trustedReviewer,
     )).toBeNull();
   });
@@ -39,6 +45,7 @@ describe("commercial-readiness review head binding", () => {
     expect(parseNoemaReviewDecision(
       [currentHeadApproval({ state: "approved" })],
       currentHead,
+      currentBase,
       trustedReviewer,
     )).toBeNull();
   });
@@ -87,7 +94,9 @@ describe("commercial-readiness review head binding", () => {
       submitted_at: null,
       state: "CHANGES_REQUESTED",
       body: [
-        "Reviewer credential: `noema-github-app`",
+        baseLine,
+        credentialLine,
+        "",
         `<!-- noema-review-gate head_sha=${currentHead} decision=request_changes -->`,
       ].join("\n"),
     });
@@ -101,6 +110,7 @@ describe("commercial-readiness review head binding", () => {
         laterBlocker,
       ],
       currentHead,
+      currentBase,
       trustedReviewer,
     )).toBe("request_changes");
   });
