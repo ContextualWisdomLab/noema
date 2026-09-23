@@ -27,14 +27,18 @@ const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
 const APPROVAL_MAPPING = "`approve`→`APPROVED`";
 const BLOCKING_MAPPING = "`request_changes`/`blocked`→`CHANGES_REQUESTED`";
 
-function hasExactReviewStateMappings(baseline: string): boolean {
-  return baseline.includes(APPROVAL_MAPPING) && baseline.includes(BLOCKING_MAPPING);
+function currentOpenLaneSection(baseline: string): string {
+  const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
+  if (start < 0) {
+    return "";
+  }
+  const nextHeading = baseline.indexOf("\n## ", start + CURRENT_OPEN_LANE_HEADING.length);
+  return baseline.slice(start, nextHeading === -1 ? baseline.length : nextHeading);
 }
 
-function currentOpenLaneBounds(baseline: string): [number, number] {
-  const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
-  const nextHeading = baseline.indexOf("\n## ", start + CURRENT_OPEN_LANE_HEADING.length);
-  return [start, nextHeading === -1 ? baseline.length : nextHeading];
+function hasExactReviewStateMappings(baseline: string): boolean {
+  const active = currentOpenLaneSection(baseline);
+  return active.includes(APPROVAL_MAPPING) && active.includes(BLOCKING_MAPPING);
 }
 
 describe("product-technical gap review-state operator authority", () => {
@@ -56,13 +60,14 @@ describe("product-technical gap review-state operator authority", () => {
     expect(hasExactReviewStateMappings(baseline)).toBe(true);
   });
 
-  it("does not let swapped or missing marker-to-state authority satisfy the commercial index", () => {
+  it("does not let swapped or missing marker-to-state authority satisfy the active open-lane section", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
-    const swapped = baseline
+    const active = currentOpenLaneSection(baseline);
+    const swapped = active
       .replace(APPROVAL_MAPPING, "`approve`→`CHANGES_REQUESTED`")
       .replace(BLOCKING_MAPPING, "`request_changes`/`blocked`→`APPROVED`");
-    const missingApprovalMapping = baseline.replace(APPROVAL_MAPPING, "");
-    const missingBlockingMapping = baseline.replace(BLOCKING_MAPPING, "");
+    const missingApprovalMapping = active.replace(APPROVAL_MAPPING, "");
+    const missingBlockingMapping = active.replace(BLOCKING_MAPPING, "");
 
     expect(hasExactReviewStateMappings(swapped)).toBe(false);
     expect(hasExactReviewStateMappings(missingApprovalMapping)).toBe(false);
@@ -71,9 +76,11 @@ describe("product-technical gap review-state operator authority", () => {
 
   it("does not let historical duplicate mappings mask their removal from the active open-lane section", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
-    const [start, end] = currentOpenLaneBounds(baseline);
+    const start = baseline.indexOf(CURRENT_OPEN_LANE_HEADING);
     expect(start).toBeGreaterThanOrEqual(0);
-    const active = baseline.slice(start, end)
+    const end = baseline.indexOf("\n## ", start + CURRENT_OPEN_LANE_HEADING.length);
+    const boundedEnd = end === -1 ? baseline.length : end;
+    const active = baseline.slice(start, boundedEnd)
       .replace(APPROVAL_MAPPING, "")
       .replace(BLOCKING_MAPPING, "");
     const hostile = [
@@ -81,7 +88,7 @@ describe("product-technical gap review-state operator authority", () => {
       BLOCKING_MAPPING,
       baseline.slice(0, start),
       active,
-      baseline.slice(end),
+      baseline.slice(boundedEnd),
     ].join("\n");
 
     expect(hasExactReviewStateMappings(hostile)).toBe(false);
