@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 describe("protected #676 synchronous-cancel documentation authority", () => {
   it("keeps CHANGELOG and product-gap authority aligned with protected source", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(changelog).toContain("PR #676.");
     expect(changelog).toContain("synchronous cancellation throw");
