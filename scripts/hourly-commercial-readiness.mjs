@@ -548,15 +548,19 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     const body = String(review?.body ?? "");
-    if (!body.includes(noemaCredentialMarker)) {
-      continue;
-    }
-    currentDecision = null;
     noemaMarkerPattern.lastIndex = 0;
     const markers = [];
     let marker;
     while ((marker = noemaMarkerPattern.exec(body)) !== null) {
       markers.push(marker);
+    }
+    const hasCredential = body.includes(noemaCredentialMarker);
+    if (!hasCredential && markers.length === 0) {
+      continue;
+    }
+    currentDecision = null;
+    if (!hasCredential) {
+      continue;
     }
     if (markers.length !== 1 || markers[0][1] !== expectedHeadSha) {
       continue;
