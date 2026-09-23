@@ -1002,3 +1002,13 @@ export function main(argv = process.argv.slice(2)) {
   }
   return report;
 }
+
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath) {
+  try {
+    main();
+  } catch (error) {
+    console.error(bound(error?.message || error, MAX_ERROR_CHARS));
+    process.exitCode = 1;
+  }
+}
