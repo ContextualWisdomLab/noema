@@ -4,7 +4,7 @@ import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness
 
 const currentHead = "a".repeat(40);
 const trustedReviewerLogin = "noema-reviewer[bot]";
-const credential = "Reviewer credential: `noema-github-app`";
+const credential = "- Reviewer credential: `noema-github-app`";
 const approvalMarker = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
 
 function approvalReview(login: string) {
@@ -14,7 +14,7 @@ function approvalReview(login: string) {
     commit_id: currentHead,
     state: "APPROVED",
     user: { login, type: "Bot" },
-    body: [credential, approvalMarker].join("\n"),
+    body: [credential, "", approvalMarker].join("\n"),
   };
 }
 
