@@ -19,11 +19,12 @@ describe("post-726 protected authority convergence", () => {
     expect(text).toContain("PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769d6a58a7ac714503251`");
     expect(active).not.toContain("#726 current exact");
     expect(active).toContain("#729 is this sole documentation-authority lane");
-    expect(active).toContain("#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
-    expect(active).not.toContain("#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`");
+    expect(active).toContain("#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
+    expect(active).not.toContain("#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
     expect(active).toContain("requires repository workflow URL id to equal the workflow run's `workflow_id`");
     expect(active).toContain("requires exact canonical Noema decision token without whitespace or case normalization");
     expect(active).toContain("requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization");
+    expect(active).toContain("requires the literal single-line Noema review marker spacing without whitespace normalization");
     expect(active).toContain("requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes");
     expect(active).toContain("treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval");
     expect(active).toContain("preserves generic reviewer-state projection while malformed credentialed exact-head Noema gate successors revoke prior approval");
@@ -54,13 +55,14 @@ describe("post-726 protected authority convergence", () => {
     const text = baseline();
     const row = text.split("\n").find((line) => line.startsWith("| P0 | Protected-main governance closure |"));
 
-    expect(row).toContain("candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
-    expect(row).not.toContain("candidate #730 exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`");
+    expect(row).toContain("candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`");
+    expect(row).not.toContain("candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`");
     expect(row).toContain("repository workflow URL/workflow_id identity consistency");
     expect(row).toContain("fail-closed unknown retry chronology");
     expect(row).toContain("fail-closed equal-timestamp retry ambiguity");
     expect(row).toContain("exact canonical Noema decision token authority");
     expect(row).toContain("exact Noema review marker serialization authority");
+    expect(row).toContain("literal single-line Noema marker spacing authority");
     expect(row).toContain("exact-one marker-like Noema review envelope authority");
     expect(row).toContain("trusted exact-head DISMISSED review revocation authority");
     expect(row).toContain("generic reviewer-state projection preservation authority");
