@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "c8b776797f78f7440f6a96fb232efb9182d9a0a7";
+const CURRENT_730_EXACT = "3c315332ba40230495bf4a57c3b6dee96b394992";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -10,6 +10,8 @@ const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
+const NOEMA_MARKER_CARDINALITY_AUTHORITY =
+  "requires exactly one canonical Noema review marker per trusted review body and rejects duplicate or conflicting markers";
 const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const PRODUCTION_DOCSTRING_AUTHORITY =
@@ -40,6 +42,7 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
     expect(baseline).toContain(HOSTED_RED_TEST_CONTRACT_AUTHORITY);
