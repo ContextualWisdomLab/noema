@@ -527,10 +527,16 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept only the exact configured reviewer login and one exact credentialed exact-head Noema gate envelope. */
-export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
+/** Accept only the exact configured reviewer login and one exact publisher-bound head/base Noema gate envelope. */
+export function parseNoemaReviewDecision(
+  reviews,
+  expectedHeadSha,
+  expectedBaseSha,
+  trustedReviewerLogin,
+) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
     || !botLoginPattern.test(String(trustedReviewerLogin ?? ""))
   ) {
     return null;
@@ -579,9 +585,11 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     const markerStart = body.lastIndexOf(markerEnvelopes[0]);
-    const credentialPrefix = body.slice(0, markerStart);
-    const publisherCredentialBound = credentialPrefix.endsWith(`- ${noemaCredentialMarker}\n\n`);
-    if (!publisherCredentialBound) {
+    const authorityPrefix = body.slice(0, markerStart);
+    const publisherAuthorityBound = authorityPrefix.endsWith(
+      `- Base SHA: \`${expectedBaseSha}\`\n- ${noemaCredentialMarker}\n\n`,
+    );
+    if (!publisherAuthorityBound) {
       continue;
     }
     const decision = markers[0][2];
@@ -726,6 +734,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     noemaReviewDecision: parseNoemaReviewDecision(
       reviews,
       headSha,
+      baseSha,
       trustedNoemaReviewerLogin,
     ),
     checkRuns,
