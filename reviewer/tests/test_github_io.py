@@ -528,7 +528,7 @@ def test_render_review_body_marks_findings_and_marker() -> None:
     body = render_review_body(verdict, "headsha", "NOEMA_REVIEW_TOKEN")
     assert "[P1] x.py:3" in body
     assert "Observable impact: The build fails." in body
-    assert "```suggestion\nreturn fixed_value\n```" in body
+    assert "```suggestion\nfixed = True\n```" in body
     assert "<!-- noema-review-gate head_sha=headsha decision=request_changes -->" in body
     assert "Result: REQUEST_CHANGES" in body
 
