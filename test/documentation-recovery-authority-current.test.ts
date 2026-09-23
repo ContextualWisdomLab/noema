@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("current protected Worker recovery authority documentation", () => {
   it("classifies merged #616 post-mutation verification as protected source without promoting rehearsal", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const operability = readFileSync("docs/OPERABILITY.md", "utf8");
 
     expect(baseline).toContain("merged PR #616 exact `da8461f1f5a6d02d926dd295fc88abe2c6167dfa`");
