@@ -16,7 +16,7 @@ const MAX_GH_OUTPUT_BYTES = 16 * 1024 * 1024;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const botLoginPattern = /^[A-Za-z0-9-]+\[bot\]$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
-const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/g;
+const noemaMarkerPattern = /<!-- noema-review-gate head_sha=([0-9a-f]{40}) decision=(approve|request_changes|blocked) -->/g;
 const noemaMarkerEnvelopePattern = /<!--\s*noema-review-gate\b[\s\S]*?-->/gi;
 const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
 const reviewThreadQuery = "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}";
