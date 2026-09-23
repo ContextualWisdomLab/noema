@@ -109,6 +109,7 @@ PR의 changed-file pagination은 GitHub PR payload의 `changed_files`와 개수�
 - 신뢰된 reviewer의 review는 GitHub review `commit_id`가 평가 중인 exact current head와 정확히 같아야 하며, `Reviewer credential: noema-github-app`과 정확한 40자 head SHA marker도 모두 있어야 합니다. `commit_id`가 누락·malformed·다른 SHA이면 body marker가 맞아도 authoritative Noema decision으로 인정하지 않습니다.
 - 한 review body에는 canonical `noema-review-gate` marker가 정확히 하나만 있어야 합니다. marker가 없거나 둘 이상이면, 중복된 동일 marker든 상충하는 decision이든 순서를 추정하지 않고 해당 review를 authoritative Noema decision에서 제외합니다.
 - Noema marker의 decision은 GitHub review `state`와도 정확히 결속합니다. `approve`는 정확한 `APPROVED`, `request_changes`와 `blocked`는 정확한 `CHANGES_REQUESTED`에서만 authoritative합니다. `state` 누락·소문자·incompatible 값이나 marker decision과 맞지 않는 state는 current-head decision으로 인정하지 않습니다.
+- 신뢰된 reviewer의 exact-head review가 `DISMISSED`이면 이전 Noema decision authority를 즉시 취소합니다. dismissed review의 body marker가 없거나 변형되어도 dismissal은 GitHub platform state이므로 이전 approval로 fallback하지 않으며, 이후에 제출된 새 canonical exact-head review만 authority를 다시 세울 수 있습니다.
 - 동일 head에 대한 central review workflow가 이미 active이면 재dispatch하지 않습니다.
 - 병합 직전 PR state, base=`main`, same-repository head, head SHA, mergeability, thread, review, check, status를 다시 수집합니다.
 - GitHub merge API에도 예상 SHA를 전달하므로 head가 움직이면 SHA-bound 병합이 거부됩니다.
@@ -169,7 +170,7 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`와 manifes
 6. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 7. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
 8. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
-9. Noema 승인 marker가 존재하는데 `noema_current_head_approval_missing`이 남으면 `NOEMA_REVIEWER_LOGIN`이 실제 App bot login과 정확히 일치하는지, 해당 review의 GitHub `commit_id`가 exact current head인지, review body에 canonical marker가 정확히 하나인지, marker decision과 GitHub review `state`가 정확히 호환되는지(`approve`↔`APPROVED`, `request_changes`/`blocked`↔`CHANGES_REQUESTED`) 함께 확인합니다.
+9. Noema 승인 marker가 존재하는데 `noema_current_head_approval_missing`이 남으면 `NOEMA_REVIEWER_LOGIN`이 실제 App bot login과 정확히 일치하는지, 해당 review의 GitHub `commit_id`가 exact current head인지, review body에 canonical marker가 정확히 하나인지, marker decision과 GitHub review `state`가 정확히 호환되는지(`approve`↔`APPROVED`, `request_changes`/`blocked`↔`CHANGES_REQUESTED`) 확인하고, trusted exact-head review가 `DISMISSED`로 바뀌어 이전 approval authority가 취소된 상태인지도 함께 확인합니다.
 10. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
 
 상세 RCA와 설계 근거는 `docs/doctoring/hourly-scheduler-activation-feasibility.md`에 기록합니다.
