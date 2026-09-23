@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `6bc9f0462748cceda34c5d258f11cb40efb6401d`";
+const CURRENT_730_EXACT = "#730 current exact `60903882aaa4b963434df9a474cb459237bff4df`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const REVIEW_HEAD_AUTHORITY =
   "requires GitHub review `commit_id` to equal the exact current head before a Noema decision can become merge authority";
@@ -17,7 +17,7 @@ const NOEMA_DECISION_AUTHORITY =
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
 const NOEMA_MARKER_CARDINALITY_AUTHORITY =
-  "requires exactly one canonical Noema review marker per trusted review body and rejects duplicate or conflicting markers";
+  "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
 const GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY =
@@ -36,14 +36,14 @@ const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
   "fails closed when distinct same-suite retries have identical observed chronology instead of ordering by opaque Check Run ids";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `6bc9f0462748cceda34c5d258f11cb40efb6401d`";
+  "issue #27; candidate #730 exact `60903882aaa4b963434df9a474cb459237bff4df`";
 const GOVERNANCE_REVIEW_HEAD_AUTHORITY = "exact review-to-head `commit_id` binding";
 const GOVERNANCE_REVIEW_STATE_AUTHORITY = "exact GitHub review state authority";
 const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
 const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
 const GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY = "exact Noema review marker serialization authority";
-const GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY = "exact-one Noema review marker cardinality authority";
+const GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY = "exact-one marker-like Noema review envelope authority";
 const GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY = "trusted exact-head DISMISSED review revocation authority";
 const GOVERNANCE_GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY = "generic reviewer-state projection preservation authority";
 const GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
