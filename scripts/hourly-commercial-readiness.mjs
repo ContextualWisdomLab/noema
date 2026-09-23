@@ -17,6 +17,7 @@ const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const botLoginPattern = /^[A-Za-z0-9-]+\[bot\]$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/g;
+const noemaMarkerEnvelopePattern = /<!--\s*noema-review-gate\b[\s\S]*?-->/g;
 const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
 const reviewThreadQuery = "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}";
 const activeWorkflowRunStatuses = new Set([
@@ -526,7 +527,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept only the latest valid credentialed exact-head Noema gate; later malformed gate attempts or DISMISSED revoke prior authority. */
+/** Accept only one exact credentialed exact-head Noema gate envelope; malformed or additional marker-like envelopes revoke prior authority. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -549,20 +550,31 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     }
     const body = String(review?.body ?? "");
     noemaMarkerPattern.lastIndex = 0;
+    noemaMarkerEnvelopePattern.lastIndex = 0;
     const markers = [];
+    const markerEnvelopes = [];
     let marker;
     while ((marker = noemaMarkerPattern.exec(body)) !== null) {
       markers.push(marker);
     }
+    let markerEnvelope;
+    while ((markerEnvelope = noemaMarkerEnvelopePattern.exec(body)) !== null) {
+      markerEnvelopes.push(markerEnvelope[0]);
+    }
     const hasCredential = body.includes(noemaCredentialMarker);
-    if (!hasCredential && markers.length === 0) {
+    if (!hasCredential && markerEnvelopes.length === 0) {
       continue;
     }
     currentDecision = null;
     if (!hasCredential) {
       continue;
     }
-    if (markers.length !== 1 || markers[0][1] !== expectedHeadSha) {
+    if (
+      markerEnvelopes.length !== 1
+      || markers.length !== 1
+      || markers[0][0] !== markerEnvelopes[0]
+      || markers[0][1] !== expectedHeadSha
+    ) {
       continue;
     }
     const decision = markers[0][2];
