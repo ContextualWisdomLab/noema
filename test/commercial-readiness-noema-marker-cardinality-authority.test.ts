@@ -47,4 +47,25 @@ describe("Noema review marker cardinality authority", () => {
       trustedReviewerLogin,
     )).toBeNull();
   });
+
+  it.each([
+    `<!-- noema-review-gate head_sha=${currentHead} decision=BLOCKED -->`,
+    `<!-- noema-review-gate head_sha=${currentHead} decision=blocked source=duplicate -->`,
+  ])(
+    "fails closed when one canonical marker is accompanied by noncanonical marker-like envelope %j",
+    (noncanonicalMarker) => {
+      const approve = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
+      const body = [
+        "Reviewer credential: `noema-github-app`",
+        approve,
+        noncanonicalMarker,
+      ].join("\n");
+
+      expect(parseNoemaReviewDecision(
+        [reviewWithBody(body)],
+        currentHead,
+        trustedReviewerLogin,
+      )).toBeNull();
+    },
+  );
 });
