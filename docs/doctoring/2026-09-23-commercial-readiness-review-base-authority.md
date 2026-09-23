@@ -28,6 +28,8 @@ An initial CLI-only trial `5cdf74e676e18d11ce103e8ff0904d07565c831b` was intenti
 
 A later fresh review found a second boundary mismatch after the production path had become base-bound: the injectable `Publisher` seam and `_publish()` adapter still exposed only five arguments. That meant offline tests and any injected publisher could observe head authority without the evaluated base even though the production default passed `manifest.base_sha`. Executable RED `c504f92ff31c226c220b69c10b147a96b6f886ea` requires the injected publication call to carry the evaluated base as a sixth argument. Production repair `f3c37497310db1b62edc3ae5931ab5741e5d2a98` makes that seam head/base-bound, and `82c75ffaa3b85a1f5d974ae3c1e3539b787346f0` updates the pre-existing `_publish()` adapter regression so it exercises and asserts the same base propagation instead of the obsolete head-only signature.
 
+The whole-file `cli.py` write in `f3c37497310db1b62edc3ae5931ab5741e5d2a98` also dropped the pre-existing terminal newline. Exact diff inspection identified that preservation-only drift immediately; ordinary-forward preservation repair `6237646945e8097b7e84a043d3919a3cd6c677f9` restores the newline and changes no executable token.
+
 ## Decision
 
 The repair is split across the actual authority boundaries and then converged:
@@ -41,6 +43,7 @@ The repair is split across the actual authority boundaries and then converged:
 - `c504f92ff31c226c220b69c10b147a96b6f886ea` makes the injectable publication seam itself executable authority by requiring the evaluated base to reach an injected publisher.
 - `f3c37497310db1b62edc3ae5931ab5741e5d2a98` changes `Publisher`, `_publish()`, and the injected branch of `run_review()` to carry `base_sha` as the sixth argument and forward it to `publish_verdict()`.
 - `82c75ffaa3b85a1f5d974ae3c1e3539b787346f0` ordinary-forwards the pre-existing `_publish()` unit test to the base-bound signature and asserts that `base_sha` reaches GitHub I/O.
+- `6237646945e8097b7e84a043d3919a3cd6c677f9` is preservation-only and restores the terminal newline dropped by the whole-file production edit.
 
 The resulting authority tuple is therefore reviewer identity + exact GitHub review state + exact review `commit_id` + exact evaluated base + canonical publisher serialization + canonical marker cardinality. Production and injected publication paths now carry the same evaluated-base authority. None of those fields substitutes for the hosted check/workflow evidence or the live merge-write revalidation.
 
@@ -55,8 +58,6 @@ The resulting authority tuple is therefore reviewer identity + exact GitHub revi
 ## Risk, effect, and follow-up
 
 This change is intentionally fail closed. Existing head-only Noema review bodies cannot authorize a merge after this protocol version. A new current-head review must be produced by the repaired publisher against the current evaluated base.
-
-The whole-file `cli.py` update used for `f3c37497310db1b62edc3ae5931ab5741e5d2a98` also normalized the terminal newline state. The semantic production diff was separately inspected and was limited to the publisher type, `_publish()` base forwarding, and injected `run_review()` base propagation; no unrelated executable behavior was intentionally changed.
 
 Source and test convergence is not merge evidence. The exact current head still requires all applicable hosted gates to reach terminal GREEN, unresolved review threads to be zero, and a fresh independent formal Noema review using the repaired protocol. Protected-main integration, immutable release, SBOM/provenance/reproducibility, deployment, recovery rehearsal, and buyer evidence remain separate later gates.
 
