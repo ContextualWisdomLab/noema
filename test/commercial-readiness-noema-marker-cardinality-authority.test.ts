@@ -51,6 +51,7 @@ describe("Noema review marker cardinality authority", () => {
   it.each([
     `<!-- noema-review-gate head_sha=${currentHead} decision=BLOCKED -->`,
     `<!-- noema-review-gate head_sha=${currentHead} decision=blocked source=duplicate -->`,
+    `<!-- NOEMA-REVIEW-GATE head_sha=${currentHead} decision=blocked -->`,
   ])(
     "fails closed when one canonical marker is accompanied by noncanonical marker-like envelope %j",
     (noncanonicalMarker) => {
