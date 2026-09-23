@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
+const currentBase = "b".repeat(40);
 const trustedReviewerLogin = "noema-reviewer[bot]";
+const baseLine = `- Base SHA: \`${currentBase}\``;
+const credentialLine = "- Reviewer credential: `noema-github-app`";
 
 function reviewWithBody(body: string) {
   return {
@@ -20,30 +23,24 @@ describe("Noema review marker cardinality authority", () => {
   it("fails closed when one trusted review body contains multiple canonical Noema markers", () => {
     const blocked = `<!-- noema-review-gate head_sha=${currentHead} decision=blocked -->`;
     const approve = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
-    const body = [
-      "Reviewer credential: `noema-github-app`",
-      blocked,
-      approve,
-    ].join("\n");
+    const body = [baseLine, credentialLine, "", blocked, approve].join("\n");
 
     expect(parseNoemaReviewDecision(
       [reviewWithBody(body)],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
 
   it("fails closed when a trusted review body repeats the same canonical marker", () => {
     const approve = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
-    const body = [
-      "Reviewer credential: `noema-github-app`",
-      approve,
-      approve,
-    ].join("\n");
+    const body = [baseLine, credentialLine, "", approve, approve].join("\n");
 
     expect(parseNoemaReviewDecision(
       [reviewWithBody(body)],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBeNull();
   });
@@ -57,7 +54,9 @@ describe("Noema review marker cardinality authority", () => {
     (noncanonicalMarker) => {
       const approve = `<!-- noema-review-gate head_sha=${currentHead} decision=approve -->`;
       const body = [
-        "Reviewer credential: `noema-github-app`",
+        baseLine,
+        credentialLine,
+        "",
         approve,
         noncanonicalMarker,
       ].join("\n");
@@ -65,6 +64,7 @@ describe("Noema review marker cardinality authority", () => {
       expect(parseNoemaReviewDecision(
         [reviewWithBody(body)],
         currentHead,
+        currentBase,
         trustedReviewerLogin,
       )).toBeNull();
     },
