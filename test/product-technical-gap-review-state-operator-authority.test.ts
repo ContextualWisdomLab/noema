@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "#730 current exact `60903882aaa4b963434df9a474cb459237bff4df`";
+const CURRENT_730_EXACT = "#730 current exact `7873a1b0a1de434b167e98819a6701c18d2c34fe`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
