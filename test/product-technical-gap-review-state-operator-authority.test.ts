@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "#730 current exact `6bc9f0462748cceda34c5d258f11cb40efb6401d`";
+const CURRENT_730_EXACT = "#730 current exact `60903882aaa4b963434df9a474cb459237bff4df`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
@@ -12,7 +12,7 @@ const NOEMA_DECISION_AUTHORITY =
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
 const NOEMA_MARKER_CARDINALITY_AUTHORITY =
-  "requires exactly one canonical Noema review marker per trusted review body and rejects duplicate or conflicting markers";
+  "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
 const GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY =
