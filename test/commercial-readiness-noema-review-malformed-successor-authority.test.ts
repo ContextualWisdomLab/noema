@@ -33,4 +33,15 @@ describe("Noema malformed-successor review authority", () => {
       trustedReviewerLogin,
     )).toBeNull();
   });
+
+  it("does not fall back to an older approval when a later trusted gate review loses its credential marker", () => {
+    const olderApproval = review(1, "APPROVED", [credential, approvalMarker].join("\n"));
+    const laterUncredentialedApproval = review(2, "APPROVED", approvalMarker);
+
+    expect(parseNoemaReviewDecision(
+      [olderApproval, laterUncredentialedApproval],
+      currentHead,
+      trustedReviewerLogin,
+    )).toBeNull();
+  });
 });
