@@ -508,25 +508,7 @@ function isTrustedNoemaBot(review, trustedReviewerLogin) {
     && login === expectedLogin;
 }
 
-/** Preserve exact reviewer login/state authority in GitHub REST list order so later blockers cannot be reordered away. */
-export function latestReviewStates(reviews) {
-  const decisions = new Map();
-  for (const review of Array.isArray(reviews) ? reviews : []) {
-    const reviewer = typeof review?.user?.login === "string" ? review.user.login : "";
-    const state = typeof review?.state === "string" ? review.state : "";
-    if (!reviewer) {
-      continue;
-    }
-    if (state === "DISMISSED") {
-      decisions.delete(reviewer);
-    } else if (state === "APPROVED" || state === "CHANGES_REQUESTED") {
-      decisions.set(reviewer, { reviewer, state });
-    }
-  }
-  return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
-}
-
-/** Accept the latest exact-head Noema decision in GitHub REST list order, with DISMISSED revoking prior authority. */
+/** Accept only the latest valid credentialed exact-head Noema gate; later malformed gate attempts or DISMISSED revoke prior authority. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -551,6 +533,7 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
     if (!body.includes(noemaCredentialMarker)) {
       continue;
     }
+    currentDecision = null;
     noemaMarkerPattern.lastIndex = 0;
     const markers = [];
     let marker;
