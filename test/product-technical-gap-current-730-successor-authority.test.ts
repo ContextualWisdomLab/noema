@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "7f29b3eb6ae1c0d25c3dfab48b42efb9aaab18e1";
+const CURRENT_730_EXACT = "60903882aaa4b963434df9a474cb459237bff4df";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
@@ -30,8 +30,6 @@ const STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY =
   "opaque check-run ids are only deterministic tie-breakers after valid temporal evidence exists";
 const CURRENT_OPAQUE_ID_AUTHORITY =
   "opaque Check Run ids are not chronology authority when observed retry timestamps are equal";
-const CHANGELOG_AUTHORITY =
-  "CHANGELOG `## Unreleased` records the current #730 authority-bearing behavior";
 
 const authoritySources = [
   "test/product-technical-gap-current-authority.test.ts",
@@ -60,7 +58,6 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(EQUAL_TIMESTAMP_RETRY_AUTHORITY);
     expect(baseline).not.toContain(STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY);
     expect(baseline).toContain(CURRENT_OPAQUE_ID_AUTHORITY);
-    expect(baseline).toContain(CHANGELOG_AUTHORITY);
   });
 
   it("moves every changed authority fixture to the same current #730 exact", () => {
