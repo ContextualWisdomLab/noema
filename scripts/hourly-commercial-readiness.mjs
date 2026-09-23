@@ -527,7 +527,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept only one exact credentialed exact-head Noema gate envelope; malformed or additional marker-like envelopes revoke prior authority. */
+/** Accept only the exact configured reviewer login and one exact credentialed exact-head Noema gate envelope. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -535,9 +535,13 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
   ) {
     return null;
   }
+  const expectedReviewerLogin = String(trustedReviewerLogin ?? "");
   let currentDecision = null;
   for (const review of Array.isArray(reviews) ? reviews : []) {
-    if (!isTrustedNoemaBot(review, trustedReviewerLogin)) {
+    if (
+      review?.user?.login !== expectedReviewerLogin
+      || !isTrustedNoemaBot(review, trustedReviewerLogin)
+    ) {
       continue;
     }
     if (review?.commit_id !== expectedHeadSha) {
@@ -770,8 +774,7 @@ function dispatchNoemaReview(repository, pullNumber, expectedHeadSha) {
 function dispatchProductDevelopment(repository) {
   const activeRuns = paginatedObjectItems(
     `repos/${repository}/actions/workflows/hourly-product-development.yml/runs?per_page=100`,
-    "workflow_runs",
-  );
+    "workflow_runs",\n  );
   if (activeRuns.some((run) => (
     activeWorkflowRunStatuses.has(String(run?.status ?? "").toLowerCase())
   ))) {
