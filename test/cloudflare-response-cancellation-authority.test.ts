@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected Cloudflare response cancellation-liveness documentation authority", () => {
   it("records protected #665 without promoting provider or release authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
     const evidencePromotionPattern =
