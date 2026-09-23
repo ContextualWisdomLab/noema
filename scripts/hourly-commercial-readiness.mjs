@@ -774,7 +774,8 @@ function dispatchNoemaReview(repository, pullNumber, expectedHeadSha) {
 function dispatchProductDevelopment(repository) {
   const activeRuns = paginatedObjectItems(
     `repos/${repository}/actions/workflows/hourly-product-development.yml/runs?per_page=100`,
-    "workflow_runs",\n  );
+    "workflow_runs",
+  );
   if (activeRuns.some((run) => (
     activeWorkflowRunStatuses.has(String(run?.status ?? "").toLowerCase())
   ))) {
