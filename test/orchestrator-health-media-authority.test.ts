@@ -8,7 +8,7 @@ import {
 
 describe("protected orchestrator health media-type documentation authority", () => {
   it("records protected #697 and publishes the JSON health media contract without promoting foreign authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const narrative = readFileSync(
       "docs/orchestrator-gateway-consumer-contract.md",
