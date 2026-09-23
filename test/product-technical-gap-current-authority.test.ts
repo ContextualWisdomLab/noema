@@ -8,8 +8,8 @@ const MERGED_726 = "PR #726 GitHub-verified normal merge `ca32ae2eb8c5ce73af2769
 const MERGED_727 = "PR #727 GitHub-verified normal merge `c3a3a42170ac06fbfc5c1a3b32e34827d967b5c9`";
 const OPEN_726 = "#726 current exact `d32a054c361eb9e9ad6e563d4956d8586ed7d38f`";
 const OPEN_727 = "#727 current exact `a5ad6f421c710e6faf7e4471da1ebc78aa3b0ec5`";
-const CURRENT_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
-const STALE_730_EXACT = "#730 current exact `a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f`";
+const CURRENT_730_EXACT = "#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
+const STALE_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
 const CURRENT_730_PR_BOUND_PROVENANCE =
   "requires one explicit `pull_requests` association matching target PR number, exact head SHA, canonical base ref `main`, and exact current base SHA";
 const CURRENT_730_CHECK_NAME_AUTHORITY =
@@ -42,6 +42,8 @@ const CURRENT_730_NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
 const CURRENT_730_NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
+const CURRENT_730_NOEMA_MARKER_WHITESPACE_AUTHORITY =
+  "requires the literal single-line Noema review marker spacing without whitespace normalization";
 const CURRENT_730_NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const CURRENT_730_NOEMA_REVIEW_DISMISSAL_AUTHORITY =
@@ -68,7 +70,7 @@ const CURRENT_REVIEWER_APP_AUTHORITY =
   "Reviewer/Maintainer App identity and eligibility remain separate issue #29 authority under ADR-0011";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
+  "issue #27; candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
 const GOVERNANCE_CONTROL_PLANE_OWNER =
   "issue #27 retains ruleset/pull-request/review/conversation/history/deletion/bypass control-plane authority";
 const GOVERNANCE_PRODUCER_AUTHORITY = "exact required check producer identity";
@@ -89,6 +91,7 @@ const GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY =
   "independently rejects missing approval and missing blocking marker-to-state mappings";
 const GOVERNANCE_NOEMA_DECISION_AUTHORITY = "exact canonical Noema decision token authority";
 const GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY = "exact Noema review marker serialization authority";
+const GOVERNANCE_NOEMA_MARKER_WHITESPACE_AUTHORITY = "literal single-line Noema marker spacing authority";
 const GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY = "exact-one marker-like Noema review envelope authority";
 const GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY = "trusted exact-head DISMISSED review revocation authority";
 const GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
@@ -150,6 +153,7 @@ function hasCurrentGovernanceCandidate(baseline: string): boolean {
     && governanceRows[0].includes(GOVERNANCE_REVIEW_GUIDE_MUTATION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_DECISION_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_MARKER_SERIALIZATION_AUTHORITY)
+    && governanceRows[0].includes(GOVERNANCE_NOEMA_MARKER_WHITESPACE_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_MARKER_CARDINALITY_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_REVIEW_DISMISSAL_AUTHORITY)
     && governanceRows[0].includes(GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY)
@@ -223,6 +227,7 @@ describe("product-technical gap current authority", () => {
     expect(section).toContain(CURRENT_730_REVIEW_GUIDE_MUTATION_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_DECISION_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_MARKER_SERIALIZATION_AUTHORITY);
+    expect(section).toContain(CURRENT_730_NOEMA_MARKER_WHITESPACE_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(section).toContain(CURRENT_730_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
