@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
 const COMMERCIAL_GAP_HEADING = "## Commercial gap register";
-const CURRENT_730_EXACT = "51d3d1bd77742f5eccf75ce6167faa11cb97f24f";
+const CURRENT_730_EXACT = "caeeee70de9221b582cb2b9e0e2c1b77b9c10d27";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
