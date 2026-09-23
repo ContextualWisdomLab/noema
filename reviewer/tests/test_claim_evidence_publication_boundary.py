@@ -220,7 +220,7 @@ def test_trusted_manifest_reaches_agent_gate_before_publication(
             claim_evidence_run_id=12,
             claim_evidence_run_attempt=1,
         ),
-        publisher=lambda _repo, _pr, verdict, _head, _source: (
+        publisher=lambda _repo, _pr, verdict, _head, _source, _base: (
             published.append(verdict) or "REQUEST_CHANGES"
         ),
         out=io.StringIO(),
@@ -238,7 +238,7 @@ def test_trusted_manifest_reaches_agent_gate_before_publication(
             claim_evidence_run_id=12,
             claim_evidence_run_attempt=1,
         ),
-        publisher=lambda _repo, _pr, verdict, _head, _source: (
+        publisher=lambda _repo, _pr, verdict, _head, _source, _base: (
             published.append(verdict) or "REQUEST_CHANGES"
         ),
         out=io.StringIO(),
@@ -410,7 +410,7 @@ def test_producer_authorized_source_finding_reaches_real_publisher(
             claim_evidence_run_id=12,
             claim_evidence_run_attempt=1,
         ),
-        publisher=lambda _repo, _pr, verdict, _head, _source: (
+        publisher=lambda _repo, _pr, verdict, _head, _source, _base: (
             published.append(verdict) or "REQUEST_CHANGES"
         ),
         out=io.StringIO(),
@@ -523,7 +523,7 @@ def test_source_receipt_cannot_publish_unreceipted_runtime_claims(
                 claim_evidence_run_id=12,
                 claim_evidence_run_attempt=1,
             ),
-            publisher=lambda _repo, _pr, verdict, _head, _source: (
+            publisher=lambda _repo, _pr, verdict, _head, _source, _base: (
                 published.append(verdict) or "REQUEST_CHANGES"
             ),
             out=io.StringIO(),
