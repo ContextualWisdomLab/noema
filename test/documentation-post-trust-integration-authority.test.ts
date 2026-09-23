@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("post-trust-integration documentation authority", () => {
   it("binds commercial gaps to protected integrations without freezing moving heads", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     for (const integrated of [
       "merged PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491`",
