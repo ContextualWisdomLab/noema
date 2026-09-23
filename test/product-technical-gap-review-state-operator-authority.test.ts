@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "#730 current exact `c5a47bd2b8645a75375a4c71c99ffa57fc5ca802`";
+const CURRENT_730_EXACT = "#730 current exact `0521249b047dc5f0c3f53247769fd52ce7422178`";
 const STALE_730_EXACT = "#730 current exact `3c315332ba40230495bf4a57c3b6dee96b394992`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
@@ -15,6 +15,8 @@ const NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one canonical Noema review marker per trusted review body and rejects duplicate or conflicting markers";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
   "treats trusted exact-head `DISMISSED` review state as revocation and never falls back to an older Noema approval";
+const GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY =
+  "preserves generic reviewer-state projection while malformed credentialed exact-head Noema gate successors revoke prior approval";
 const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
@@ -38,6 +40,7 @@ describe("product-technical gap review-state operator authority", () => {
     expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(baseline).toContain(NOEMA_REVIEW_DISMISSAL_AUTHORITY);
+    expect(baseline).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
     expect(baseline).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(baseline).toContain(EQUAL_TIMESTAMP_RETRY_AUTHORITY);
     expect(hasExactReviewStateMappings(baseline)).toBe(true);
