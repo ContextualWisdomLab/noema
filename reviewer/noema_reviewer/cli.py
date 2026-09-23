@@ -26,7 +26,7 @@ from .models import ReviewVerdict, Verdict
 
 AgentFactory = Callable[[], ReviewAgent]
 ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
-Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
+Publisher = Callable[[str, int, ReviewVerdict, str, str, str], str]
 CodeGraphRunner = Callable[[Sequence[str], str], str]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
@@ -279,9 +279,23 @@ def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
     )
 
 
-def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
-    """Publish a verdict to GitHub, adapting to the injectable publisher signature."""
-    return publish_verdict(repo, pr_number, verdict, head_sha, token_source=token_source)
+def _publish(
+    repo: str,
+    pr_number: int,
+    verdict: ReviewVerdict,
+    head_sha: str,
+    token_source: str,
+    base_sha: str,
+) -> str:
+    """Publish a verdict through the same head/base-bound contract as production."""
+    return publish_verdict(
+        repo,
+        pr_number,
+        verdict,
+        head_sha,
+        token_source=token_source,
+        base_sha=base_sha,
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -401,6 +415,7 @@ def run_review(
                 verdict,
                 manifest.head_sha,
                 args.token_source,
+                manifest.base_sha,
             )
         out.write(f"Published Noema {event} review for {manifest.repo}#{manifest.pr_number}.\n")
 
