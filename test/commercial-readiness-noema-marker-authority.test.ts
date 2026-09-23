@@ -26,6 +26,9 @@ describe("Noema review marker authority", () => {
     const uppercaseDecision = `<!-- noema-review-gate head_sha=${currentHead} decision=APPROVE -->`;
     const mixedCaseDecision = `<!-- noema-review-gate head_sha=${currentHead} decision=Approve -->`;
     const uppercaseHead = `<!-- noema-review-gate head_sha=${currentHead.toUpperCase()} decision=approve -->`;
+    const extraSpaceAfterOpen = `<!--  noema-review-gate head_sha=${currentHead} decision=approve -->`;
+    const lineBreakBeforeHead = `<!-- noema-review-gate\nhead_sha=${currentHead} decision=approve -->`;
+    const extraSpaceBeforeClose = `<!-- noema-review-gate head_sha=${currentHead} decision=approve  -->`;
 
     expect(parseNoemaReviewDecision(
       [approvalReview(canonical)],
@@ -33,7 +36,14 @@ describe("Noema review marker authority", () => {
       trustedReviewerLogin,
     )).toBe("approve");
 
-    for (const marker of [uppercaseDecision, mixedCaseDecision, uppercaseHead]) {
+    for (const marker of [
+      uppercaseDecision,
+      mixedCaseDecision,
+      uppercaseHead,
+      extraSpaceAfterOpen,
+      lineBreakBeforeHead,
+      extraSpaceBeforeClose,
+    ]) {
       expect(parseNoemaReviewDecision(
         [approvalReview(marker)],
         currentHead,
