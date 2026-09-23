@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseNoemaReviewDecision } from "../scripts/hourly-commercial-readiness.mjs";
 
 const currentHead = "a".repeat(40);
+const currentBase = "b".repeat(40);
 const trustedReviewerLogin = "noema-reviewer[bot]";
 
 function approvalReview(marker: string) {
@@ -13,6 +14,7 @@ function approvalReview(marker: string) {
     state: "APPROVED",
     user: { login: trustedReviewerLogin, type: "Bot" },
     body: [
+      `- Base SHA: \`${currentBase}\``,
       "- Reviewer credential: `noema-github-app`",
       "",
       marker,
@@ -33,6 +35,7 @@ describe("Noema review marker authority", () => {
     expect(parseNoemaReviewDecision(
       [approvalReview(canonical)],
       currentHead,
+      currentBase,
       trustedReviewerLogin,
     )).toBe("approve");
 
@@ -47,6 +50,7 @@ describe("Noema review marker authority", () => {
       expect(parseNoemaReviewDecision(
         [approvalReview(marker)],
         currentHead,
+        currentBase,
         trustedReviewerLogin,
       )).toBeNull();
     }
