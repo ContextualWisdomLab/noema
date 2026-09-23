@@ -526,7 +526,7 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-/** Accept the latest exact-head Noema decision only from one unambiguous canonical marker in GitHub REST list order. */
+/** Accept the latest exact-head Noema decision in GitHub REST list order, with DISMISSED revoking prior authority. */
 export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
@@ -534,12 +534,17 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
   ) {
     return null;
   }
-  const candidates = [];
+  let currentDecision = null;
   for (const review of Array.isArray(reviews) ? reviews : []) {
     if (!isTrustedNoemaBot(review, trustedReviewerLogin)) {
       continue;
     }
     if (review?.commit_id !== expectedHeadSha) {
+      continue;
+    }
+    const state = typeof review?.state === "string" ? review.state : "";
+    if (state === "DISMISSED") {
+      currentDecision = null;
       continue;
     }
     const body = String(review?.body ?? "");
@@ -556,16 +561,15 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReview
       continue;
     }
     const decision = markers[0][2];
-    const state = typeof review?.state === "string" ? review.state : "";
     const compatible = decision === "approve"
       ? state === "APPROVED"
       : state === "CHANGES_REQUESTED";
     if (!compatible) {
       continue;
     }
-    candidates.push({ ...review, decision });
+    currentDecision = decision;
   }
-  return candidates.at(-1)?.decision ?? null;
+  return currentDecision;
 }
 
 /** Preserve GitHub REST reverse-chronological Commit Status order without synthesizing timestamp chronology. */
@@ -997,14 +1001,4 @@ export function main(argv = process.argv.slice(2)) {
     throw new Error(`${operationalErrors.length} operational error(s) occurred; inspect ${reportPath}.`);
   }
   return report;
-}
-
-const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (import.meta.url === invokedPath) {
-  try {
-    main();
-  } catch (error) {
-    console.error(bound(error?.message || error, MAX_ERROR_CHARS));
-    process.exitCode = 1;
-  }
 }
