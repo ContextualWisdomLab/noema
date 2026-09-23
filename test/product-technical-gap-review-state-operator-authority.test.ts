@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_SHA = "e58f41198f6f723c0318c075e8869edff1395c4f";
+const CURRENT_730_SHA = "58fe85603548b3a901fb668bc971dd19a5b5d694";
 const CURRENT_730_EXACT = `#730 current exact \`${CURRENT_730_SHA}\``;
 const CURRENT_GOVERNANCE_CANDIDATE = `candidate #730 exact \`${CURRENT_730_SHA}\``;
-const PRIOR_730_EXACT = "#730 current exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
-const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `d64cf54f02bf9c2e98cdfa2d0998c11dd736c8e4`";
+const PRIOR_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
+const PRIOR_GOVERNANCE_CANDIDATE = "candidate #730 exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
 const REVIEW_STATE_OPERATOR_AUTHORITY =
   "active operator guide binds Noema marker decisions to exact GitHub review `state` authority";
 const REVIEW_STATE_MAPPING_TEST_AUTHORITY =
@@ -15,6 +15,8 @@ const NOEMA_DECISION_AUTHORITY =
   "requires exact canonical Noema decision token without whitespace or case normalization";
 const NOEMA_MARKER_SERIALIZATION_AUTHORITY =
   "requires exact Noema-owned review marker serialization for `head_sha` and `decision` without case normalization";
+const NOEMA_MARKER_WHITESPACE_AUTHORITY =
+  "requires the literal single-line Noema review marker spacing without whitespace normalization";
 const NOEMA_MARKER_CARDINALITY_AUTHORITY =
   "requires exactly one marker-like Noema review envelope per trusted review body, requires that envelope to be the one canonical marker, and rejects additional malformed envelopes";
 const NOEMA_REVIEW_DISMISSAL_AUTHORITY =
@@ -76,6 +78,7 @@ describe("product-technical gap review-state operator authority", () => {
     expect(baseline).toContain(REVIEW_STATE_MAPPING_TEST_AUTHORITY);
     expect(baseline).toContain(NOEMA_DECISION_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_SERIALIZATION_AUTHORITY);
+    expect(baseline).toContain(NOEMA_MARKER_WHITESPACE_AUTHORITY);
     expect(baseline).toContain(NOEMA_MARKER_CARDINALITY_AUTHORITY);
     expect(baseline).toContain(NOEMA_REVIEW_DISMISSAL_AUTHORITY);
     expect(baseline).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
