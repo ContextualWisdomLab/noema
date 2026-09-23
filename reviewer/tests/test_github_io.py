@@ -528,7 +528,7 @@ def test_render_review_body_marks_findings_and_marker() -> None:
     body = render_review_body(verdict, "headsha", "NOEMA_REVIEW_TOKEN")
     assert "[P1] x.py:3" in body
     assert "Observable impact: The build fails." in body
-    assert "```suggestion\nfixed = True\n```" in body
+    assert "```suggestion\nreturn fixed_value\n```" in body
     assert "<!-- noema-review-gate head_sha=headsha decision=request_changes -->" in body
     assert "Result: REQUEST_CHANGES" in body
 
@@ -609,6 +609,6 @@ def test_publish_verdict_refuses_stale_head() -> None:
 
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     runner = AdvancedHeadRunner()
-    with pytest.raises(RuntimeError, match="refused stale-head"):
+    with pytest.raises(RuntimeError, match="refused stale-revision review publication"):
         publish_verdict(REPO, 5, verdict, HEAD_SHA, runner=runner)
     assert not any(call[:3] == ["gh", "api", "-X"] for call in runner.calls)
