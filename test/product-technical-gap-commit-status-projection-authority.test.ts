@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_EXACT = "#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
-const STALE_730_EXACT = "#730 current exact `e58f41198f6f723c0318c075e8869edff1395c4f`";
+const CURRENT_730_EXACT = "#730 current exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`";
+const STALE_730_EXACT = "#730 current exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
 const STATUS_PROJECTION_AUTHORITY =
   "preserves exact Commit Status context/state identity before terminal merge-authority evaluation";
 const RETRY_CHRONOLOGY_AUTHORITY =
@@ -28,11 +28,13 @@ const NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
   "revokes prior Noema approval when a later trusted exact-head canonical gate marker loses its reviewer credential while preserving ordinary review comments";
 const NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY =
   "requires the literal bullet reviewer credential line plus one blank line immediately before the canonical Noema marker and rejects bare credential lines";
+const NOEMA_REVIEW_BASE_AUTHORITY =
+  "requires formal Noema review authority to bind the exact evaluated base SHA as publisher-owned serialization and revalidate live state/head/base before publication";
 const MERGE_BASE_SHA_AUTHORITY =
   "revalidates the freshly evaluated base SHA immediately before the normal merge write";
 const GOVERNANCE_ROW_PREFIX = "| P0 | Protected-main governance closure |";
 const GOVERNANCE_CANDIDATE =
-  "issue #27; candidate #730 exact `58fe85603548b3a901fb668bc971dd19a5b5d694`";
+  "issue #27; candidate #730 exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`";
 const GOVERNANCE_STATUS_PROJECTION_AUTHORITY = "exact Commit Status collection projection identity";
 const GOVERNANCE_RETRY_CHRONOLOGY_AUTHORITY = "fail-closed unknown retry chronology";
 const GOVERNANCE_EQUAL_TIMESTAMP_RETRY_AUTHORITY = "fail-closed equal-timestamp retry ambiguity";
@@ -48,6 +50,7 @@ const GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY =
   "uncredentialed canonical Noema gate successor revocation authority";
 const GOVERNANCE_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY =
   "canonical bullet reviewer-credential serialization authority";
+const GOVERNANCE_NOEMA_REVIEW_BASE_AUTHORITY = "exact evaluated-base Noema review authority";
 const GOVERNANCE_MERGE_BASE_SHA_AUTHORITY = "fresh-evaluated base-SHA merge-write revalidation";
 
 describe("product-technical gap commit-status projection authority", () => {
@@ -83,6 +86,7 @@ describe("product-technical gap commit-status projection authority", () => {
     expect(section).toContain(GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
     expect(section).toContain(NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
     expect(section).toContain(NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY);
+    expect(section).toContain(NOEMA_REVIEW_BASE_AUTHORITY);
     expect(section).toContain(MERGE_BASE_SHA_AUTHORITY);
     expect(row).toContain(GOVERNANCE_CANDIDATE);
     expect(row).toContain(GOVERNANCE_STATUS_PROJECTION_AUTHORITY);
@@ -97,6 +101,7 @@ describe("product-technical gap commit-status projection authority", () => {
     expect(row).toContain(GOVERNANCE_GENERIC_REVIEW_STATE_PROJECTION_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_CREDENTIAL_SUCCESSOR_AUTHORITY);
     expect(row).toContain(GOVERNANCE_NOEMA_CREDENTIAL_SERIALIZATION_AUTHORITY);
+    expect(row).toContain(GOVERNANCE_NOEMA_REVIEW_BASE_AUTHORITY);
     expect(row).toContain(GOVERNANCE_MERGE_BASE_SHA_AUTHORITY);
   });
 });
