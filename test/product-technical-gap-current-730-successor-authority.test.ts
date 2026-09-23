@@ -18,6 +18,10 @@ const HOSTED_RED_TEST_CONTRACT_AUTHORITY =
   "hosted RED test-contract RCA preserves missing-approval versus explicit-rejection semantics, fail-closed missing retry chronology, and the 38-function direct-JSDoc gate without changing production merge authority";
 const EQUAL_TIMESTAMP_RETRY_AUTHORITY =
   "fails closed when distinct same-suite retries have identical observed chronology instead of ordering by opaque Check Run ids";
+const STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY =
+  "opaque check-run ids are only deterministic tie-breakers after valid temporal evidence exists";
+const CURRENT_OPAQUE_ID_AUTHORITY =
+  "opaque Check Run ids are not chronology authority when observed retry timestamps are equal";
 
 const authoritySources = [
   "test/product-technical-gap-current-authority.test.ts",
@@ -40,6 +44,8 @@ describe("commercial baseline follows the current #730 successor", () => {
     expect(baseline).toContain(PRODUCTION_DOCSTRING_AUTHORITY);
     expect(baseline).toContain(HOSTED_RED_TEST_CONTRACT_AUTHORITY);
     expect(baseline).toContain(EQUAL_TIMESTAMP_RETRY_AUTHORITY);
+    expect(baseline).not.toContain(STALE_OPAQUE_ID_TIE_BREAKER_AUTHORITY);
+    expect(baseline).toContain(CURRENT_OPAQUE_ID_AUTHORITY);
   });
 
   it("moves every changed authority fixture to the same current #730 exact", () => {
