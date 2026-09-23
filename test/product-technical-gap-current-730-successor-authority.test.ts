@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const CURRENT_730_EXACT = "a8f5509dd7bc7835f10dd17c7018d9bbb3a8474f";
+const CURRENT_730_EXACT = "e58f41198f6f723c0318c075e8869edff1395c4f";
 const CURRENT_MARKER = `#730 current exact \`${CURRENT_730_EXACT}\``;
 const CURRENT_CANDIDATE = `candidate #730 exact \`${CURRENT_730_EXACT}\``;
 const REVIEW_GUIDE_MUTATION_AUTHORITY =
