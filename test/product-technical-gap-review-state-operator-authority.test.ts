@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const CURRENT_OPEN_LANE_HEADING = "## Current open-lane authority — 2026-09-22 KST";
-const CURRENT_730_SHA = "caeeee70de9221b582cb2b9e0e2c1b77b9c10d27";
+const CURRENT_730_SHA = "09e795db5801b4d2cd8453f0e0d2f06b30189d59";
 const CURRENT_730_EXACT = `#730 current exact \`${CURRENT_730_SHA}\``;
 const CURRENT_GOVERNANCE_CANDIDATE = `candidate #730 exact \`${CURRENT_730_SHA}\``;
 const PRIOR_730_EXACT = "#730 current exact `11f3b6dda190f4a70dcc09951bf2009330f6e320`";
