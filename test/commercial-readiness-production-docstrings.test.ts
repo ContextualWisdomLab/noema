@@ -33,6 +33,16 @@ describe("commercial-readiness touched production docstrings", () => {
     expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
   });
 
+  it("rejects a semantic JSDoc separated from the declaration by another block comment", () => {
+    const weakSource = [
+      "/** Reject invalid status authority. */",
+      "/* unrelated separator */",
+      "function weakContract() {}",
+      "",
+    ].join("\n");
+    expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
+  });
+
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
