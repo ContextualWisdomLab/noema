@@ -11,11 +11,15 @@ function expectDirectJsDoc(source: string, functionName: string) {
   expect(prefix.endsWith("*/"), `${functionName} must have a direct JSDoc block`).toBe(true);
   const jsDocStart = prefix.lastIndexOf("/**");
   expect(jsDocStart, `${functionName} JSDoc start`).toBeGreaterThanOrEqual(0);
-  const contractTerms = prefix.slice(jsDocStart).match(/\b(authority|identity|exact|fail|reject|current|canonical|merge|evidence|workflow|check|status|chronology)\b/gi) ?? [];
+  const contract = prefix.slice(jsDocStart);
   expect(
-    new Set(contractTerms.map((term) => term.toLowerCase())).size,
-    `${functionName} JSDoc must describe a substantive authority, evidence-order, or fail-closed contract`,
-  ).toBeGreaterThanOrEqual(2);
+    contract,
+    `${functionName} JSDoc must state a contract action`,
+  ).toMatch(/\b(preserve|reject|require|bind|accept|admit|retain|resolve|classify|revalidate|assemble|execute|record|select|match|order|evaluate|build|detect|extract|trust(?:s|ed|ing)?|fail(?:-closed)?)\b/i);
+  expect(
+    contract,
+    `${functionName} JSDoc must name the authority or evidence boundary`,
+  ).toMatch(/\b(authority|identity|evidence|chronology|workflow|check|status|review(?:er)?|head|base|producer|publisher|credential|rules?|audit|results?|parameters?|merge|retr(?:y|ies)|source|controls?|failures?|governance)\b/i);
 }
 
 describe("commercial-readiness touched production docstrings", () => {
