@@ -15,6 +15,11 @@ function expectDirectJsDoc(source: string, functionName: string) {
 }
 
 describe("commercial-readiness touched production docstrings", () => {
+  it("rejects a generic single-keyword JSDoc as insufficient contract evidence", () => {
+    const weakSource = "/** current */\nfunction weakContract() {}\n";
+    expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
+  });
+
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
