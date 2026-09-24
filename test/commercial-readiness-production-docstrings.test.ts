@@ -1,12 +1,31 @@
 import { readFileSync } from "node:fs";
+import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-function expectDirectJsDoc(source: string, functionName: string) {
-  const declarationPattern = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${functionName}\\(`);
-  const match = declarationPattern.exec(source);
-  expect(match, `${functionName} declaration`).not.toBeNull();
+function functionDeclarationStart(source: string, functionName: string): number {
+  const sourceFile = ts.createSourceFile(
+    "commercial-readiness-production.mjs",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  let declaration: ts.FunctionDeclaration | undefined;
+  const visit = (node: ts.Node) => {
+    if (!declaration && ts.isFunctionDeclaration(node) && node.name?.text === functionName) {
+      declaration = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return declaration?.getStart(sourceFile) ?? -1;
+}
 
-  const declaration = match?.index ?? -1;
+function expectDirectJsDoc(source: string, functionName: string) {
+  const declaration = functionDeclarationStart(source, functionName);
+  expect(declaration, `${functionName} declaration`).toBeGreaterThanOrEqual(0);
+
   const prefix = source.slice(0, declaration);
   const directJsDoc = /(?:^|\n)[\t ]*(\/\*\*(?:(?!\*\/)[\s\S])*\*\/)[\t \r\n]*$/.exec(prefix);
   expect(directJsDoc, `${functionName} must have a direct JSDoc block`).not.toBeNull();
