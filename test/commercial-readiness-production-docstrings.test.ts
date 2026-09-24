@@ -61,6 +61,16 @@ describe("commercial-readiness touched production docstrings", () => {
     expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
   });
 
+  it("rejects JSDoc-like text nested inside a regular block comment", () => {
+    const weakSource = [
+      "/*",
+      "/** Reject invalid status authority. */",
+      "function weakContract() {}",
+      "",
+    ].join("\n");
+    expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
+  });
+
   it("rejects function-like text inside a template literal as a declaration", () => {
     const weakSource = [
       "const example = `",
