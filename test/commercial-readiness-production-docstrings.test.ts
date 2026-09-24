@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 function expectDirectJsDoc(source: string, functionName: string) {
-  const marker = `function ${functionName}(`;
-  const declaration = source.indexOf(marker);
-  expect(declaration, `${functionName} declaration`).toBeGreaterThanOrEqual(0);
+  const declarationPattern = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${functionName}\\(`);
+  const match = declarationPattern.exec(source);
+  expect(match, `${functionName} declaration`).not.toBeNull();
 
+  const declaration = match?.index ?? -1;
   const prefix = source.slice(0, declaration).trimEnd();
   expect(prefix.endsWith("*/"), `${functionName} must have a direct JSDoc block`).toBe(true);
   const jsDocStart = prefix.lastIndexOf("/**");
