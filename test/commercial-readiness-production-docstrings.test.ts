@@ -7,13 +7,10 @@ function expectDirectJsDoc(source: string, functionName: string) {
   expect(match, `${functionName} declaration`).not.toBeNull();
 
   const declaration = match?.index ?? -1;
-  const prefix = source.slice(0, declaration).trimEnd();
-  expect(prefix.endsWith("*/"), `${functionName} must have a direct JSDoc block`).toBe(true);
-  const jsDocStart = prefix.lastIndexOf("/**");
-  expect(jsDocStart, `${functionName} JSDoc start`).toBeGreaterThanOrEqual(0);
-  const jsDocEnd = prefix.indexOf("*/", jsDocStart + 3);
-  expect(jsDocEnd, `${functionName} JSDoc must end immediately before the declaration`).toBe(prefix.length - 2);
-  const contract = prefix.slice(jsDocStart, jsDocEnd + 2);
+  const prefix = source.slice(0, declaration);
+  const directJsDoc = /(?:^|\n)[\t ]*(\/\*\*(?:(?!\*\/)[\s\S])*\*\/)[\t \r\n]*$/.exec(prefix);
+  expect(directJsDoc, `${functionName} must have a direct JSDoc block`).not.toBeNull();
+  const contract = directJsDoc?.[1] ?? "";
   expect(
     contract,
     `${functionName} JSDoc must state a contract action`,
