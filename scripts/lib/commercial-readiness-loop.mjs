@@ -29,36 +29,57 @@ function normalized(value) {
   return String(value ?? "").trim();
 }
 
+/** Preserve authority-bearing API strings only when their serialization is already exact. */
+function exactAuthorityString(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim()
+    ? value
+    : "";
+}
+
+/** Preserve check-name authority only when GitHub supplied an exact string identity. */
+function exactCheckName(value) {
+  return typeof value === "string" ? value : "";
+}
+
 function addReason(reasons, code, detail) {
   reasons.push({ code, detail });
 }
 
+/** Trust required-check producer authority only when the projected App slug is already canonical. */
 function isTrustedGitHubActionsCheck(check) {
-  return normalized(check?.appSlug).toLowerCase() === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
+  return check?.appSlug === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
 }
 
+/** Fail closed when the pull request identity tuple differs from the exact merge target authority. */
 function validatePullRequestIdentity(snapshot, reasons) {
-  if (normalized(snapshot.state).toLowerCase() !== "open") {
+  const state = exactAuthorityString(snapshot.state);
+  if (state !== "open") {
     addReason(reasons, "pr_not_open", `Pull request state is ${normalized(snapshot.state) || "missing"}.`);
   }
   if (snapshot.draft !== false) {
     addReason(reasons, "pr_is_draft", "Pull request is draft or its draft state is unknown.");
   }
-  if (normalized(snapshot.baseRef) !== "main") {
+  const baseRef = exactAuthorityString(snapshot.baseRef);
+  if (baseRef !== "main") {
     addReason(
       reasons,
       "base_branch_not_main",
       `Pull request base is ${normalized(snapshot.baseRef) || "missing"}, not main.`,
     );
   }
-  if (normalized(snapshot.headRepository) !== normalized(snapshot.repository)) {
+  const repository = exactAuthorityString(snapshot.repository);
+  const headRepository = exactAuthorityString(snapshot.headRepository);
+  if (!repository || !headRepository || headRepository !== repository) {
     addReason(
       reasons,
       "head_repository_mismatch",
       `Head repository ${normalized(snapshot.headRepository) || "missing"} does not match ${normalized(snapshot.repository) || "missing"}.`,
     );
   }
-  if (!fullShaPattern.test(normalized(snapshot.headSha))) {
+  const headSha = exactAuthorityString(snapshot.headSha);
+  if (!fullShaPattern.test(headSha)) {
     addReason(
       reasons,
       "invalid_head_sha",
@@ -68,7 +89,8 @@ function validatePullRequestIdentity(snapshot, reasons) {
   if (snapshot.mergeable !== true) {
     addReason(reasons, "mergeable_not_true", "GitHub has not confirmed that the pull request is mergeable.");
   }
-  if (normalized(snapshot.mergeableState).toLowerCase() !== "clean") {
+  const mergeableState = exactAuthorityString(snapshot.mergeableState);
+  if (mergeableState !== "clean") {
     addReason(
       reasons,
       "merge_state_not_clean",
@@ -77,6 +99,7 @@ function validatePullRequestIdentity(snapshot, reasons) {
   }
 }
 
+/** Require canonical review evidence and exact Noema decision tokens before granting merge authority. */
 function validateReviews(snapshot, reasons) {
   const unresolvedThreadCount = Number(snapshot.unresolvedThreadCount);
   if (!Number.isInteger(unresolvedThreadCount) || unresolvedThreadCount < 0) {
@@ -99,7 +122,7 @@ function validateReviews(snapshot, reasons) {
     }
   }
 
-  const noemaDecision = normalized(snapshot.noemaReviewDecision).toLowerCase();
+  const noemaDecision = exactAuthorityString(snapshot.noemaReviewDecision);
   if (!noemaDecision) {
     addReason(
       reasons,
@@ -115,10 +138,11 @@ function validateReviews(snapshot, reasons) {
   }
 }
 
+/** Detect required-check name collisions before a noncanonical producer can satisfy check authority. */
 function validateRequiredCheckProducers(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
-    const name = normalized(check?.name);
+    const name = exactCheckName(check?.name);
     if (!requiredNames.has(name) || isTrustedGitHubActionsCheck(check)) {
       continue;
     }
@@ -130,10 +154,11 @@ function validateRequiredCheckProducers(checkRuns, reasons) {
   }
 }
 
+/** Require every canonical check name to have current trusted evidence and a successful terminal result. */
 function validateRequiredChecks(checkRuns, reasons) {
   for (const requiredName of REQUIRED_CHECK_NAMES) {
     const matches = checkRuns.filter(
-      (check) => normalized(check?.name) === requiredName && isTrustedGitHubActionsCheck(check),
+      (check) => exactCheckName(check?.name) === requiredName && isTrustedGitHubActionsCheck(check),
     );
     if (matches.length === 0) {
       addReason(
@@ -144,8 +169,8 @@ function validateRequiredChecks(checkRuns, reasons) {
       continue;
     }
     for (const check of matches) {
-      const status = normalized(check.status).toLowerCase();
-      const conclusion = normalized(check.conclusion).toLowerCase();
+      const status = exactAuthorityString(check?.status);
+      const conclusion = exactAuthorityString(check?.conclusion);
       if (status !== "completed") {
         addReason(
           reasons,
@@ -163,10 +188,11 @@ function validateRequiredChecks(checkRuns, reasons) {
   }
 }
 
+/** Retain non-required check evidence while keeping review-dependent and optional failures fail closed. */
 function validateObservedChecks(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
-    const name = normalized(check?.name);
+    const name = exactCheckName(check?.name);
     if (!name) {
       continue;
     }
@@ -174,8 +200,8 @@ function validateObservedChecks(checkRuns, reasons) {
     if (requiredNames.has(name)) {
       continue;
     }
-    const status = normalized(check?.status).toLowerCase();
-    const conclusion = normalized(check?.conclusion).toLowerCase();
+    const status = exactAuthorityString(check?.status);
+    const conclusion = exactAuthorityString(check?.conclusion);
     if (reviewDependentCheckNames.has(name) && trustedActionsCheck) {
       if (status !== "completed") {
         addReason(
@@ -208,6 +234,7 @@ function validateObservedChecks(checkRuns, reasons) {
   }
 }
 
+/** Require exact terminal check and commit-status evidence before any result can become merge authority. */
 function validateChecks(snapshot, reasons) {
   const checkRuns = asArray(snapshot.checkRuns);
   validateRequiredCheckProducers(checkRuns, reasons);
@@ -216,7 +243,7 @@ function validateChecks(snapshot, reasons) {
 
   for (const statusContext of asArray(snapshot.statuses)) {
     const context = normalized(statusContext?.context) || "unnamed status";
-    const state = normalized(statusContext?.state).toLowerCase();
+    const state = exactAuthorityString(statusContext?.state);
     if (state !== "success") {
       addReason(
         reasons,

@@ -1,9 +1,29 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
   REQUIRED_MAIN_CHECK_NAMES,
+  REQUIRED_MAIN_WORKFLOW,
   evaluateMainGovernanceRules,
 } from "../scripts/lib/main-governance-audit.mjs";
+
+function canonicalWorkflowRule() {
+  return {
+    type: "workflows",
+    ruleset_id: 18_794_436,
+    ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+    ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+    parameters: {
+      workflows: [
+        {
+          repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+          path: REQUIRED_MAIN_WORKFLOW.path,
+          ref: REQUIRED_MAIN_WORKFLOW.ref,
+        },
+      ],
+    },
+  };
+}
 
 function compliantRules() {
   return [
@@ -13,7 +33,7 @@ function compliantRules() {
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
@@ -29,9 +49,9 @@ function compliantRules() {
       parameters: {
         do_not_enforce_on_create: false,
         strict_required_status_checks_policy: true,
-        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
@@ -47,6 +67,7 @@ function compliantRules() {
       ruleset_source_type: "Repository",
       ruleset_source: "ContextualWisdomLab/noema",
     },
+    canonicalWorkflowRule(),
   ];
 }
 
@@ -103,6 +124,7 @@ describe("main governance rules evaluator", () => {
           repository_id: 1_274_066_402,
           path: ".github/workflows/security-scan.yml",
           ref: "refs/heads/main",
+          sha: null,
           ruleset_id: 18_794_436,
           ruleset_source_type: "Organization",
           ruleset_source: "ContextualWisdomLab",
@@ -115,6 +137,96 @@ describe("main governance rules evaluator", () => {
       "non_fast_forward_rule_missing",
       "deletion_rule_missing",
     ]));
+    expect(failureCodes(result)).not.toContain("required_security_workflow_missing");
+  });
+
+  it("requires the canonical organization-owned central Security Scan workflow", () => {
+    const result = evaluateMainGovernanceRules(
+      compliantRules().filter((rule) => rule.type !== "workflows"),
+    );
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual({
+      code: "required_security_workflow_missing",
+      detail: "The canonical organization-owned central Security Scan workflow is not enforced for main.",
+    });
+  });
+
+  it("rejects a lookalike workflow owned by a different repository id", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].repository_id = 1;
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a lookalike workflow at a different path", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].path = ".github/workflows/other.yml";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a lookalike workflow pinned to a different ref", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.parameters.workflows[0].ref = "refs/heads/develop";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a repository-owned lookalike workflow", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.ruleset_source_type = "Repository";
+    workflowRule.ruleset_source = "ContextualWisdomLab/noema";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("rejects a workflow attributed to the wrong organization", () => {
+    const workflowRule = canonicalWorkflowRule();
+    workflowRule.ruleset_source = "AnotherOrganization";
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      workflowRule,
+    ]);
+
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+  });
+
+  it("fails closed when the workflows payload is malformed", () => {
+    const malformedWorkflowRule = {
+      ...canonicalWorkflowRule(),
+      parameters: { workflows: null },
+    };
+
+    const result = evaluateMainGovernanceRules([
+      ...compliantRules().filter((rule) => rule.type !== "workflows"),
+      malformedWorkflowRule,
+    ]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("required_security_workflow_missing");
+    expect(result.observed_controls.required_workflows).toEqual([]);
   });
 
   it.each([
@@ -161,13 +273,13 @@ describe("main governance rules evaluator", () => {
     expect(failureCodes(result)).toContain("review_thread_resolution_disabled");
   });
 
-  it("requires squash as an allowed merge method", () => {
+  it("requires normal merge commits as an allowed merge method", () => {
     const rules = compliantRules();
-    rules[0].parameters.allowed_merge_methods = ["rebase"];
+    rules[0].parameters.allowed_merge_methods = ["squash"];
 
     const result = evaluateMainGovernanceRules(rules);
 
-    expect(failureCodes(result)).toContain("squash_merge_not_allowed");
+    expect(failureCodes(result)).toContain("merge_commit_not_allowed");
   });
 
   it("requires strict current-base status checks", () => {
@@ -195,7 +307,7 @@ describe("main governance rules evaluator", () => {
     },
   );
 
-  it("requires every mandatory status source to be pinned to an integration", () => {
+  it("requires every mandatory status source to be GitHub Actions", () => {
     const rules = compliantRules();
     rules[1].parameters.required_status_checks = [
       ...rules[1].parameters.required_status_checks,
@@ -205,8 +317,8 @@ describe("main governance rules evaluator", () => {
     const result = evaluateMainGovernanceRules(rules);
 
     expect(result.failures).toContainEqual({
-      code: "required_status_source_unpinned",
-      detail: "Required status context verify has a missing or invalid integration_id.",
+      code: "required_status_source_mismatch",
+      detail: `Required status context verify must be pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`,
     });
   });
 

@@ -220,7 +220,7 @@ sequenceDiagram
       Review->>App: publish formal review after independent analysis
     else merge candidate
       Loop->>GitHub: re-read current PR and evidence
-      Loop->>Maint: request SHA-bound squash merge
+      Loop->>Maint: request SHA-bound normal merge
       Maint->>GitHub: merge expected head only
     end
   end
@@ -414,7 +414,7 @@ flowchart TB
     Target[Noema repository]
     Org[ContextualWisdomLab/.github]
     Actions[GitHub Actions]
-    ReviewerApp[Reviewer App]
+    ReviewerApp[Reviewer GitHub App]
     MaintainerApp[Maintainer GitHub App]
   end
 

@@ -17,6 +17,7 @@ import {
 } from "../scripts/lib/commercial-readiness-loop.mjs";
 import {
   latestCheckRunsBySuite,
+  latestStatuses,
   main,
   parseNoemaReviewDecision,
   redactSensitiveValue,
@@ -81,6 +82,8 @@ describe("hourly commercial readiness script", () => {
         name: "ci",
         status: "completed",
         conclusion: "success",
+        started_at: "2026-09-22T00:00:00Z",
+        completed_at: "2026-09-22T00:00:30Z",
         check_suite: { id: 30 },
         app: { slug: "github-actions" },
       },
@@ -89,6 +92,8 @@ describe("hourly commercial readiness script", () => {
         name: "ci",
         status: "in_progress",
         conclusion: null,
+        started_at: "2026-09-22T00:01:00Z",
+        completed_at: null,
         check_suite: { id: 30 },
         app: { slug: "github-actions" },
       },
@@ -97,6 +102,29 @@ describe("hourly commercial readiness script", () => {
     expect(latest).toEqual([
       expect.objectContaining({ id: 11, name: "ci", status: "in_progress" }),
     ]);
+  });
+
+  it("fails closed when check-run chronology metadata is incomplete", () => {
+    expect(() => latestCheckRunsBySuite([
+      {
+        id: 10,
+        name: "ci",
+        status: "completed",
+        conclusion: "success",
+        check_suite: { id: 30 },
+        app: { slug: "github-actions" },
+      },
+      {
+        id: 11,
+        name: "ci",
+        status: "in_progress",
+        conclusion: null,
+        started_at: "2026-09-22T00:01:00Z",
+        completed_at: null,
+        check_suite: { id: 30 },
+        app: { slug: "github-actions" },
+      },
+    ])).toThrow("Check run chronology metadata is incomplete for id 10.");
   });
 
   it("fails closed when a check run omits suite identity metadata", () => {
@@ -109,6 +137,31 @@ describe("hourly commercial readiness script", () => {
         app: { slug: "github-actions" },
       },
     ])).toThrow("Check run identity metadata is incomplete for id 10.");
+  });
+
+  it("preserves exact commit-status context and state authority before evaluation", () => {
+    const statuses = latestStatuses([
+      {
+        id: 1,
+        context: "policy",
+        state: "failure",
+        created_at: "2026-09-22T00:00:00Z",
+      },
+      {
+        id: 2,
+        context: " policy ",
+        state: "SUCCESS",
+        created_at: "2026-09-22T00:01:00Z",
+      },
+    ]);
+
+    expect(statuses).toEqual([
+      { context: " policy ", state: "SUCCESS" },
+      { context: "policy", state: "failure" },
+    ]);
+    const decision = evaluatePullRequest(snapshot({ statuses }));
+    expect(decision.action).toBe("blocked");
+    expect(decision.reasons.filter((reason) => reason.code === "status_not_success")).toHaveLength(2);
   });
 
   it("fails closed when exact-head required checks are missing", () => {
@@ -192,7 +245,7 @@ describe("hourly commercial readiness script", () => {
     expect(redactSensitiveValue("safe diagnostic", [])).toBe("safe diagnostic");
   });
 
-  it("uses shell-free complete pagination and exact-head write contracts", () => {
+  it("uses shell-free complete pagination and exact-head normal-merge write contracts", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain('spawnSync("gh"');
@@ -208,7 +261,7 @@ describe("hourly commercial readiness script", () => {
     expect(script).toContain("check-runs?filter=all&per_page=100");
     expect(script).not.toContain("check-runs?filter=latest");
     expect(script).toContain("latestCheckRunsBySuite(");
-    expect(script).toContain('appSlug: String(check?.app?.slug ?? "")');
+    expect(script).toContain("commercialCheckAppSlug(check, workflowAuthorities, changedPaths)");
     expect(script).toContain("statuses?per_page=100");
     expect(script).toContain("reviews?per_page=100");
     expect(script).toContain("reviewThreads(first:100,after:$endCursor)");
@@ -219,7 +272,8 @@ describe("hourly commercial readiness script", () => {
     expect(script).toContain('JSON.stringify({ ref: "main", inputs: { dry_run: "false" } })');
     expect(script).toContain("shouldDispatchProductDevelopment(apply, operationalErrors.length)");
     expect(script).not.toContain("report.remainingOpenPullRequestCount === 0");
-    expect(script).toContain('merge_method: "squash"');
+    expect(script).toContain('merge_method: "merge"');
+    expect(script).not.toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
     expect(script).toContain("live?.head?.sha !== expectedHeadSha");
     expect(script).toContain("live?.head?.repo?.full_name !== repository");

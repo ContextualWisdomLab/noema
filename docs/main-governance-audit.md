@@ -33,7 +33,7 @@ The effective response must contain:
 - `pull_request`
   - `dismiss_stale_reviews_on_push: true`
   - `required_review_thread_resolution: true`
-  - `allowed_merge_methods` includes `squash`
+  - `allowed_merge_methods` includes `merge`
 - `required_status_checks`
   - `strict_required_status_checks_policy: true`
   - `verify`
@@ -42,11 +42,23 @@ The effective response must contain:
   - `osv-scan`
   - `trivy-fs`
   - `dependency-review`
-  - every mandatory context has a positive `integration_id`
+  - every mandatory context has `integration_id: 15368`, the GitHub Actions App identity
+- `workflows`
+  - ruleset source type is exactly `Organization`
+  - ruleset source is exactly `ContextualWisdomLab`
+  - workflow repository id is `1274066402` (`ContextualWisdomLab/.github`)
+  - workflow path is exactly `.github/workflows/security-scan.yml`
+  - workflow ref is exactly `refs/heads/main`
 - `non_fast_forward`
 - `deletion`
 
-The integration requirement prevents a similarly named status from an arbitrary producer from satisfying the governance contract. The hourly decision engine independently verifies current-head check producer identity as a second control.
+The five governance rule types above and all six mandatory status contexts are authority-bearing API values. They must match the expected serialization exactly. A value such as `" pull_request "`, `"required_status_checks "`, or `" verify "` is malformed evidence rather than a canonical control and fails closed. The same exactness applies to the required-workflow rule type, source type, source, path, and ref.
+
+A merely positive status-check `integration_id` is not enough. Current GitHub check-run evidence identifies the producer for these repository Actions jobs as the `github-actions` App with integration id `15368`; a differently named or malicious producer must not acquire merge authority just by supplying another positive integer. The required-workflow identity check separately prevents otherwise-compliant repository rules from passing after the organization-owned central Security Scan workflow is removed, repointed, or replaced by a repository-owned lookalike. The hourly decision engine independently verifies current-head check producer identity as a second control.
+
+Authority fields are never normalized to manufacture a match. Human-facing trimming is appropriate for presentation data, but not for GitHub control-plane identities that determine whether a merge is allowed.
+
+The workflow contract deliberately does not pin the ruleset numeric id. Recreating an organization ruleset can change that id without changing the owner/workflow authority. The stable authority checked by source is the organization owner plus immutable GitHub repository id, workflow path, and exact branch ref. Live ruleset identity and enforcement must still be refetched for each decision.
 
 ## Workflow ordering
 
@@ -56,7 +68,7 @@ The integration requirement prevents a similarly named status from an arbitrary 
 2. Mint the repository-scoped maintainer App token.
 3. Install lockfile dependencies.
 4. Run `npm run governance:audit`.
-5. Only after a `PASS`, inspect PRs, dispatch Noema review, or perform SHA-bound squash merge.
+5. Only after a `PASS`, inspect PRs, dispatch Noema review, or perform a SHA-bound normal merge commit.
 
 A failed governance audit stops all write actions but still uploads `main-governance-audit` evidence.
 
@@ -68,7 +80,7 @@ The GitHub CLI subprocess is shell-free, output-bounded, pinned to `github.com`,
 
 GitHub documents the active branch-rules endpoint as requiring only repository `Metadata: read` for a fine-grained or GitHub App installation token. The maintainer App therefore does **not** receive repository administration permission.
 
-Creating or changing a repository ruleset requires `Administration: write` and remains an explicit operator action tracked in issue #27.
+Creating or changing a repository or organization ruleset requires administrative authority and remains an explicit operator action tracked in issue #27. The audit only observes effective controls and refuses writes when the required control set is absent.
 
 ## Report schema
 
@@ -84,6 +96,7 @@ The JSON report contains:
 - `active_rule_count`
 - `active_rule_types`
 - `rule_sources`
+- `observed_controls`, including the exact required-workflow observations
 - `checks`
 - `failures`
 - `limitations`
@@ -107,16 +120,19 @@ When the audit fails:
 
 1. Open repository or organization Rulesets settings.
 2. Target the default branch or `refs/heads/main`.
-3. Activate pull-request, status-check, non-fast-forward, and deletion rules.
+3. Activate pull-request, status-check, non-fast-forward, and deletion rules using their canonical GitHub rule types.
 4. Enable stale-review dismissal and conversation resolution.
-5. Add the six required check contexts and select the GitHub Actions integration as the expected source.
-6. Require branches to be up to date before merge.
-7. Re-run the audit and retain the generated artifact.
+5. Add the six required check contexts with their exact names and select the GitHub Actions integration (`integration_id: 15368`) as the expected source.
+6. Preserve the organization-owned `ContextualWisdomLab/.github` `.github/workflows/security-scan.yml@refs/heads/main` required-workflow control; do not replace it with a repository-owned lookalike.
+7. Require branches to be up to date before merge and allow normal merge commits (`merge`) for the commercial-readiness loop.
+8. Re-run the audit and retain the generated artifact.
 
-Do not disable the audit, remove required checks, use an unpinned status source, or grant the maintainer App administration access to make the workflow pass.
+Do not disable the audit, remove required checks or the required workflow, normalize malformed authority strings, accept an arbitrary positive status producer id, use an unpinned status source, force squash-only merge policy, or grant the maintainer App administration access to make the workflow pass.
 
 ## Primary references
 
 - GitHub REST API: repository rules and active branch rules
-- GitHub rulesets: available branch rules and required status checks
+- GitHub REST API: check runs and their producing GitHub App identity
+- GitHub rulesets: available branch rules, required workflows, and required status checks
+- GitHub REST API: merge a pull request with an expected head SHA and `merge` method
 - GitHub Actions `GITHUB_TOKEN`: workflow-trigger suppression and GitHub App token alternative

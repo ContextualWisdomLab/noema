@@ -714,8 +714,14 @@ def _fetch_codegraph_status(
     return _truncate("\n".join(parts) or "CodeGraph initialized; status produced no output.", MAX_CODEGRAPH_CHARS)
 
 
-def render_review_body(verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
-    """Render the PR review body, including the interop marker the central gate detects."""
+def render_review_body(
+    verdict: ReviewVerdict,
+    head_sha: str,
+    token_source: str,
+    *,
+    base_sha: str | None = None,
+) -> str:
+    """Render a review body; a supplied base SHA makes the marker current-base authoritative."""
     finding_lines: list[str] = []
     for finding in verdict.findings:
         location = finding.path + (f":{finding.line}" if finding.line else "")
@@ -754,6 +760,12 @@ def render_review_body(verdict: ReviewVerdict, head_sha: str, token_source: str)
             f"- Verdict: {verdict.verdict.value}",
             f"- Confidence: {verdict.confidence.value}",
             f"- Head SHA: `{head_sha}`",
+        ]
+    )
+    if base_sha is not None:
+        body.append(f"- Base SHA: `{base_sha}`")
+    body.extend(
+        [
             f"- Reviewer credential: `{token_source}`",
             "",
             f"<!-- noema-review-gate head_sha={head_sha} decision={verdict.verdict.value} -->",
@@ -769,10 +781,16 @@ def publish_verdict(
     head_sha: str,
     *,
     token_source: str = "NOEMA_REVIEW_TOKEN",
+    base_sha: str | None = None,
     runner: GhRunner = default_runner,
 ) -> str:
-    """Submit the verdict as a GitHub review and return the GitHub event used."""
-    if not REPOSITORY_RE.fullmatch(repo) or pr_number <= 0 or not SHA_RE.fullmatch(head_sha):
+    """Submit a review, revalidating a supplied evaluated base before publication."""
+    if (
+        not REPOSITORY_RE.fullmatch(repo)
+        or pr_number <= 0
+        or not SHA_RE.fullmatch(head_sha)
+        or (base_sha is not None and not SHA_RE.fullmatch(base_sha))
+    ):
         raise ValueError("Noema publication requires validated organization PR metadata")
     live_pr = json.loads(
         runner(
@@ -781,23 +799,34 @@ def publish_verdict(
                 "api",
                 f"repos/{repo}/pulls/{pr_number}",
                 "--jq",
-                "{state: .state, head: .head.sha}",
+                "{state: .state, head: .head.sha, base: .base.sha}",
             ],
             None,
         )
     )
     live_head = str(live_pr.get("head") or "")
-    if live_pr.get("state") != "open" or live_head != head_sha:
+    live_base = str(live_pr.get("base") or "")
+    if (
+        live_pr.get("state") != "open"
+        or live_head != head_sha
+        or (base_sha is not None and live_base != base_sha)
+    ):
         raise RuntimeError(
-            "Noema refused stale-head review publication: "
-            f"expected={head_sha} observed={live_head or 'missing'} "
+            "Noema refused stale-revision review publication: "
+            f"expected_head={head_sha} observed_head={live_head or 'missing'} "
+            f"expected_base={base_sha or 'unbound'} observed_base={live_base or 'missing'} "
             f"state={live_pr.get('state') or 'missing'}"
         )
     event = REVIEW_EVENT_BY_VERDICT[verdict.verdict]
     payload = {
         "commit_id": head_sha,
         "event": event,
-        "body": render_review_body(verdict, head_sha, token_source),
+        "body": render_review_body(
+            verdict,
+            head_sha,
+            token_source,
+            base_sha=base_sha,
+        ),
         "comments": [
             {
                 "path": finding.path,
