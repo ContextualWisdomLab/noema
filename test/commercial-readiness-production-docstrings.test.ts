@@ -78,6 +78,18 @@ describe("commercial-readiness touched production docstrings", () => {
     expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
   });
 
+  it("rejects a nested declaration lookalike before the top-level production declaration", () => {
+    const weakSource = [
+      "if (true) {",
+      "  /** Reject invalid status authority. */",
+      "  function weakContract() {}",
+      "}",
+      "function weakContract() {}",
+      "",
+    ].join("\n");
+    expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
+  });
+
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
