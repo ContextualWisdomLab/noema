@@ -10,15 +10,10 @@ function functionDeclarationStart(source: string, functionName: string): number 
     true,
     ts.ScriptKind.JS,
   );
-  let declaration: ts.FunctionDeclaration | undefined;
-  const visit = (node: ts.Node) => {
-    if (!declaration && ts.isFunctionDeclaration(node) && node.name?.text === functionName) {
-      declaration = node;
-      return;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+  const declaration = sourceFile.statements.find(
+    (statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === functionName,
+  );
   return declaration?.getStart(sourceFile) ?? -1;
 }
 
