@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-function functionDeclarationStart(source: string, functionName: string): number {
+function functionDeclaration(
+  source: string,
+  functionName: string,
+): { sourceFile: ts.SourceFile; declaration: ts.FunctionDeclaration } | null {
   const sourceFile = ts.createSourceFile(
     "commercial-readiness-production.mjs",
     source,
@@ -14,17 +17,29 @@ function functionDeclarationStart(source: string, functionName: string): number 
     (statement): statement is ts.FunctionDeclaration =>
       ts.isFunctionDeclaration(statement) && statement.name?.text === functionName,
   );
-  return declaration?.getStart(sourceFile) ?? -1;
+  return declaration ? { sourceFile, declaration } : null;
 }
 
 function expectDirectJsDoc(source: string, functionName: string) {
-  const declaration = functionDeclarationStart(source, functionName);
-  expect(declaration, `${functionName} declaration`).toBeGreaterThanOrEqual(0);
+  const parsed = functionDeclaration(source, functionName);
+  expect(parsed, `${functionName} declaration`).not.toBeNull();
+  if (!parsed) {
+    return;
+  }
 
-  const prefix = source.slice(0, declaration);
-  const directJsDoc = /(?:^|\n)[\t ]*(\/\*\*(?:(?!\*\/)[\s\S])*\*\/)[\t \r\n]*$/.exec(prefix);
-  expect(directJsDoc, `${functionName} must have a direct JSDoc block`).not.toBeNull();
-  const contract = directJsDoc?.[1] ?? "";
+  const { sourceFile, declaration } = parsed;
+  const commentRanges = ts.getLeadingCommentRanges(source, declaration.getFullStart()) ?? [];
+  const directJsDoc = commentRanges.at(-1);
+  expect(
+    directJsDoc?.kind,
+    `${functionName} must have a direct JSDoc block`,
+  ).toBe(ts.SyntaxKind.MultiLineCommentTrivia);
+  const contract = directJsDoc ? source.slice(directJsDoc.pos, directJsDoc.end) : "";
+  expect(contract, `${functionName} must use a JSDoc token`).toMatch(/^\/\*\*/);
+  expect(
+    source.slice(directJsDoc?.end ?? declaration.getFullStart(), declaration.getStart(sourceFile)),
+    `${functionName} JSDoc must be directly attached to the declaration`,
+  ).toMatch(/^[\t \r\n]*$/);
   expect(
     contract,
     `${functionName} JSDoc must state a contract action`,
