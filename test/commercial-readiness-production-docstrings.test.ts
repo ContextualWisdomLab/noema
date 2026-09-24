@@ -24,6 +24,11 @@ describe("commercial-readiness touched production docstrings", () => {
     expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
   });
 
+  it("rejects a generic two-keyword JSDoc that does not state a contract", () => {
+    const weakSource = "/** Returns the current status. */\nfunction weakContract() {}\n";
+    expect(() => expectDirectJsDoc(weakSource, "weakContract")).toThrow();
+  });
+
   it("documents every authority-bearing production function touched by PR #730", () => {
     const hourly = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
     for (const functionName of [
