@@ -11,7 +11,7 @@ function expectDirectJsDoc(source: string, functionName: string) {
   expect(prefix.endsWith("*/"), `${functionName} must have a direct JSDoc block`).toBe(true);
   const jsDocStart = prefix.lastIndexOf("/**");
   expect(jsDocStart, `${functionName} JSDoc start`).toBeGreaterThanOrEqual(0);
-  expect(prefix.slice(jsDocStart), `${functionName} JSDoc must describe an authority or fail-closed contract`).toMatch(/\b(authority|identity|exact|fail|reject|current|canonical|merge|evidence|workflow|check)\b/i);
+  expect(prefix.slice(jsDocStart), `${functionName} JSDoc must describe an authority, evidence-order, or fail-closed contract`).toMatch(/\b(authority|identity|exact|fail|reject|current|canonical|merge|evidence|workflow|check|status|chronology)\b/i);
 }
 
 describe("commercial-readiness touched production docstrings", () => {
