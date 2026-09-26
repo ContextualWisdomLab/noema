@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected trusted-research adapter documentation authority", () => {
   it("classifies #607 as protected source without promoting foreign producer authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toMatch(/Dated protected observation for this repair는 `main@[0-9a-f]{40}`/u);
     expect(baseline).toContain(

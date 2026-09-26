@@ -23,7 +23,7 @@ describe("Cloudflare control-plane JSON negotiation", () => {
   it("keeps canonical product and standards traceability aligned with protected request behavior", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(changelog).toContain("PR #701");
     expect(changelog).toContain(sourceRepairExact);

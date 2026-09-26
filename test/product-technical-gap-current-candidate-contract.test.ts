@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("product-technical gap current authority", () => {
   it("records integrated external-extension admission and the durable lifecycle successor without overclaiming completion", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain("issue #545 / merged PR #560");
     expect(baseline).toContain("Runtime-current authority RED `4be371ec08b852f4d00829ba5aa6936df6564b5e`");

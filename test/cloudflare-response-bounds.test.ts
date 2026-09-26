@@ -66,7 +66,7 @@ describe("Cloudflare control-plane response bounds", () => {
   it("keeps canonical operational documentation aligned with the bounded transport contract", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const operability = readFileSync("docs/OPERABILITY.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(changelog).toContain("Cloudflare production control-plane deploy/status/recovery JSON 응답");
     expect(changelog).toContain("PR #618");

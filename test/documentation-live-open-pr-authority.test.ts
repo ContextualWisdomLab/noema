@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("product-technical gap baseline live source authority", () => {
   it("treats #560 as integrated protected history without promoting downstream completion", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain("Integrated external-extension admission — issue #545 / merged PR #560");
     expect(baseline).toContain("PR #560 exact `5aab7c098f3478069127f34e398326415ec599a4`");

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected #681/#678 documentation authority", () => {
   it("records the CodeGraph substrate repair without importing security authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
 
     expect(baseline).toContain(
@@ -20,7 +20,7 @@ describe("protected #681/#678 documentation authority", () => {
   });
 
   it("records locked current-state reader acquisition as a fail-closed Agent Runtime boundary", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/agent-runtime/procedural-current-lifecycle.ts", "utf8");
 
@@ -41,7 +41,7 @@ describe("protected #681/#678 documentation authority", () => {
   });
 
   it("records locked Cloudflare control-plane reader acquisition without importing provider authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
 
@@ -62,7 +62,7 @@ describe("protected #681/#678 documentation authority", () => {
   });
 
   it("records locked OIDC replay reader acquisition without importing identity or provider authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/oidc-replay.ts", "utf8");
 
@@ -87,7 +87,7 @@ describe("protected #681/#678 documentation authority", () => {
   });
 
   it("records locked distributed rate-limit reader acquisition without importing foreign authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/rate-limit.ts", "utf8");
 

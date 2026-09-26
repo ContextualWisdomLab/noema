@@ -105,7 +105,7 @@ describe("immutable-release policy authorization", () => {
   });
 
   it("keeps the product gap baseline current with the protected release-policy integration", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     expect(baseline).toContain("Release Policy Auditor");
     expect(baseline).toContain("NOEMA_RELEASE_AUDITOR_APP_CLIENT_ID");
     expect(baseline).toContain("NOEMA_RELEASE_AUDITOR_APP_PRIVATE_KEY");

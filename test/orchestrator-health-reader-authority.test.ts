@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected orchestrator health reader-acquisition documentation authority", () => {
   it("records protected #695 without promoting release or orchestrator authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("scripts/lib/orchestrator-gateway.mjs", "utf8");
 

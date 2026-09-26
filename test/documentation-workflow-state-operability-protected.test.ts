@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected Workflow / Task operability documentation authority", () => {
   it("classifies merged #605 as source-only exact-object observation", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain(
       "Protected Workflow / Task operability source — issue #541 / merged PR #605",

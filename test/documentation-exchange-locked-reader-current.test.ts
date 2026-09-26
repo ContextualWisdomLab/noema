@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const changelog = readFileSync("CHANGELOG.md", "utf8");
-const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
 describe("#689 exchange locked-reader documentation authority", () => {
   it("keeps the protected source lineage and stable public failure contract current", () => {

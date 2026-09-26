@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected retention-hardening documentation authority", () => {
   it("preserves merged #650 retention-hardening history after later protected-main advancement", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain(
       "merged PR #642 exact `3427e5a66d7a0ea9379ddc7915ba2b3d1872c492`",
@@ -39,7 +39,7 @@ describe("protected retention-hardening documentation authority", () => {
   });
 
   it("records protected #655 replay-reader lifecycle hardening without promoting deployment evidence", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
 
     expect(baseline).toContain(
@@ -57,7 +57,7 @@ describe("protected retention-hardening documentation authority", () => {
   });
 
   it("records protected #657 distributed rate-limit reader lifecycle and distinguishes pre-reader validation", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/rate-limit.ts", "utf8");
 
@@ -86,7 +86,7 @@ describe("protected retention-hardening documentation authority", () => {
   });
 
   it("records protected #659 outbound response reader lifecycle without importing outbound authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/outbound-fetch-policy.ts", "utf8");
 
@@ -112,7 +112,7 @@ describe("protected retention-hardening documentation authority", () => {
   });
 
   it("records protected #661 exchange request reader lifecycle without importing foreign authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/entrypoint.ts", "utf8");
 
@@ -139,7 +139,7 @@ describe("protected retention-hardening documentation authority", () => {
   });
 
   it("records protected #663 current-state cancellation liveness without importing lifecycle or publication authority", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const source = readFileSync("src/agent-runtime/procedural-current-lifecycle.ts", "utf8");
 

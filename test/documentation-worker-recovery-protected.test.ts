@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("protected Worker recovery documentation authority", () => {
   it("classifies merged #612 as protected source without promoting rehearsal evidence", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain(
       "merged PR #612 exact `a919be3bc2a04068e25a4592e0c9c26f8e63534b`",
@@ -19,7 +19,7 @@ describe("protected Worker recovery documentation authority", () => {
   });
 
   it("classifies merged #620 retained-heap hardening as protected source without promoting runtime evidence", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain(
       "merged PR #620 exact `b746846e4890c84b568bb29937594e1b17364fa1`",

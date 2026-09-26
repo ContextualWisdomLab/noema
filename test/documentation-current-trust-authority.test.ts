@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("current protected trust authority documentation", () => {
   it("separates live current authority from dated source observations and immutable pins", () => {
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(baseline).toContain(
       "Current protected source는 mutation·merge·release 시점에 live protected `main`을 다시 조회해 결정한다",
@@ -71,7 +71,7 @@ describe("current protected trust authority documentation", () => {
     const operability = readFileSync("docs/OPERABILITY.md", "utf8");
     const testStrategy = readFileSync("docs/TEST_STRATEGY.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     expect(architecture).toContain("### 4.1 Protected procedural graph guidance");
     expect(architecture).not.toContain("Active PR #585 adds");
@@ -122,7 +122,7 @@ describe("current protected trust authority documentation", () => {
     const trd = readFileSync("docs/TRD.md", "utf8");
     const operability = readFileSync("docs/OPERABILITY.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     for (const currentDocument of [architecture, prd, trd, operability, traceability, baseline]) {
       expect(currentDocument).toContain("#601");
@@ -142,7 +142,7 @@ describe("current protected trust authority documentation", () => {
 
   it("keeps protected trusted-research adapter source separate from live owner completion", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
-    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const baseline = readFileSync("docs/history/product-technical-gap-baseline-20260921.md", "utf8");
 
     for (const currentDocument of [changelog, baseline]) {
       expect(currentDocument).toContain("trusted-research-retrieval@v1");
