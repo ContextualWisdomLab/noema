@@ -9,10 +9,13 @@ for the decision and its scope boundary.
 One function and one role-neutral identity fragment shared without moving
 provider or bounded-context authority into Noema:
 
-- `build_agent(model, *, system_prompt, output_type=str, deps_type=None, retries=3) -> Agent`
+- `build_agent(model, *, system_prompt, output_type=str, deps_type=None) -> Agent`
   constructs an agent around a caller-supplied, already constructed PydanticAI
   `Model`. String model names are rejected so provider/model discovery cannot
-  occur inside the Shared Kernel.
+  occur inside the Shared Kernel. There is no caller-visible `retries`
+  parameter: model-attempt retries are fixed to `0` at this boundary
+  (`Agent(..., retries=0)`). Orchestration retry and failover stay with
+  contextual-orchestrator.
 - `NOEMA_PERSONA` is exactly `"You are Noema"`. Consumers compose that stable
   identity with their own precise role, organization context, evidence rules,
   tool authority and output contract; the Shared Kernel does not assign a
