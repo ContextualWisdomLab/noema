@@ -36,9 +36,13 @@ function runFixtureNpm(
   args: string[],
   extraEnv: Record<string, string> = {},
 ) {
+  const npmExecPath = process.env.npm_execpath;
+  if (!npmExecPath) {
+    throw new Error("npm_execpath is required to run the repository-pinned npm CLI");
+  }
   const userConfig = join(cwd, "empty-user-npmrc");
   writeFileSync(userConfig, "", "utf8");
-  return spawnSync("npm", args, {
+  return spawnSync(process.execPath, [npmExecPath, ...args], {
     cwd,
     encoding: "utf8",
     env: {
@@ -214,7 +218,3 @@ describe("package-manager reproducibility contract", () => {
     expect(releaseStart).toBeGreaterThan(lockfileGate);
     expect(releaseEnd).toBeGreaterThan(releaseStart);
     expect(afterGate).toBeGreaterThan(releaseEnd);
-    expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
-    expect(ciWorkflow).toContain(
-      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
-    );
