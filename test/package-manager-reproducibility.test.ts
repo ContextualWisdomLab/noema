@@ -218,3 +218,19 @@ describe("package-manager reproducibility contract", () => {
     expect(releaseStart).toBeGreaterThan(lockfileGate);
     expect(releaseEnd).toBeGreaterThan(releaseStart);
     expect(afterGate).toBeGreaterThan(releaseEnd);
+    expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
+    expect(ciWorkflow).toContain(
+      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
+    );
+    expect(ciWorkflow).toContain(
+      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
+    );
+    expect(ciWorkflow.match(/gh api graphql/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ciWorkflow.match(/ref\(qualifiedName:\$qualifiedName\)\{target\{oid\}\}/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ciWorkflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
+    expect(ciWorkflow).toContain('test "$live_base_sha" = "$NOEMA_LIVE_BASE_SHA"');
+    expect(ciWorkflow).not.toContain(
+      "NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+    );
+  });
+});
