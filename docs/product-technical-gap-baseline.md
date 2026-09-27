@@ -114,6 +114,14 @@ Protected #654, #655, #657, #659, #661, #663, #665, #668, #670, #673, #676, #678
 
 These integrations are source/test/documentation authority only. They do not create new provider/model routing, foreign outbound or quarantine authority, release/deployment authority, or production performance evidence. `deployed heap/p95 evidence remains separate`: representative deployed workload, allocation/GC observation and applicable p95 must still be measured against an immutable deployed release before buyer-facing runtime-performance claims are admissible.
 
+## Proposed package-manager fixture CLI authority — PR #730
+
+Gap: the package-manager reproducibility fixture declared npm `11.17.0` in repository metadata but launched bare `npm` from mutable `PATH`. In the 2026-09-27 executor this resolved to npm `11.9.0`, so the strict install-script fixture returned success and its security oracle did not exercise the reviewed package-manager behavior.
+
+RCA and executable evidence: RED `cceb0c6cdb212786cf79656d3903bbfa373a35d5` requires the fixture helper itself to report npm `11.17.0` and reproduces `11.9.0`; the existing unreviewed-install-script case simultaneously fails because ambient npm exits `0`. GREEN `e32f7e2b1d421dcea2878e5c333db297412440ad` executes the Corepack-resolved `npm_execpath` with the current Node executable and refuses to run when that identity is absent. Focused verification passes 9/9 and TypeScript typecheck passes. The full suite passes 5,276/5,277; the sole remaining local failure is the independently reproduced executor `EPERM` while creating a Unix socket, so local full GREEN is not claimed.
+
+Status: Proposed until unchanged exact-head hosted `ci`, `reviewer-ci`, `Security Scan`, and `patch-validator-image` are terminal GREEN and the PR has qualifying independent review authority. Next action: consume fresh exact-head hosted evidence, repair any causal failure, then ordinary-merge only if all merge gates remain valid. This test repair does not assert runner-image, package publication, immutable release, deployment, or production authority.
+
 ## Evidence and merge rules
 
 Review resolution, CI, reviewer-ci, required Security, image/SBOM/provenance, branch ancestry, release는 separate evidence classes다. Every source mutation/restack invalidates predecessor workflow evidence. `queued`, `pending`, `in_progress`, `skipped`, `cancelled`, stale 또는 absent-required evidence는 passing이 아니다.
@@ -136,6 +144,7 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 | P0 | Authentic production KPI evidence | synthetic/source KPI가 실제 운영 성능으로 오인될 위험 | issue #3 | >=30-day production window absent | authenticated production bytes + provenance + strict KPI gate | 실제 production evidence만 수집 |
 | P0 | Acquisition coordination | source/docs completion이 buyer/legal/transfer readiness로 오인될 위험 | issue #5 | evidence families incomplete | exact release/deployment/operational/legal evidence | owner별 evidence family 수렴 |
 | P0 | External Maintainer/Reviewer App identity | source preflight가 실제 App installation/reviewer authority로 오인될 위험 | issues #29 / #227 | live identity evidence absent | installation/key custody/permission/reviewer eligibility | external control-plane에서 독립 검증 |
+| P1 | Package-manager fixture CLI identity | mutable runner `PATH` npm이 reviewed install-script oracle을 vacuous PASS로 만들 위험 | PR #730 RED `cceb0c6c…` / GREEN `e32f7e2b…` | source/focused GREEN; hosted exact-head checks and independent review open | unchanged exact-head hosted gates + qualifying review + ordinary merge | exact-head Actions 결과를 재수집하고 causal failure만 owner lane에서 수리 |
 
 ## Release boundary
 
