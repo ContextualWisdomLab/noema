@@ -26,7 +26,7 @@ from .models import ReviewVerdict, Verdict
 
 AgentFactory = Callable[[], ReviewAgent]
 ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
-Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
+Publisher = Callable[[str, int, ReviewVerdict, str, str, str], str]
 CodeGraphRunner = Callable[[Sequence[str], str], str]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
@@ -279,9 +279,23 @@ def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
     )
 
 
-def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
-    """Publish a verdict to GitHub, adapting to the injectable publisher signature."""
-    return publish_verdict(repo, pr_number, verdict, head_sha, token_source=token_source)
+def _publish(
+    repo: str,
+    pr_number: int,
+    verdict: ReviewVerdict,
+    head_sha: str,
+    token_source: str,
+    base_sha: str,
+) -> str:
+    """Publish a verdict through the same head/base-bound contract as production."""
+    return publish_verdict(
+        repo,
+        pr_number,
+        verdict,
+        head_sha,
+        token_source=token_source,
+        base_sha=base_sha,
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -361,7 +375,7 @@ def run_review(
     """
     resolved_factory = agent_factory or build_agent
     resolved_loader = manifest_loader or _load_manifest
-    resolved_publisher = publisher or _publish
+    resolved_publisher = publisher
 
     manifest = resolved_loader(args)
     print(
@@ -385,7 +399,24 @@ def run_review(
         out.write(serialized + "\n")
 
     if args.publish:
-        event = resolved_publisher(manifest.repo, manifest.pr_number, verdict, manifest.head_sha, args.token_source)
+        if resolved_publisher is None:
+            event = publish_verdict(
+                manifest.repo,
+                manifest.pr_number,
+                verdict,
+                manifest.head_sha,
+                token_source=args.token_source,
+                base_sha=manifest.base_sha,
+            )
+        else:
+            event = resolved_publisher(
+                manifest.repo,
+                manifest.pr_number,
+                verdict,
+                manifest.head_sha,
+                args.token_source,
+                manifest.base_sha,
+            )
         out.write(f"Published Noema {event} review for {manifest.repo}#{manifest.pr_number}.\n")
 
     if verdict.verdict is Verdict.APPROVE:

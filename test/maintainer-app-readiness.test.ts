@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_CHECK_NAMES,
+  REQUIRED_MAIN_WORKFLOW,
+} from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
@@ -15,7 +19,7 @@ function compliantGovernanceRules() {
       ruleset_source_type: "Repository",
       ruleset_source: repository,
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
@@ -31,9 +35,9 @@ function compliantGovernanceRules() {
       parameters: {
         do_not_enforce_on_create: false,
         strict_required_status_checks_policy: true,
-        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
@@ -48,6 +52,19 @@ function compliantGovernanceRules() {
       ruleset_id: 101,
       ruleset_source_type: "Repository",
       ruleset_source: repository,
+    },
+    {
+      type: "workflows",
+      ruleset_id: 18_794_436,
+      ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+      ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+      parameters: {
+        workflows: [{
+          repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+          path: REQUIRED_MAIN_WORKFLOW.path,
+          ref: REQUIRED_MAIN_WORKFLOW.ref,
+        }],
+      },
     },
   ];
 }
@@ -131,16 +148,8 @@ describe("maintainer App readiness evaluation", () => {
 
   it.each([
     ["missing bot suffix", { reviewerLogin: "noema-reviewer" }, "reviewer_login_invalid"],
-    [
-      "API login mismatch",
-      { reviewerAccount: { login: "other[bot]", type: "Bot" } },
-      "reviewer_login_mismatch",
-    ],
-    [
-      "non-bot type",
-      { reviewerAccount: { login: "noema-reviewer[bot]", type: "User" } },
-      "reviewer_type_invalid",
-    ],
+    ["API login mismatch", { reviewerAccount: { login: "other[bot]", type: "Bot" } }, "reviewer_login_mismatch"],
+    ["non-bot type", { reviewerAccount: { login: "noema-reviewer[bot]", type: "User" } }, "reviewer_type_invalid"],
   ])("rejects reviewer identity with %s", (_label, patch, expectedCode) => {
     const result = evaluateMaintainerAppReadiness({ ...passingEvidence(), ...patch });
 
@@ -150,16 +159,8 @@ describe("maintainer App readiness evaluation", () => {
 
   it("does not infer installation suspension from public user-profile fields", () => {
     const evidence = passingEvidence();
-    evidence.maintainerAccount = {
-      ...evidence.maintainerAccount,
-      suspended: true,
-      suspended_at: "2026-08-04T00:00:00Z",
-    } as typeof evidence.maintainerAccount;
-    evidence.reviewerAccount = {
-      ...evidence.reviewerAccount,
-      suspended: true,
-      suspended_at: "2026-08-04T00:00:00Z",
-    } as typeof evidence.reviewerAccount;
+    evidence.maintainerAccount = { ...evidence.maintainerAccount, suspended: true, suspended_at: "2026-08-04T00:00:00Z" } as typeof evidence.maintainerAccount;
+    evidence.reviewerAccount = { ...evidence.reviewerAccount, suspended: true, suspended_at: "2026-08-04T00:00:00Z" } as typeof evidence.reviewerAccount;
 
     const result = evaluateMaintainerAppReadiness(evidence);
 
@@ -184,11 +185,7 @@ describe("maintainer App readiness evaluation", () => {
     ["wrong repository", [{ full_name: "ContextualWisdomLab/other" }]],
     ["extra repository", [{ full_name: repository }, { full_name: "ContextualWisdomLab/other" }]],
   ])("rejects effective scope with %s", (_label, accessibleRepositories) => {
-    const result = evaluateMaintainerAppReadiness({
-      ...passingEvidence(),
-      accessibleRepositories,
-    });
-
+    const result = evaluateMaintainerAppReadiness({ ...passingEvidence(), accessibleRepositories });
     expect(reasonCodes(result)).toContain("repository_scope_invalid");
   });
 
@@ -199,58 +196,31 @@ describe("maintainer App readiness evaluation", () => {
   ])("rejects effective permissions with %s", (_label, patch, expectedCode) => {
     const evidence = passingEvidence();
     evidence.repositoryPermissions = { ...evidence.repositoryPermissions, ...patch };
-
     const result = evaluateMaintainerAppReadiness(evidence);
-
     expect(reasonCodes(result)).toContain(expectedCode);
   });
 
   it("rejects unavailable administrator permission evidence", () => {
     const evidence = passingEvidence();
-    const result = evaluateMaintainerAppReadiness({
-      ...evidence,
-      repositoryPermissions: {
-        ...evidence.repositoryPermissions,
-        admin: null,
-      },
-    });
-
+    const result = evaluateMaintainerAppReadiness({ ...evidence, repositoryPermissions: { ...evidence.repositoryPermissions, admin: null } });
     expect(result.status).toBe("FAIL");
-    expect(reasonCodes(result)).toEqual(expect.arrayContaining([
-      "repository_admin_state_invalid",
-      "repository_admin_present",
-    ]));
+    expect(reasonCodes(result)).toEqual(expect.arrayContaining(["repository_admin_state_invalid", "repository_admin_present"]));
   });
 
   it.each(REQUIRED_API_PROBES)("fails when %s does not pass", (probe) => {
     const evidence = passingEvidence();
     evidence.apiProbes[probe] = false;
-
     const result = evaluateMaintainerAppReadiness(evidence);
-
     expect(reasonCodes(result)).toContain(`api_probe_${probe}`);
   });
 
   it.each([
     ["missing report", null, "governance_report_invalid"],
-    [
-      "wrong repository",
-      { repository: "ContextualWisdomLab/other", branch: "main", status: "PASS" },
-      "governance_repository_mismatch",
-    ],
-    [
-      "wrong branch",
-      { repository, branch: "release", status: "PASS" },
-      "governance_branch_mismatch",
-    ],
-    [
-      "failed status",
-      { repository, branch: "main", status: "FAIL" },
-      "governance_status_not_pass",
-    ],
+    ["wrong repository", { repository: "ContextualWisdomLab/other", branch: "main", status: "PASS" }, "governance_repository_mismatch"],
+    ["wrong branch", { repository, branch: "release", status: "PASS" }, "governance_branch_mismatch"],
+    ["failed status", { repository, branch: "main", status: "FAIL" }, "governance_status_not_pass"],
   ])("rejects governance evidence with %s", (_label, governanceReport, expectedCode) => {
     const result = evaluateMaintainerAppReadiness({ ...passingEvidence(), governanceReport });
-
     expect(reasonCodes(result)).toContain(expectedCode);
   });
 
@@ -262,9 +232,7 @@ describe("maintainer App readiness evaluation", () => {
     evidence.repositoryPermissions.admin = true;
     evidence.apiProbes.actions_read = false;
     evidence.governanceReport.status = "FAIL";
-
     const result = evaluateMaintainerAppReadiness(evidence);
-
     expect(result.status).toBe("FAIL");
     expect(reasonCodes(result)).toEqual(expect.arrayContaining([
       "maintenance_already_enabled",
@@ -279,18 +247,14 @@ describe("maintainer App readiness evaluation", () => {
   it("rejects retained governance evidence from a different protected main revision", () => {
     const evidence = passingEvidence();
     evidence.headSha = "b".repeat(40);
-
     const result = evaluateMaintainerAppReadiness(evidence);
-
     expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
   });
 
   it("rejects whitespace-wrapped protected main revision bytes", () => {
     const evidence = passingEvidence();
     evidence.governanceReport.protected_main_sha = ` ${"a".repeat(40)} `;
-
     const result = evaluateMaintainerAppReadiness(evidence);
-
     expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
   });
 });

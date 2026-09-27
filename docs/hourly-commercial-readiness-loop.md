@@ -73,7 +73,7 @@ read-only activation preflight
 | `blocked` | 하나 이상의 필수 근거가 누락·대기·실패·오래됨 상태 | 없음 |
 | `request_review` | 기계 검증과 사람 리뷰는 준비됐지만 현재 head Noema 승인만 없음 | 정확한 head SHA로 `noema-review` dispatch |
 | `review_in_progress` | 동일 저장소·PR·head에 대한 central review가 이미 queued/in progress | 중복 dispatch 없음 |
-| `merge` | 모든 fail-closed 조건 충족 | 최종 재조회 후 SHA-bound squash merge |
+| `merge` | 모든 fail-closed 조건 충족 | 최종 재조회 후 SHA-bound normal merge commit |
 | `operational_error` | GitHub API, pagination, JSON 또는 쓰기 실패 | 워크플로 실패 및 보고서 보존 |
 
 ## 필수 병합 근거
@@ -87,9 +87,15 @@ read-only activation preflight
 - `trivy-fs`
 - `dependency-review`
 
-필수 check는 이름만 일치해서는 안 되며 GitHub Check Runs 응답의 `app.slug`가 `github-actions`여야 합니다. 제3자 App이 같은 이름의 성공 check를 게시해도 필수 gate를 충족하지 못하며, 동일 이름의 신뢰된 check가 여러 개면 모두 성공해야 합니다.
+필수 check는 이름만 일치해서는 안 됩니다. GitHub Check Runs 응답의 이름과 `app.slug`가 각각 canonical 이름과 `github-actions`에 정확히 일치해야 하며, producer App id도 Noema governance owner contract의 App id `15368`과 같아야 합니다. 공백·대소문자 정규화로 lookalike producer를 승격하지 않습니다. 제3자 App이 같은 이름의 성공 check를 게시해도 필수 gate를 충족하지 못합니다.
 
-Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재실행 이력 때문에 과거 실패가 영구 차단하지 않도록 동일한 `check_suite.id`·`app.slug`·check 이름 안에서는 가장 최신 attempt만 유효하게 평가합니다. 반면 서로 다른 check suite가 같은 이름을 게시한 경우에는 각각 독립적인 필수 근거로 유지해, 중복 workflow나 별도 suite의 실패·대기를 숨기지 않습니다. suite 또는 producer 식별자가 불완전한 check는 제거하지 않고 관측 check로 남겨 실패-폐쇄 처리합니다.
+Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재실행 이력 때문에 과거 실패가 영구 차단하지 않도록 동일한 `check_suite.id`·producer·check 이름 안에서는 가장 최신 attempt만 유효하게 평가합니다. 반면 서로 다른 check suite가 같은 이름을 게시한 경우에는 각각 독립적인 필수 근거로 유지해, 중복 workflow나 별도 suite의 실패·대기를 숨기지 않습니다. `check.id`, `check_suite.id`, `name`, `app.slug` 중 하나가 누락되거나 유효하지 않은 check는 `latestCheckRunsBySuite()`에서 `TypeError`가 발생하고 PR 처리는 `operational_error`로 실패합니다. 비어 있지 않지만 canonical 값과 다른 이름이나 producer slug는 원문 identity로 유지하고 별도로 평가합니다.
+
+필수 check의 `check_suite.id`는 Actions workflow-run의 `check_suite_id`와 결합되어야 합니다. 해당 run은 `event=pull_request`이고 `head_sha`가 평가 중인 exact head여야 하며, `pull_requests` 배열에는 정확히 하나의 association만 있어야 합니다. 그 association의 PR number와 head SHA가 평가 대상 PR/head와 일치하고 `base.ref=main` 및 `base.sha`가 현재 PR base와 정확히 같아야 합니다. 다른 PR, 다른 head, stale base, 잘못된 base ref, association 누락·중복, duplicate suite는 `untrusted-workflow`로 실패 폐쇄합니다.
+
+Workflow source도 check별 canonical owner를 따라야 합니다. `verify`는 `.github/workflows/ci.yml`, `reviewer`는 `.github/workflows/reviewer-ci.yml`의 `repository_workflow`여야 합니다. Repository-local workflow는 Target repository의 `/actions/workflows/<id>` URL의 `<id>`와 동일한 workflow-run `workflow_id`를 가져야 하며, 누락·비정수·safe integer 범위 밖·불일치 값은 `untrusted-workflow`로 실패 폐쇄합니다. `scorecard`, `osv-scan`, `trivy-fs`, `dependency-review`는 organization-required `.github/workflows/security-scan.yml`의 `required_workflow`여야 합니다. Target repository의 `/actions/required_workflows/<id>` URL만으로는 source authority를 인정하지 않습니다. Numeric workflow id를 live ruleset의 owner tuple과 source repository metadata에 다시 결속해 `ContextualWisdomLab/.github`, repository id `1274066402`, `.github/workflows/security-scan.yml`, `refs/heads/main`과 정확히 일치하는 active workflow일 때만 `required_workflow`로 분류합니다. Metadata가 없거나 다르면 `untrusted-workflow`로 실패 폐쇄합니다. 다른 path·source 또는 malformed `workflow_url`도 동일하게 거부합니다.
+
+PR의 changed-file pagination은 GitHub PR payload의 `changed_files`와 개수가 정확히 일치해야 합니다. 이 증거가 불완전하면 merge admission을 계속하지 않고 operational error로 실패합니다. 또한 같은 PR이 `.github/workflows/ci.yml` 또는 `.github/workflows/reviewer-ci.yml`을 수정한 경우 해당 repository-local check는 자기 gate 구현으로 자신을 인증할 수 없으므로 `self-modified-workflow`로 처리합니다. Organization-required Security Scan은 Noema source-copy가 아니라 required-workflow provenance로 소비합니다.
 
 `reviewer-ci`는 path filter 없이 모든 PR에서 실행되어 100% line/branch coverage와 100% docstring coverage를 유지합니다. 추가로 관측된 check/status도 성공해야 합니다.
 
@@ -100,7 +106,12 @@ Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재�
 - unresolved review thread가 하나라도 있으면 병합하지 않습니다.
 - 사람과 bot을 포함해 reviewer별 최신 유효 상태가 `CHANGES_REQUESTED`이면 병합하지 않습니다.
 - Noema verdict는 `NOEMA_REVIEWER_LOGIN`과 정확히 일치하는 GitHub Bot만 신뢰합니다. 단순히 login에 `noema`가 포함되거나 body marker를 복제한 다른 App은 승인 주체가 될 수 없습니다.
-- 신뢰된 reviewer의 review에도 `Reviewer credential: noema-github-app`과 정확한 40자 head SHA marker가 모두 있어야 합니다.
+- 신뢰된 reviewer의 review는 GitHub review `commit_id`가 평가 중인 exact current head와 정확히 같아야 하며, `Reviewer credential: noema-github-app`과 정확한 40자 head SHA marker도 모두 있어야 합니다. `commit_id`가 누락·malformed·다른 SHA이면 body marker가 맞아도 authoritative Noema decision으로 인정하지 않습니다.
+- publisher credential은 literal ``- Reviewer credential: `noema-github-app` `` 줄, 그 뒤에 빈 줄 하나, 그 다음 canonical `noema-review-gate` marker가 이어지는 serialization일 때만 authority가 됩니다. 하이픈이 없는 bare credential line, 빈 줄이 없는 credential line, 앞선 본문의 동일 credential echo는 authority가 아닙니다. 앞선 본문에 같은 credential 문자열이 있어도 marker 바로 앞의 canonical publisher serialization이 누락되거나 다른 값이면 해당 review를 authoritative Noema decision으로 인정하지 않습니다.
+- 한 review body에는 `noema-review-gate` marker-like envelope가 정확히 하나만 있어야 하고, 그 envelope 전체가 canonical marker serialization과 정확히 일치해야 합니다. canonical marker가 정확히 하나여도 대소문자 변형, 추가 속성 등 다른 marker-like envelope가 함께 있으면 순서나 의도를 추정하지 않고 해당 review를 authoritative Noema decision으로 인정하지 않습니다.
+- 신뢰된 exact-head review가 canonical `noema-review-gate` marker를 포함하지만 `Reviewer credential: noema-github-app`을 잃은 경우, 그 review는 새 authority를 만들 수 없을 뿐 아니라 같은 head의 이전 Noema approval도 즉시 취소합니다. 반면 credential과 canonical gate marker가 모두 없는 ordinary review comment는 기존 Noema gate decision을 변경하지 않습니다.
+- Noema marker의 decision은 GitHub review `state`와도 정확히 결속합니다. `approve`는 정확한 `APPROVED`, `request_changes`와 `blocked`는 정확한 `CHANGES_REQUESTED`에서만 authoritative합니다. `state` 누락·소문자·incompatible 값이나 marker decision과 맞지 않는 state는 current-head decision으로 인정하지 않습니다.
+- 신뢰된 reviewer의 exact-head review가 `DISMISSED`이면 이전 Noema decision authority를 즉시 취소합니다. dismissed review의 body marker가 없거나 변형되어도 dismissal은 GitHub platform state이므로 이전 approval로 fallback하지 않으며, 이후에 제출된 새 canonical exact-head review만 authority를 다시 세울 수 있습니다.
 - 동일 head에 대한 central review workflow가 이미 active이면 재dispatch하지 않습니다.
 - 병합 직전 PR state, base=`main`, same-repository head, head SHA, mergeability, thread, review, check, status를 다시 수집합니다.
 - GitHub merge API에도 예상 SHA를 전달하므로 head가 움직이면 SHA-bound 병합이 거부됩니다.
@@ -157,11 +168,11 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`와 manifes
 2. `EXTERNAL_GATE_REMAINS`이면 public artifact만으로 누락된 prerequisite를 추정하지 않습니다. Repository 관리자 제어면과 access-controlled `maintainer-app-readiness` 증거에서 maintenance activation, App configuration, reviewer identity를 각각 확인합니다.
 3. Configuration 복구 시 `GITHUB_TOKEN` fallback이나 permission 확대를 추가하지 않습니다.
 4. `commercial-readiness-loop-report`에서 각 PR의 reason code를 확인합니다.
-5. `required_check_missing`이 있으면 workflow trigger, `app.slug=github-actions`, ruleset context 이름을 점검합니다.
+5. `required_check_missing`이 있으면 workflow trigger와 exact `app.slug=github-actions`, App id `15368`, `check_suite.id` / `check_suite_id`, PR/head/base, canonical workflow path/source, repository-workflow URL id/`workflow_id`, `changed_files` completeness, `self-modified-workflow`, ruleset context 이름을 함께 점검합니다.
 6. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 7. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
 8. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
-9. Noema 승인 marker가 존재하는데 `noema_current_head_approval_missing`이 남으면 `NOEMA_REVIEWER_LOGIN`이 실제 App bot login과 정확히 일치하는지 확인합니다.
+9. Noema 승인 marker가 존재하는데 `noema_current_head_approval_missing`이 남으면 `NOEMA_REVIEWER_LOGIN`이 실제 App bot login과 정확히 일치하는지, 해당 review의 GitHub `commit_id`가 exact current head인지, review body에 marker-like envelope가 정확히 하나이고 그 전체가 canonical marker인지, publisher credential이 literal ``- Reviewer credential: `noema-github-app` `` 줄 + 빈 줄 하나 + marker 순서로 직렬화되어 있는지, marker decision과 GitHub review `state`가 정확히 호환되는지(`approve`↔`APPROVED`, `request_changes`/`blocked`↔`CHANGES_REQUESTED`) 확인합니다. 하이픈 없는 bare credential line이나 빈 줄 없는 credential line은 authority가 아니며, 앞선 본문에 같은 credential 문자열이 있어도 canonical publisher serialization이 marker 바로 앞에서 누락·불일치하면 authority가 없습니다. 같은 head의 later canonical gate marker가 credential을 잃었거나 trusted exact-head review가 `DISMISSED`이면 이전 approval authority가 취소된 상태이므로 새 canonical credentialed review가 필요합니다.
 10. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
 
 상세 RCA와 설계 근거는 `docs/doctoring/hourly-scheduler-activation-feasibility.md`에 기록합니다.

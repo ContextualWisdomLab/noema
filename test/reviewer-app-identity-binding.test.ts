@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_CHECK_NAMES,
+  REQUIRED_MAIN_WORKFLOW,
+} from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
@@ -16,7 +20,7 @@ function compliantGovernanceRules() {
       ruleset_source_type: "Repository",
       ruleset_source: repository,
       parameters: {
-        allowed_merge_methods: ["squash"],
+        allowed_merge_methods: ["merge"],
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
@@ -32,9 +36,9 @@ function compliantGovernanceRules() {
       parameters: {
         do_not_enforce_on_create: false,
         strict_required_status_checks_policy: true,
-        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context) => ({
           context,
-          integration_id: 15_368 + index,
+          integration_id: REQUIRED_MAIN_CHECK_INTEGRATION_ID,
         })),
       },
     },
@@ -49,6 +53,19 @@ function compliantGovernanceRules() {
       ruleset_id: 101,
       ruleset_source_type: "Repository",
       ruleset_source: repository,
+    },
+    {
+      type: "workflows",
+      ruleset_id: 18_794_436,
+      ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+      ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+      parameters: {
+        workflows: [{
+          repository_id: REQUIRED_MAIN_WORKFLOW.repository_id,
+          path: REQUIRED_MAIN_WORKFLOW.path,
+          ref: REQUIRED_MAIN_WORKFLOW.ref,
+        }],
+      },
     },
   ];
 }

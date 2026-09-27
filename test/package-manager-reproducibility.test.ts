@@ -36,9 +36,13 @@ function runFixtureNpm(
   args: string[],
   extraEnv: Record<string, string> = {},
 ) {
+  const npmExecPath = process.env.npm_execpath;
+  if (!npmExecPath) {
+    throw new Error("npm_execpath is required to run the repository-pinned npm CLI");
+  }
   const userConfig = join(cwd, "empty-user-npmrc");
   writeFileSync(userConfig, "", "utf8");
-  return spawnSync("npm", args, {
+  return spawnSync(process.execPath, [npmExecPath, ...args], {
     cwd,
     encoding: "utf8",
     env: {
@@ -51,6 +55,19 @@ function runFixtureNpm(
 }
 
 describe("package-manager reproducibility contract", () => {
+  it("runs fixture commands through the repository-pinned npm CLI", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "noema-pinned-npm-"));
+
+    try {
+      const version = runFixtureNpm(fixtureRoot, ["--version"]);
+
+      expect(version.status, `${version.stdout}\n${version.stderr}`).toBe(0);
+      expect(version.stdout.trim()).toBe("11.17.0");
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it("pins the reviewed Node and npm identities in repository metadata", () => {
     expect(packageJson.packageManager).toBe("npm@11.17.0");
     expect(packageJson.devEngines?.runtime).toEqual({

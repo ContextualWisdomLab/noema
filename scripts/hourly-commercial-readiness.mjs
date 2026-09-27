@@ -5,6 +5,10 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluatePullRequest } from "./lib/commercial-readiness-loop.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import {
+  REQUIRED_MAIN_CHECK_INTEGRATION_ID,
+  REQUIRED_MAIN_WORKFLOW,
+} from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
@@ -12,7 +16,8 @@ const MAX_GH_OUTPUT_BYTES = 16 * 1024 * 1024;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const botLoginPattern = /^[A-Za-z0-9-]+\[bot\]$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
-const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/gi;
+const noemaMarkerPattern = /<!-- noema-review-gate head_sha=([0-9a-f]{40}) decision=(approve|request_changes|blocked) -->/g;
+const noemaMarkerEnvelopePattern = /<!--\s*noema-review-gate\b[\s\S]*?-->/gi;
 const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
 const reviewThreadQuery = "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}";
 const activeWorkflowRunStatuses = new Set([
@@ -22,6 +27,38 @@ const activeWorkflowRunStatuses = new Set([
   "queued",
   "in_progress",
 ]);
+const requiredCheckWorkflowAuthority = Object.freeze({
+  verify: Object.freeze({
+    path: ".github/workflows/ci.yml",
+    source: "repository_workflow",
+    protectedFromPullRequestMutation: true,
+  }),
+  reviewer: Object.freeze({
+    path: ".github/workflows/reviewer-ci.yml",
+    source: "repository_workflow",
+    protectedFromPullRequestMutation: true,
+  }),
+  scorecard: Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "osv-scan": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "trivy-fs": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+  "dependency-review": Object.freeze({
+    path: ".github/workflows/security-scan.yml",
+    source: "required_workflow",
+    protectedFromPullRequestMutation: false,
+  }),
+});
 
 function bound(value, limit = MAX_REPORT_DETAIL_CHARS) {
   const text = String(value ?? "")
@@ -103,35 +140,47 @@ export function flattenArrayPages(pages) {
   });
 }
 
+/** Preserve observed check-run time evidence without inventing chronology when GitHub omits it. */
 function checkRunTimestamp(check) {
-  return Math.max(
-    Date.parse(check?.completed_at || "") || 0,
-    Date.parse(check?.started_at || "") || 0,
+  const completedAt = typeof check?.completed_at === "string"
+    ? Date.parse(check.completed_at)
+    : Number.NaN;
+  const startedAt = typeof check?.started_at === "string"
+    ? Date.parse(check.started_at)
+    : Number.NaN;
+  const timestamps = [completedAt, startedAt].filter(Number.isFinite);
+  return timestamps.length === 0 ? null : Math.max(...timestamps);
+}
+
+/** Order retries by GitHub's timestamp semantics; reject unknown chronology instead of inventing it. */
+function checkRunChronologicalOrder(left, right) {
+  const leftTime = checkRunTimestamp(left);
+  const rightTime = checkRunTimestamp(right);
+  if (leftTime === null || rightTime === null) {
+    const invalid = leftTime === null ? left : right;
+    throw new TypeError(
+      `Check run chronology metadata is incomplete for id ${String(invalid?.id ?? "missing")}.`,
+    );
+  }
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  const leftId = Number(left?.id);
+  const rightId = Number(right?.id);
+  if (leftId === rightId) {
+    return 0;
+  }
+  throw new TypeError(
+    `Check run chronology is ambiguous for ids ${String(left?.id ?? "missing")} and ${String(right?.id ?? "missing")}.`,
   );
 }
 
-function checkRunChronologicalOrder(left, right) {
-  const leftId = Number(left?.id);
-  const rightId = Number(right?.id);
-  if (
-    Number.isSafeInteger(leftId)
-    && Number.isSafeInteger(rightId)
-    && leftId !== rightId
-  ) {
-    return leftId - rightId;
-  }
-  const timeDelta = checkRunTimestamp(left) - checkRunTimestamp(right);
-  if (timeDelta !== 0) {
-    return timeDelta;
-  }
-  return leftId - rightId;
-}
-
+/** Build an exact API identity key without normalizing check-name or producer authority. */
 function checkRunSuiteKey(check) {
   const checkId = Number(check?.id);
   const suiteId = Number(check?.check_suite?.id);
-  const name = String(check?.name ?? "").trim();
-  const appSlug = String(check?.app?.slug ?? "").trim().toLowerCase();
+  const name = typeof check?.name === "string" ? check.name : "";
+  const appSlug = typeof check?.app?.slug === "string" ? check.app.slug : "";
   if (
     !Number.isSafeInteger(checkId)
     || checkId <= 0
@@ -145,6 +194,7 @@ function checkRunSuiteKey(check) {
   return `${suiteId}\u0000${appSlug}\u0000${name}`;
 }
 
+/** Preserve exact check-suite identity while selecting only the latest chronological retry for each check. */
 export function latestCheckRunsBySuite(checkRuns) {
   const latestBySuite = new Map();
   for (const check of Array.isArray(checkRuns) ? checkRuns : []) {
@@ -172,6 +222,172 @@ export function latestCheckRunsBySuite(checkRuns) {
   });
 }
 
+/** Accept a required-workflow run id only when URL identity and payload workflow_id agree exactly. */
+function requiredWorkflowRunId(run, repository) {
+  const workflowUrl = String(run?.workflow_url ?? "");
+  const requiredWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/required_workflows/`;
+  if (!workflowUrl.startsWith(requiredWorkflowPrefix)) {
+    return null;
+  }
+  const suffix = workflowUrl.slice(requiredWorkflowPrefix.length);
+  if (!/^[1-9][0-9]*$/.test(suffix)) {
+    return null;
+  }
+  const workflowId = Number(suffix);
+  return Number.isSafeInteger(workflowId)
+    && workflowId > 0
+    && run?.workflow_id === workflowId
+    ? workflowId
+    : null;
+}
+
+/** Require live required-workflow metadata to match the canonical owner contract without normalization. */
+function requiredWorkflowMetadataIsCanonical(metadata, workflowId) {
+  return metadata?.workflow_id === workflowId
+    && metadata?.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && metadata?.path === REQUIRED_MAIN_WORKFLOW.path
+    && metadata?.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && metadata?.sha === REQUIRED_MAIN_WORKFLOW.sha
+    && metadata?.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+    && metadata?.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source
+    && metadata?.state === "active"
+    && typeof metadata?.repository === "string"
+    && metadata.repository.startsWith(`${REQUIRED_MAIN_WORKFLOW.ruleset_source}/`);
+}
+
+/** Classify workflow source only after repository-local or required-workflow identity is proven exact. */
+function workflowRunSource(run, repository) {
+  const workflowUrl = String(run?.workflow_url ?? "");
+  const repositoryWorkflowPrefix = `https://api.github.com/repos/${repository}/actions/workflows/`;
+  const requiredWorkflowId = requiredWorkflowRunId(run, repository);
+  if (requiredWorkflowId !== null) {
+    return requiredWorkflowMetadataIsCanonical(
+      run?.required_workflow_metadata,
+      requiredWorkflowId,
+    ) ? "required_workflow" : "unknown";
+  }
+  if (workflowUrl.startsWith(repositoryWorkflowPrefix)) {
+    const suffix = workflowUrl.slice(repositoryWorkflowPrefix.length);
+    if (!/^[1-9][0-9]*$/.test(suffix)) {
+      return "unknown";
+    }
+    const workflowId = Number(suffix);
+    return Number.isSafeInteger(workflowId)
+      && workflowId > 0
+      && run?.workflow_id === workflowId
+      ? "repository_workflow"
+      : "unknown";
+  }
+  return "unknown";
+}
+
+/** Bind workflow evidence to exactly one current PR association with the current head and base identities. */
+function workflowRunMatchesTargetPullRequest(
+  run,
+  expectedPullNumber,
+  expectedHeadSha,
+  expectedBaseRef,
+  expectedBaseSha,
+) {
+  if (
+    !Number.isSafeInteger(expectedPullNumber)
+    || expectedPullNumber <= 0
+    || expectedBaseRef !== "main"
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
+  ) {
+    return false;
+  }
+  const pullRequests = Array.isArray(run?.pull_requests) ? run.pull_requests : [];
+  if (pullRequests.length !== 1) {
+    return false;
+  }
+  const association = pullRequests[0];
+  return association?.number === expectedPullNumber
+    && association?.head?.sha === expectedHeadSha
+    && association?.base?.ref === expectedBaseRef
+    && association?.base?.sha === expectedBaseSha;
+}
+
+/** Bind each check suite to the exact current-head, current-base, current-PR Actions workflow run that produced it. */
+export function workflowAuthorityByCheckSuite(
+  workflowRuns,
+  repository,
+  expectedHeadSha,
+  expectedPullNumber,
+  expectedBaseRef,
+  expectedBaseSha,
+) {
+  const authorityBySuite = new Map();
+  if (
+    !repositoryPattern.test(String(repository ?? ""))
+    || !fullShaPattern.test(String(expectedHeadSha ?? ""))
+    || !Number.isSafeInteger(expectedPullNumber)
+    || expectedPullNumber <= 0
+    || expectedBaseRef !== "main"
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
+  ) {
+    return authorityBySuite;
+  }
+  for (const run of Array.isArray(workflowRuns) ? workflowRuns : []) {
+    const suiteId = Number(run?.check_suite_id);
+    if (!Number.isSafeInteger(suiteId) || suiteId <= 0) {
+      continue;
+    }
+    const authority = (
+      run?.event === "pull_request"
+      && run?.head_sha === expectedHeadSha
+      && workflowRunMatchesTargetPullRequest(
+        run,
+        expectedPullNumber,
+        expectedHeadSha,
+        expectedBaseRef,
+        expectedBaseSha,
+      )
+    ) ? {
+        path: String(run?.path ?? ""),
+        source: workflowRunSource(run, repository),
+      }
+      : { path: "", source: "unknown" };
+    if (authorityBySuite.has(suiteId)) {
+      authorityBySuite.set(suiteId, { path: "", source: "unknown" });
+      continue;
+    }
+    authorityBySuite.set(suiteId, authority);
+  }
+  return authorityBySuite;
+}
+
+/** Preserve the GitHub Actions producer only when the required check has canonical workflow provenance and App identity. */
+export function commercialCheckAppSlug(check, workflowAuthorities, changedPaths) {
+  const appSlug = String(check?.app?.slug ?? "");
+  const name = String(check?.name ?? "").trim();
+  const expected = requiredCheckWorkflowAuthority[name];
+  if (!expected) {
+    return appSlug;
+  }
+  if (appSlug !== "github-actions") {
+    return appSlug;
+  }
+  if (check?.app?.id !== REQUIRED_MAIN_CHECK_INTEGRATION_ID) {
+    return "untrusted-producer";
+  }
+  const suiteId = Number(check?.check_suite?.id);
+  const authority = workflowAuthorities instanceof Map
+    ? workflowAuthorities.get(suiteId)
+    : null;
+  if (!authority || authority.path !== expected.path || authority.source !== expected.source) {
+    return "untrusted-workflow";
+  }
+  if (
+    expected.protectedFromPullRequestMutation
+    && Array.isArray(changedPaths)
+    && changedPaths.includes(expected.path)
+  ) {
+    return "self-modified-workflow";
+  }
+  return appSlug;
+}
+
 function paginatedArray(endpoint) {
   const pages = runGhJson(["api", "--paginate", "--slurp", endpoint]);
   return flattenArrayPages(pages);
@@ -191,13 +407,98 @@ function paginatedObjectItems(endpoint, key) {
   });
 }
 
-function chronologicalReviewOrder(left, right) {
-  const leftTime = Date.parse(left?.submitted_at || "") || 0;
-  const rightTime = Date.parse(right?.submitted_at || "") || 0;
-  if (leftTime !== rightTime) {
-    return leftTime - rightTime;
+/** Retain only organization-owned required-workflow observations needed to prove canonical source authority. */
+function observedRequiredWorkflows(rules) {
+  return (Array.isArray(rules) ? rules : [])
+    .filter((rule) => (
+      rule?.type === "workflows"
+      && rule?.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+      && rule?.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source
+    ))
+    .flatMap((rule) => {
+      const workflows = rule?.parameters?.workflows;
+      return Array.isArray(workflows) ? workflows : [];
+    })
+    .map((workflow) => ({
+      repository_id: workflow?.repository_id,
+      path: workflow?.path,
+      ref: workflow?.ref,
+      sha: workflow?.sha === undefined ? null : workflow.sha,
+    }));
+}
+
+/** Accept exactly one ruleset observation that matches the canonical required-workflow authority tuple. */
+function canonicalRequiredWorkflowObservation(rules) {
+  const matches = observedRequiredWorkflows(rules).filter((workflow) => (
+    workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && workflow.path === REQUIRED_MAIN_WORKFLOW.path
+    && workflow.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && workflow.sha === REQUIRED_MAIN_WORKFLOW.sha
+  ));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** Resolve target required-workflow IDs through the live canonical owner repository and active main rules. */
+function bindRequiredWorkflowMetadata(repository, workflowRuns) {
+  const runs = Array.isArray(workflowRuns) ? workflowRuns : [];
+  const requiredIds = new Set(
+    runs.map((run) => requiredWorkflowRunId(run, repository)).filter((id) => id !== null),
+  );
+  if (requiredIds.size === 0) {
+    return runs;
   }
-  return Number(left?.id || 0) - Number(right?.id || 0);
+
+  const rules = paginatedArray(`repos/${repository}/rules/branches/main?per_page=100`);
+  const requiredWorkflow = canonicalRequiredWorkflowObservation(rules);
+  if (!requiredWorkflow) {
+    return runs;
+  }
+
+  const sourceRepository = runGhJson([
+    "api",
+    `repositories/${REQUIRED_MAIN_WORKFLOW.repository_id}`,
+  ]);
+  if (
+    sourceRepository?.id !== REQUIRED_MAIN_WORKFLOW.repository_id
+    || sourceRepository?.owner?.login !== REQUIRED_MAIN_WORKFLOW.ruleset_source
+    || typeof sourceRepository?.full_name !== "string"
+  ) {
+    return runs;
+  }
+
+  const sourceWorkflows = paginatedObjectItems(
+    `repos/${sourceRepository.full_name}/actions/workflows?per_page=100`,
+    "workflows",
+  );
+  const canonicalWorkflowIds = new Set(sourceWorkflows
+    .filter((workflow) => (
+      workflow?.path === REQUIRED_MAIN_WORKFLOW.path
+      && workflow?.state === "active"
+      && Number.isSafeInteger(workflow?.id)
+      && workflow.id > 0
+    ))
+    .map((workflow) => workflow.id));
+
+  return runs.map((run) => {
+    const workflowId = requiredWorkflowRunId(run, repository);
+    if (workflowId === null || !canonicalWorkflowIds.has(workflowId)) {
+      return run;
+    }
+    return {
+      ...run,
+      required_workflow_metadata: {
+        workflow_id: workflowId,
+        repository: sourceRepository.full_name,
+        repository_id: sourceRepository.id,
+        path: requiredWorkflow.path,
+        ref: requiredWorkflow.ref,
+        sha: requiredWorkflow.sha,
+        ruleset_source_type: REQUIRED_MAIN_WORKFLOW.ruleset_source_type,
+        ruleset_source: REQUIRED_MAIN_WORKFLOW.ruleset_source,
+        state: "active",
+      },
+    };
+  });
 }
 
 function isTrustedNoemaBot(review, trustedReviewerLogin) {
@@ -208,11 +509,12 @@ function isTrustedNoemaBot(review, trustedReviewerLogin) {
     && login === expectedLogin;
 }
 
+/** Preserve exact reviewer login/state authority in GitHub REST list order so later blockers cannot be reordered away. */
 export function latestReviewStates(reviews) {
   const decisions = new Map();
-  for (const review of [...(Array.isArray(reviews) ? reviews : [])].sort(chronologicalReviewOrder)) {
-    const reviewer = String(review?.user?.login ?? "").trim();
-    const state = String(review?.state ?? "").toUpperCase();
+  for (const review of Array.isArray(reviews) ? reviews : []) {
+    const reviewer = typeof review?.user?.login === "string" ? review.user.login : "";
+    const state = typeof review?.state === "string" ? review.state : "";
     if (!reviewer) {
       continue;
     }
@@ -225,64 +527,92 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
+/** Accept only the exact configured reviewer login and one exact publisher-bound head/base Noema gate envelope. */
+export function parseNoemaReviewDecision(
+  reviews,
+  expectedHeadSha,
+  expectedBaseSha,
+  trustedReviewerLogin,
+) {
   if (
     !fullShaPattern.test(String(expectedHeadSha ?? ""))
+    || !fullShaPattern.test(String(expectedBaseSha ?? ""))
     || !botLoginPattern.test(String(trustedReviewerLogin ?? ""))
   ) {
     return null;
   }
-  const candidates = [];
+  const expectedReviewerLogin = String(trustedReviewerLogin ?? "");
+  let currentDecision = null;
   for (const review of Array.isArray(reviews) ? reviews : []) {
-    if (!isTrustedNoemaBot(review, trustedReviewerLogin)) {
+    if (
+      review?.user?.login !== expectedReviewerLogin
+      || !isTrustedNoemaBot(review, trustedReviewerLogin)
+    ) {
       continue;
     }
-    if (review?.commit_id && review.commit_id !== expectedHeadSha) {
+    if (review?.commit_id !== expectedHeadSha) {
+      continue;
+    }
+    const state = typeof review?.state === "string" ? review.state : "";
+    if (state === "DISMISSED") {
+      currentDecision = null;
       continue;
     }
     const body = String(review?.body ?? "");
-    if (!body.includes(noemaCredentialMarker)) {
-      continue;
-    }
     noemaMarkerPattern.lastIndex = 0;
+    noemaMarkerEnvelopePattern.lastIndex = 0;
+    const markers = [];
+    const markerEnvelopes = [];
     let marker;
-    let latestMarker = null;
     while ((marker = noemaMarkerPattern.exec(body)) !== null) {
-      latestMarker = marker;
+      markers.push(marker);
     }
-    if (!latestMarker || latestMarker[1].toLowerCase() !== expectedHeadSha.toLowerCase()) {
+    let markerEnvelope;
+    while ((markerEnvelope = noemaMarkerEnvelopePattern.exec(body)) !== null) {
+      markerEnvelopes.push(markerEnvelope[0]);
+    }
+    const hasCredential = body.includes(noemaCredentialMarker);
+    if (!hasCredential && markerEnvelopes.length === 0) {
       continue;
     }
-    const decision = latestMarker[2].toLowerCase();
-    const state = String(review?.state ?? "").toUpperCase();
+    currentDecision = null;
+    if (
+      markerEnvelopes.length !== 1
+      || markers.length !== 1
+      || markers[0][0] !== markerEnvelopes[0]
+      || markers[0][1] !== expectedHeadSha
+    ) {
+      continue;
+    }
+    const markerStart = body.lastIndexOf(markerEnvelopes[0]);
+    const authorityPrefix = body.slice(0, markerStart);
+    const publisherAuthorityBound = authorityPrefix.endsWith(
+      `- Base SHA: \`${expectedBaseSha}\`\n- ${noemaCredentialMarker}\n\n`,
+    );
+    if (!publisherAuthorityBound) {
+      continue;
+    }
+    const decision = markers[0][2];
     const compatible = decision === "approve"
       ? state === "APPROVED"
       : state === "CHANGES_REQUESTED";
     if (!compatible) {
       continue;
     }
-    candidates.push({ ...review, decision });
+    currentDecision = decision;
   }
-  candidates.sort(chronologicalReviewOrder);
-  return candidates.at(-1)?.decision ?? null;
+  return currentDecision;
 }
 
+/** Preserve GitHub REST reverse-chronological Commit Status order without synthesizing timestamp chronology. */
 export function latestStatuses(statuses) {
   const latestByContext = new Map();
-  const ordered = [...(Array.isArray(statuses) ? statuses : [])].sort((left, right) => {
-    const leftTime = Date.parse(left?.created_at || "") || 0;
-    const rightTime = Date.parse(right?.created_at || "") || 0;
-    if (leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return Number(right?.id || 0) - Number(left?.id || 0);
-  });
-  for (const status of ordered) {
-    const context = String(status?.context ?? "").trim();
+  for (const status of Array.isArray(statuses) ? statuses : []) {
+    const context = typeof status?.context === "string" ? status.context : "";
     if (context && !latestByContext.has(context)) {
       latestByContext.set(context, {
         context,
-        state: String(status?.state ?? "").toLowerCase(),
+        state: typeof status?.state === "string" ? status.state : "",
       });
     }
   }
@@ -342,18 +672,41 @@ function listOpenPullRequests(repository) {
   return paginatedArray(`repos/${repository}/pulls?state=open&per_page=100`);
 }
 
+/** Assemble fail-closed current PR evidence only after complete changed-file, workflow, review, and status authority is observed. */
 function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLogin) {
   const pull = fetchPullRequest(repository, pullNumber);
   const headSha = String(pull?.head?.sha ?? "");
+  const baseRef = String(pull?.base?.ref ?? "");
+  const baseSha = String(pull?.base?.sha ?? "");
   if (!fullShaPattern.test(headSha)) {
     throw new Error(`Pull request #${pullNumber} did not expose a full head SHA.`);
   }
-  const checkRuns = latestCheckRunsBySuite(paginatedObjectItems(
+  const changedFiles = paginatedArray(
+    `repos/${repository}/pulls/${pullNumber}/files?per_page=100`,
+  );
+  if (!Number.isSafeInteger(pull?.changed_files) || pull.changed_files !== changedFiles.length) {
+    throw new Error(`Pull request #${pullNumber} changed-file evidence is incomplete.`);
+  }
+  const changedPaths = changedFiles.map((file) => String(file?.filename ?? ""));
+  const rawCheckRuns = latestCheckRunsBySuite(paginatedObjectItems(
     `repos/${repository}/commits/${headSha}/check-runs?filter=all&per_page=100`,
     "check_runs",
-  )).map((check) => ({
+  ));
+  const workflowRuns = paginatedObjectItems(
+    `repos/${repository}/actions/runs?head_sha=${headSha}&event=pull_request&per_page=100`,
+    "workflow_runs",
+  );
+  const workflowAuthorities = workflowAuthorityByCheckSuite(
+    bindRequiredWorkflowMetadata(repository, workflowRuns),
+    repository,
+    headSha,
+    pullNumber,
+    baseRef,
+    baseSha,
+  );
+  const checkRuns = rawCheckRuns.map((check) => ({
     name: String(check?.name ?? ""),
-    appSlug: String(check?.app?.slug ?? ""),
+    appSlug: commercialCheckAppSlug(check, workflowAuthorities, changedPaths),
     status: String(check?.status ?? ""),
     conclusion: check?.conclusion == null ? null : String(check.conclusion),
   }));
@@ -370,7 +723,8 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     title: bound(pull?.title || `Pull request #${pullNumber}`, 240),
     state: String(pull?.state ?? ""),
     draft: pull?.draft,
-    baseRef: String(pull?.base?.ref ?? ""),
+    baseRef,
+    baseSha,
     headRepository: String(pull?.head?.repo?.full_name ?? ""),
     headSha,
     mergeable: pull?.mergeable,
@@ -380,6 +734,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     noemaReviewDecision: parseNoemaReviewDecision(
       reviews,
       headSha,
+      baseSha,
       trustedNoemaReviewerLogin,
     ),
     checkRuns,
@@ -387,7 +742,8 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
   };
 }
 
-function assertLiveHead(repository, pullNumber, expectedHeadSha) {
+/** Revalidate exact live head identity and, when supplied, base SHA immediately before an authority-bearing write. */
+function assertLiveHead(repository, pullNumber, expectedHeadSha, expectedBaseSha = null) {
   const live = fetchPullRequest(repository, pullNumber);
   if (
     !live
@@ -395,9 +751,11 @@ function assertLiveHead(repository, pullNumber, expectedHeadSha) {
     || live?.base?.ref !== "main"
     || live?.head?.sha !== expectedHeadSha
     || live?.head?.repo?.full_name !== repository
+    || (expectedBaseSha !== null && live?.base?.sha !== expectedBaseSha)
   ) {
     throw new Error(
-      `Pull request #${pullNumber} changed before the write; expected open main ${expectedHeadSha}.`,
+      `Pull request #${pullNumber} changed before the write; expected open main ${expectedHeadSha}`
+      + (expectedBaseSha === null ? "." : ` on base ${expectedBaseSha}.`),
     );
   }
 }
@@ -452,6 +810,7 @@ export function shouldDispatchProductDevelopment(apply, operationalErrorCount) {
     && operationalErrorCount === 0;
 }
 
+/** Revalidate the exact live head immediately before issuing a SHA-bound normal merge request. */
 function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const expectedHeadSha = snapshot.headSha;
   assertLiveHead(repository, snapshot.number, expectedHeadSha);
@@ -466,10 +825,11 @@ function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
       `Pull request #${snapshot.number} no longer satisfies the exact-head merge decision.`,
     );
   }
+  assertLiveHead(repository, snapshot.number, expectedHeadSha, freshSnapshot.baseSha);
   const payload = {
     commit_title: `${snapshot.title} (#${snapshot.number})`,
     commit_message: "Merged by Noema's hourly commercial-readiness loop after exact-head validation.",
-    merge_method: "squash",
+    merge_method: "merge",
     sha: expectedHeadSha,
   };
   const result = runGhJson(
@@ -560,6 +920,7 @@ function writeReport(reportPath, report) {
   writeSummary(report);
 }
 
+/** Execute one commercial-readiness pass while preserving exact-head evidence and fail-closed merge authority. */
 export function main(argv = process.argv.slice(2)) {
   const { apply, reportPath } = parseArguments(argv);
   const repository = String(process.env.GITHUB_REPOSITORY ?? "").trim();
@@ -620,7 +981,7 @@ export function main(argv = process.argv.slice(2)) {
           trustedNoemaReviewerLogin,
         );
         result.result = "merged";
-        result.detail = `Squash-merged at ${mergeSha || "GitHub-generated commit"}.`;
+        result.detail = `Merged normally at ${mergeSha || "GitHub-generated commit"}.`;
       }
       report.results.push(result);
     } catch (error) {

@@ -187,18 +187,28 @@ def test_load_manifest_fetches_when_no_file(monkeypatch) -> None:
 
 
 def test_publish_adapter_calls_github(monkeypatch) -> None:
-    """The default publisher adapter forwards to github_io.publish_verdict."""
+    """The default publisher adapter forwards evaluated head/base authority to GitHub I/O."""
     captured = {}
+    base_sha = "b" * 40
 
-    def fake_publish(repo, pr_number, verdict, head_sha, *, token_source):
+    def fake_publish(repo, pr_number, verdict, head_sha, *, token_source, base_sha):
         captured["repo"] = repo
         captured["token_source"] = token_source
+        captured["base_sha"] = base_sha
         return "APPROVE"
 
     monkeypatch.setattr(cli, "publish_verdict", fake_publish)
-    event = cli._publish("o/r", 9, ReviewVerdict(verdict=Verdict.APPROVE, summary="ok"), "h", "SRC")
+    event = cli._publish(
+        "o/r",
+        9,
+        ReviewVerdict(verdict=Verdict.APPROVE, summary="ok"),
+        "h",
+        "SRC",
+        base_sha,
+    )
     assert event == "APPROVE"
     assert captured["token_source"] == "SRC"
+    assert captured["base_sha"] == base_sha
 
 
 def test_main_requires_repo_without_manifest() -> None:

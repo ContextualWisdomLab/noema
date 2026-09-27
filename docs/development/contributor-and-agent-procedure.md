@@ -77,8 +77,8 @@ Prerequisites:
 ### Commercial readiness (merge authority)
 
 `.github/workflows/hourly-commercial-readiness.yml` inspects open pull requests
-and, only when current-head evidence is complete, performs a SHA-bound squash
-merge. It does not checkout or execute PR-branch code.
+and, only when current-head evidence is complete, performs a SHA-bound normal
+merge commit. It does not checkout or execute PR-branch code.
 
 Operator narrative:
 [`docs/hourly-commercial-readiness-loop.md`](../hourly-commercial-readiness-loop.md).

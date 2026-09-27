@@ -7,20 +7,39 @@ export const REQUIRED_MAIN_CHECK_NAMES = Object.freeze([
   "dependency-review",
 ]);
 
-function normalized(value) {
-  return typeof value === "string" ? value.trim() : "";
+export const REQUIRED_MAIN_CHECK_INTEGRATION_ID = 15_368;
+
+export const REQUIRED_MAIN_WORKFLOW = Object.freeze({
+  repository_id: 1_274_066_402,
+  path: ".github/workflows/security-scan.yml",
+  ref: "refs/heads/main",
+  sha: null,
+  ruleset_source_type: "Organization",
+  ruleset_source: "ContextualWisdomLab",
+});
+
+/** Preserve authority-bearing API strings only when their serialization is already exact. */
+function exactAuthorityString(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim()
+    ? value
+    : "";
 }
 
+/** Admit only positive safe integers where GitHub identity fields require numeric authority. */
 function positiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+/** Return a rule parameter object without trusting malformed or null parameter payloads. */
 function ruleParameters(rule) {
   return rule?.parameters && typeof rule.parameters === "object"
     ? rule.parameters
     : {};
 }
 
+/** Record one audit result and mirror failures into the bounded failure list. */
 function addCheck(checks, failures, code, pass, detail) {
   const check = { code, pass, detail };
   checks.push(check);
@@ -29,12 +48,14 @@ function addCheck(checks, failures, code, pass, detail) {
   }
 }
 
+/** Select only rules whose GitHub API type is already serialized exactly as the expected authority. */
 function rulesOfType(rules, type) {
-  return rules.filter((rule) => normalized(rule?.type) === type);
+  return rules.filter((rule) => rule?.type === type);
 }
 
+/** Extract required-workflow observations without normalizing owner, path, ref, SHA, or source identity. */
 function observedWorkflowControls(rules) {
-  return rulesOfType(rules, "workflows").flatMap((rule) => {
+  return rules.filter((rule) => rule?.type === "workflows").flatMap((rule) => {
     const workflows = ruleParameters(rule).workflows;
     if (!Array.isArray(workflows)) {
       return [];
@@ -43,15 +64,29 @@ function observedWorkflowControls(rules) {
       repository_id: positiveInteger(workflow?.repository_id)
         ? workflow.repository_id
         : null,
-      path: normalized(workflow?.path) || "unknown",
-      ref: normalized(workflow?.ref) || "unknown",
+      path: exactAuthorityString(workflow?.path) || "unknown",
+      ref: exactAuthorityString(workflow?.ref) || "unknown",
+      sha: workflow?.sha === undefined || workflow?.sha === null
+        ? null
+        : exactAuthorityString(workflow.sha) || "unknown",
       ruleset_id: positiveInteger(rule?.ruleset_id) ? rule.ruleset_id : null,
-      ruleset_source_type: normalized(rule?.ruleset_source_type) || "unknown",
-      ruleset_source: normalized(rule?.ruleset_source) || "unknown",
+      ruleset_source_type: exactAuthorityString(rule?.ruleset_source_type) || "unknown",
+      ruleset_source: exactAuthorityString(rule?.ruleset_source) || "unknown",
     }));
   });
 }
 
+/** Match the organization-owned Security Scan workflow only on its stable canonical authority tuple. */
+function isCanonicalRequiredWorkflow(workflow) {
+  return workflow.repository_id === REQUIRED_MAIN_WORKFLOW.repository_id
+    && workflow.path === REQUIRED_MAIN_WORKFLOW.path
+    && workflow.ref === REQUIRED_MAIN_WORKFLOW.ref
+    && workflow.sha === REQUIRED_MAIN_WORKFLOW.sha
+    && workflow.ruleset_source_type === REQUIRED_MAIN_WORKFLOW.ruleset_source_type
+    && workflow.ruleset_source === REQUIRED_MAIN_WORKFLOW.ruleset_source;
+}
+
+/** Build the fail-closed observed-control shape used when rule evidence is structurally invalid. */
 function emptyObservedControls() {
   return {
     pull_request_rule_present: false,
@@ -62,6 +97,13 @@ function emptyObservedControls() {
   };
 }
 
+/**
+ * Evaluate effective main-branch governance evidence without upgrading normalized lookalikes into authority.
+ *
+ * @param {unknown} rules active GitHub rules applying to protected main
+ * @returns {{status: "PASS" | "FAIL", checks: Array, failures: Array, observed_controls: object}}
+ * bounded governance decision and retained observations
+ */
 export function evaluateMainGovernanceRules(rules) {
   const checks = [];
   const failures = [];
@@ -85,6 +127,7 @@ export function evaluateMainGovernanceRules(rules) {
   const statusRules = rulesOfType(rules, "required_status_checks");
   const nonFastForwardRules = rulesOfType(rules, "non_fast_forward");
   const deletionRules = rulesOfType(rules, "deletion");
+  const requiredWorkflows = observedWorkflowControls(rules);
 
   addCheck(
     checks,
@@ -121,6 +164,17 @@ export function evaluateMainGovernanceRules(rules) {
     deletionRules.length > 0
       ? "Main deletion is restricted by an active deletion rule."
       : "No active deletion rule protects main.",
+  );
+
+  const canonicalSecurityWorkflowPresent = requiredWorkflows.some(isCanonicalRequiredWorkflow);
+  addCheck(
+    checks,
+    failures,
+    "required_security_workflow_missing",
+    canonicalSecurityWorkflowPresent,
+    canonicalSecurityWorkflowPresent
+      ? "The canonical organization-owned central Security Scan workflow is enforced for main."
+      : "The canonical organization-owned central Security Scan workflow is not enforced for main.",
   );
 
   const dismissStaleReviews = pullRequestRules.some(
@@ -162,18 +216,18 @@ export function evaluateMainGovernanceRules(rules) {
       : "Active pull-request rules do not require review-thread resolution.",
   );
 
-  const squashAllowed = pullRequestRules.length > 0 && pullRequestRules.every((rule) => {
+  const normalMergeAllowed = pullRequestRules.length > 0 && pullRequestRules.every((rule) => {
     const allowed = ruleParameters(rule).allowed_merge_methods;
-    return Array.isArray(allowed) && allowed.includes("squash");
+    return Array.isArray(allowed) && allowed.includes("merge");
   });
   addCheck(
     checks,
     failures,
-    "squash_merge_not_allowed",
-    squashAllowed,
-    squashAllowed
-      ? "Every active pull-request rule permits squash merge."
-      : "At least one active pull-request rule does not permit squash merge.",
+    "merge_commit_not_allowed",
+    normalMergeAllowed,
+    normalMergeAllowed
+      ? "Every active pull-request rule permits normal merge commits."
+      : "At least one active pull-request rule does not permit normal merge commits.",
   );
 
   const strictStatusPolicy = statusRules.some(
@@ -195,7 +249,7 @@ export function evaluateMainGovernanceRules(rules) {
   });
   for (const context of REQUIRED_MAIN_CHECK_NAMES) {
     const matchingEntries = requiredStatusEntries.filter(
-      (entry) => normalized(entry?.context) === context,
+      (entry) => entry?.context === context,
     );
     addCheck(
       checks,
@@ -207,15 +261,15 @@ export function evaluateMainGovernanceRules(rules) {
         : `Required status context ${context} is not enforced for main.`,
     );
     for (const entry of matchingEntries) {
-      const pinned = positiveInteger(entry?.integration_id);
+      const expectedSource = entry?.integration_id === REQUIRED_MAIN_CHECK_INTEGRATION_ID;
       addCheck(
         checks,
         failures,
-        "required_status_source_unpinned",
-        pinned,
-        pinned
-          ? `Required status context ${context} is pinned to integration ${entry.integration_id}.`
-          : `Required status context ${context} has a missing or invalid integration_id.`,
+        "required_status_source_mismatch",
+        expectedSource,
+        expectedSource
+          ? `Required status context ${context} is pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`
+          : `Required status context ${context} must be pinned to GitHub Actions integration ${REQUIRED_MAIN_CHECK_INTEGRATION_ID}.`,
       );
     }
   }
@@ -229,7 +283,7 @@ export function evaluateMainGovernanceRules(rules) {
       required_status_checks_rule_present: statusRules.length > 0,
       non_fast_forward_rule_present: nonFastForwardRules.length > 0,
       deletion_rule_present: deletionRules.length > 0,
-      required_workflows: observedWorkflowControls(rules),
+      required_workflows: requiredWorkflows,
     },
   };
 }
