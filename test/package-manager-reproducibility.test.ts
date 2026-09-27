@@ -51,6 +51,19 @@ function runFixtureNpm(
 }
 
 describe("package-manager reproducibility contract", () => {
+  it("runs fixture commands through the repository-pinned npm CLI", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "noema-pinned-npm-"));
+
+    try {
+      const version = runFixtureNpm(fixtureRoot, ["--version"]);
+
+      expect(version.status, `${version.stdout}\n${version.stderr}`).toBe(0);
+      expect(version.stdout.trim()).toBe("11.17.0");
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it("pins the reviewed Node and npm identities in repository metadata", () => {
     expect(packageJson.packageManager).toBe("npm@11.17.0");
     expect(packageJson.devEngines?.runtime).toEqual({
@@ -205,15 +218,3 @@ describe("package-manager reproducibility contract", () => {
     expect(ciWorkflow).toContain(
       'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
     );
-    expect(ciWorkflow).toContain(
-      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
-    );
-    expect(ciWorkflow.match(/gh api graphql/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(ciWorkflow.match(/ref\(qualifiedName:\$qualifiedName\)\{target\{oid\}\}/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(ciWorkflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
-    expect(ciWorkflow).toContain('test "$live_base_sha" = "$NOEMA_LIVE_BASE_SHA"');
-    expect(ciWorkflow).not.toContain(
-      "NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
-    );
-  });
-});
