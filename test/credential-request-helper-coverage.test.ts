@@ -257,7 +257,7 @@ describe("credential request helper coverage through the public worker", () => {
     ).toHaveLength(0);
   });
 
-  it("rejects a syntactically valid repository owned outside the configured organization", async () => {
+  it("mints nothing for an outside organization that has not installed the App", async () => {
     const { token, jwk } = await createSignedJwt("ContextualWisdomLab/.github");
     const upstream = mockOidcDiscovery(jwk);
 
@@ -274,14 +274,11 @@ describe("credential request helper coverage through the public worker", () => {
       env,
     );
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_REPO_NOT_ALLOWED",
-      message: "target_repository owner is not allowed",
-    });
+    // The owner is no longer a fixed allowlist; the missing installation is the refusal.
+    expect(response.status).not.toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: false });
     expect(
-      upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
+      upstream.mock.calls.filter(([input]) => String(input).includes("/access_tokens")),
     ).toHaveLength(0);
   });
 

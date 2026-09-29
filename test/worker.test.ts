@@ -423,7 +423,7 @@ describe("Noema worker", () => {
         return Response.json({ keys: [jwk] });
       }
       if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") {
-        return Response.json({ id: 12345 });
+        return Response.json({ id: 12345, account: { id: 295022177, login: "ContextualWisdomLab" } });
       }
       if (url === "https://api.github.com/app/installations/12345/access_tokens") {
         return Response.json({
@@ -514,7 +514,7 @@ describe("Noema worker", () => {
         return Response.json({ keys: [jwk] });
       }
       if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") {
-        return Response.json({ id: 12345 });
+        return Response.json({ id: 12345, account: { id: 295022177, login: "ContextualWisdomLab" } });
       }
       if (url === "https://api.github.com/app/installations/12345/access_tokens") {
         return Response.json({

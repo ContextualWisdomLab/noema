@@ -156,6 +156,7 @@ describe("GitHub App installation cache refresh", () => {
           id: installationLookups === 1
             ? Number(firstInstallationId)
             : Number(replacementInstallationId),
+          account: { id: 295022177, login: "ContextualWisdomLab" },
         });
       }
       const mintMatch = url.match(/\/app\/installations\/(\d+)\/access_tokens$/);
@@ -227,6 +228,7 @@ describe("GitHub App installation cache refresh", () => {
           id: installationLookups === 1
             ? Number(freshInstallationId)
             : Number(replacementId),
+          account: { id: 295022177, login: "ContextualWisdomLab" },
         });
       }
       const mintMatch = url.match(/\/app\/installations\/(\d+)\/access_tokens$/);

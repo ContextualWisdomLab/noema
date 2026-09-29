@@ -136,7 +136,7 @@ async function exchangeWith(
       env.GITHUB_APP_INSTALLATION_ID
       && url === `https://api.github.com/repos/${targetRepository}/installation`
     ) {
-      return Response.json({ id: Number(env.GITHUB_APP_INSTALLATION_ID) });
+      return Response.json({ id: Number(env.GITHUB_APP_INSTALLATION_ID) , account: { id: 295022177, login: "ContextualWisdomLab" } });
     }
     return githubHandler(url);
   });

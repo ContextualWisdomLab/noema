@@ -38,7 +38,7 @@ describe("outbound header authority", () => {
   });
 
   it("accepts the exact production-reviewed GitHub API header set", async () => {
-    const rawFetch = vi.fn<FetchLike>(async () => Response.json({ id: 12345 }));
+    const rawFetch = vi.fn<FetchLike>(async () => Response.json({ id: 12345, account: { id: 295022177, login: "ContextualWisdomLab" } }));
     const wrapped = createFailClosedFetch(rawFetch);
 
     const response = await wrapped(
