@@ -7,6 +7,11 @@ import {
   OidcReplayUnavailable,
   type OidcReplayProtectionEnv,
 } from "./oidc-replay";
+import {
+  continuationDispatchDependencies,
+  handleContinuationDispatch,
+  type ContinuationDispatchHandlerEnv,
+} from "./continuation-dispatch/handler";
 
 /**
  * Runtime configuration consumed by Noema's base credential-exchange worker. These
@@ -24,6 +29,12 @@ export interface Env extends OidcReplayProtectionEnv {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY_PEM: string;
   GITHUB_APP_INSTALLATION_ID?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_ID?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID?: string;
+  CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_RECEIPT_SIGNING_KEY_ID?: string;
+  NOEMA_CONTINUATION_DISPATCH_STATE?: DurableObjectNamespace;
   NOEMA_RATE_LIMIT_PER_MINUTE?: string;
   NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS?: string;
   NOEMA_INSTALLATION_CACHE_TTL_SECONDS?: string;
@@ -1136,6 +1147,14 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   };
 }
 
+const productionContinuationDispatchDependencies = {
+  ...continuationDispatchDependencies,
+  verifyOidc: (token: string, env: ContinuationDispatchHandlerEnv) =>
+    verifyGithubOidcJwt(token, env as unknown as Env),
+  claimOidc: (claims: JwtPayload, env: ContinuationDispatchHandlerEnv) =>
+    claimVerifiedOidcUsage(claims, env as unknown as Env),
+};
+
 /**
  * Base public Worker entrypoint for Noema health and credential exchange. It validates
  * methods, OIDC/GitHub App exchange policy, local rate limits, structured errors, and
@@ -1194,6 +1213,26 @@ export default {
           oidc_sub,
           token_expires_at,
           replay_protected,
+        });
+        return withOperationalHeaders(response, traceId, latency_ms);
+      }
+      if (url.pathname === "/v1/continuation-dispatches") {
+        enforceRateLimit(request, env, route);
+        const response = await handleContinuationDispatch(
+          request,
+          env as Env & ContinuationDispatchHandlerEnv,
+          traceId,
+          productionContinuationDispatchDependencies,
+        );
+        status = response.status;
+        const latency_ms = Math.round(performance.now() - startedAt);
+        logRequest({
+          route,
+          method,
+          status_code: status,
+          latency_ms,
+          trace_id: traceId,
+          ...(status >= 400 ? { error_code: (await response.clone().json() as { error_code?: ErrorCode }).error_code } : {}),
         });
         return withOperationalHeaders(response, traceId, latency_ms);
       }

@@ -36,6 +36,8 @@ type EgressFailure = {
     | "github-cloud-exact-origin"
     | "github-app-id-canonical"
     | "github-app-installation-id-canonical"
+    | "continuation-dispatch-app-id-canonical"
+    | "continuation-dispatch-installation-id-canonical"
     | "credential-fetch-no-redirect";
 };
 
@@ -567,6 +569,31 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
   }
 }
 
+function dispatchBoundaryResponse(
+  request: Request,
+  status: 400 | 401 | 405,
+  message: string,
+): Response {
+  const traceId = traceIdFromRequest(request);
+  const headers = new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    pragma: "no-cache",
+    "x-content-type-options": "nosniff",
+    "x-trace-id": traceId,
+    "x-latency-ms": "0",
+  });
+  if (status === 405) headers.set("allow", "POST");
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: (status === 401
+      ? "ERR_DISPATCH_IDENTITY_DENIED"
+      : "ERR_DISPATCH_REQUEST_INVALID") satisfies ErrorCode,
+    message,
+    trace_id: traceId,
+  }), { status, headers });
+}
+
 /**
  * Public Cloudflare Worker entrypoint that enforces request-body, OIDC-envelope, and
  * GitHub egress policy before delegating to the credential-exchange worker. It fails closed
@@ -575,21 +602,29 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/exchange") {
+    const isExchange = url.pathname === "/exchange";
+    const isContinuationDispatch = url.pathname === "/v1/continuation-dispatches";
+    if (isExchange || isContinuationDispatch) {
       if (request.method !== "POST") {
-        return exchangeMethodResponse(request);
+        return isExchange
+          ? exchangeMethodResponse(request)
+          : dispatchBoundaryResponse(request, 405, "Method not allowed");
       }
       if (!isBoundedOidcBearer(request.headers.get("authorization"))) {
         recordOidcEnvelopeFailure(request);
-        return oidcEnvelopeResponse(request);
+        return isExchange
+          ? oidcEnvelopeResponse(request)
+          : dispatchBoundaryResponse(request, 401, "Continuation identity is malformed");
       }
 
-      const boundedRequest = await boundExchangeJsonBody(request);
-      if ("failure" in boundedRequest) {
-        recordExchangeBodyFailure(request, boundedRequest.failure);
-        return exchangeBodyResponse(request, boundedRequest.failure);
+      if (isExchange) {
+        const boundedRequest = await boundExchangeJsonBody(request);
+        if ("failure" in boundedRequest) {
+          recordExchangeBodyFailure(request, boundedRequest.failure);
+          return exchangeBodyResponse(request, boundedRequest.failure);
+        }
+        request = boundedRequest.request;
       }
-      request = boundedRequest.request;
 
       const appIdFailure: EgressFailure = {
         hint: "Configure GITHUB_APP_ID as a canonical positive decimal safe integer.",
@@ -610,6 +645,27 @@ export default {
         };
         recordConfigurationFailure(request, installationIdFailure);
         return githubApiConfigurationResponse(request, installationIdFailure);
+      }
+
+      if (isContinuationDispatch) {
+        const centralAppIdFailure: EgressFailure = {
+          hint: "Configure CONTINUATION_DISPATCH_GITHUB_APP_ID as a canonical positive decimal safe integer.",
+          outcome: "misconfigured",
+          policy: "continuation-dispatch-app-id-canonical",
+        };
+        if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_ID ?? "")) {
+          recordConfigurationFailure(request, centralAppIdFailure);
+          return githubApiConfigurationResponse(request, centralAppIdFailure);
+        }
+        const centralInstallationFailure: EgressFailure = {
+          hint: "Configure CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID as a canonical positive decimal safe integer.",
+          outcome: "misconfigured",
+          policy: "continuation-dispatch-installation-id-canonical",
+        };
+        if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID ?? "")) {
+          recordConfigurationFailure(request, centralInstallationFailure);
+          return githubApiConfigurationResponse(request, centralInstallationFailure);
+        }
       }
 
       const originFailure: EgressFailure = {

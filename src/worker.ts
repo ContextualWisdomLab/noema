@@ -316,7 +316,10 @@ function withDistributedRateLimitHeaders(
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname !== "/exchange") {
+    if (
+      url.pathname !== "/exchange"
+      && url.pathname !== "/v1/continuation-dispatches"
+    ) {
       return baseWorker.fetch(request, env);
     }
 
@@ -407,7 +410,10 @@ export default {
       return withDistributedRateLimitHeaders(response, decision);
     }
 
-    if (response.headers.get("x-oidc-replay-protection") === "verified-before-mint") {
+    if (
+      response.headers.get("x-oidc-replay-protection") === "verified-before-mint"
+      || response.headers.get("x-oidc-replay-protection") === "verified-before-dispatch"
+    ) {
       const headers = new Headers(response.headers);
       headers.set("x-oidc-replay-protection", "single-use");
       return withDistributedRateLimitHeaders(new Response(response.body, {

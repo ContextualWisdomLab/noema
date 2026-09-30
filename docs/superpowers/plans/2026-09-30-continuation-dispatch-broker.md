@@ -110,11 +110,11 @@
 - Consumes: Tasks 1-4.
 - Produces: `POST /v1/continuation-dispatches` standard success/error envelope.
 
-- [ ] Write end-to-end RED tests proving method/content-type/body bounds, exact URL, rate limit, workflow SHA, single-use OIDC, live PR, one dispatch, exact replay, conflict, receipt signature, and operational headers.
-- [ ] Run the focused worker test; expect 404/missing route failures.
-- [ ] Admit the new route through each existing layer, add the six dispatch error codes/hints, require all new secret/DO bindings in readiness, and preserve `/exchange` byte-for-byte behavior tests.
-- [ ] Run focused worker tests, all existing Worker tests, and typecheck; expect PASS.
-- [ ] Commit `test+feat(dispatch): expose versioned continuation broker`.
+- [x] Write end-to-end RED tests proving method/content-type/body bounds, exact URL, rate limit, workflow SHA, single-use OIDC, live PR, one dispatch, exact replay, conflict, receipt signature, and operational headers.
+- [x] Run the focused worker test; expect 404/missing route failures.
+- [x] Admit the new route through each existing layer, add the six dispatch error codes/hints, require all new secret/DO bindings in readiness, and preserve `/exchange` byte-for-byte behavior tests.
+- [x] Run focused worker tests, all existing Worker tests, and typecheck; expect PASS.
+- [x] Commit `test+feat(dispatch): expose versioned continuation broker`.
 
 ### Task 6: Product, security, and operability contracts
 
