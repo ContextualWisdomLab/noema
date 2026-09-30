@@ -11,7 +11,10 @@ import {
   ContinuationDispatchStateConflict,
   ContinuationDispatchStateUnavailable,
 } from "../src/continuation-dispatch/dispatch-state";
-import { ContinuationGitHubAdapterError } from "../src/continuation-dispatch/github-adapter";
+import {
+  ContinuationDispatchNotStartedError,
+  ContinuationGitHubAdapterError,
+} from "../src/continuation-dispatch/github-adapter";
 import { verifyContinuationReceipt } from "../src/continuation-dispatch/receipt";
 
 const oidcIssuedAtEpochSeconds = Math.floor(Date.now() / 1_000);
@@ -133,6 +136,10 @@ function harness() {
     },
     abort: async () => {
       calls.push("abort");
+    },
+    releasePreEffect: async () => {
+      calls.push("release-pre-effect");
+      retained = undefined;
     },
     finalize: async (_env, _reservation, receipt) => {
       calls.push("finalize");
@@ -613,6 +620,53 @@ describe("continuation dispatch public route", () => {
       ]);
     },
   );
+
+  it("retries when the committed dispatch provably never started", async () => {
+    const { calls, dependencies, env } = harness();
+    let attempts = 0;
+    dependencies.dispatch = async () => {
+      calls.push("dispatch");
+      attempts += 1;
+      if (attempts === 1) throw new ContinuationDispatchNotStartedError();
+      return { outcome: "accepted", upstreamStatus: 204, eventType: "noema-review" };
+    };
+
+    const first = await handleContinuationDispatch(request(), env, "trace-task-5-first", dependencies);
+    const retry = await handleContinuationDispatch(request(), env, "trace-task-5-retry", dependencies);
+
+    expect(first.status).toBe(503);
+    expect(retry.status).toBe(200);
+    expect(calls).toEqual([
+      "claim",
+      "reserve",
+      "live-pr",
+      "prepare-dispatch",
+      "commit",
+      "dispatch",
+      "release-pre-effect",
+      "claim",
+      "reserve",
+      "live-pr",
+      "prepare-dispatch",
+      "commit",
+      "dispatch",
+      "finalize",
+    ]);
+  });
+
+  it("fails closed when pre-effect committed evidence cannot be released", async () => {
+    const { dependencies, env } = harness();
+    dependencies.dispatch = async () => { throw new ContinuationDispatchNotStartedError(); };
+    dependencies.releasePreEffect = async () => { throw new Error("state unavailable"); };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      message: "Pre-effect continuation evidence could not be released",
+      details: { hint: expect.any(String) },
+    });
+  });
 
   it("returns a signed denied receipt when GitHub rejects the fixed dispatch", async () => {
     const { dependencies, env } = harness();

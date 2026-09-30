@@ -8,6 +8,7 @@ import {
   NoemaContinuationDispatchState,
   commitContinuationOutcome,
   finalizeContinuationOutcome,
+  releasePreEffectContinuationOutcome,
   reserveContinuationDispatch,
   type ContinuationDispatchReservation,
   type ContinuationDispatchStateEnv,
@@ -443,6 +444,44 @@ describe("continuation dispatch exactly-once state", () => {
     });
   });
 
+  it("releases only the exact committed indeterminate receipt when dispatch never started", async () => {
+    const { env } = fixture();
+    const reservation = requireNewReservation(
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
+    );
+    const receipt = {
+      outcome: "indeterminate" as const,
+      receipt_id: "pre-effect-receipt",
+      request_digest: digest,
+      signature: "pre-effect-signature",
+    };
+    await commitContinuationOutcome(env, reservation, receipt);
+    await releasePreEffectContinuationOutcome(env, reservation, receipt);
+
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds))
+      .resolves.toMatchObject({ kind: "reserved", identity, digest });
+  });
+
+  it("retains committed evidence when the pre-effect receipt does not match exactly", async () => {
+    const { env } = fixture();
+    const reservation = requireNewReservation(
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
+    );
+    const receipt = {
+      outcome: "indeterminate" as const,
+      receipt_id: "retained-receipt",
+      signature: "retained-signature",
+    };
+    await commitContinuationOutcome(env, reservation, receipt);
+
+    await expect(releasePreEffectContinuationOutcome(env, reservation, {
+      ...receipt,
+      signature: "different-signature",
+    })).rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds))
+      .resolves.toMatchObject({ kind: "replay", outcome: "indeterminate", receipt });
+  });
+
   it("upgrades retained indeterminate evidence without changing immutable receipt authority", async () => {
     const { env } = fixture();
     const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds));
@@ -669,6 +708,8 @@ describe("continuation dispatch private command boundary", () => {
       { operation: "abort", identity: "invalid", digest, reservation_id: reservationId },
       { operation: "finalize", identity, digest, reservation_id: reservationId, receipt: { outcome: "accepted" }, extra: true },
       { operation: "finalize", identity, digest, reservation_id: reservationId, receipt: { outcome: "indeterminate" } },
+      { operation: "release_pre_effect", identity, digest, reservation_id: reservationId, receipt: { outcome: "accepted" } },
+      { operation: "release_pre_effect", identity, digest, reservation_id: reservationId, receipt: { outcome: "indeterminate" }, extra: true },
     ].map((body) => new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -876,6 +917,31 @@ describe("continuation dispatch private command boundary", () => {
       expect([absent.status, corrupt.status, mismatched.status]).toEqual([409, 500, 409]);
     },
   );
+
+  it("distinguishes absent and corrupt retained state during pre-effect release", async () => {
+    const reservation = fixedReservation();
+    const command = JSON.stringify({
+      operation: "release_pre_effect",
+      identity,
+      digest,
+      reservation_id: reservation.reservationId,
+      receipt: { outcome: "indeterminate" },
+    });
+    const invoke = (state: NoemaContinuationDispatchState) => state.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: command,
+    }));
+    const absent = await invoke(object());
+    const corruptStorage = new MemoryStorage();
+    corruptStorage.records.set("continuation-dispatch-state", "corrupt");
+    const corrupt = await invoke(new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: corruptStorage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState));
+
+    expect([absent.status, corrupt.status]).toEqual([409, 500]);
+  });
 
   it("rejects a finalized receipt that would exceed the retained-state byte envelope", async () => {
     const storage = new MemoryStorage();
@@ -1113,6 +1179,36 @@ describe("continuation dispatch state client boundary", () => {
       )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
     },
   );
+
+  it("rejects a non-canonical pre-effect release before transport", async () => {
+    await expect(releasePreEffectContinuationOutcome(
+      envWithTransport(async () => { throw new Error("transport must not run"); }),
+      fixedReservation(),
+      { outcome: "accepted" },
+    )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+  });
+
+  it.each([new Error("fetch failed"), "fetch failed"])(
+    "maps pre-effect release transport failure %# to unavailable",
+    async (failure) => {
+      await expect(releasePreEffectContinuationOutcome(
+        envWithTransport(async () => { throw failure; }),
+        fixedReservation(),
+        { outcome: "indeterminate" },
+      )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+    },
+  );
+
+  it("rejects a malformed successful pre-effect release decision", async () => {
+    await expect(releasePreEffectContinuationOutcome(
+      envWithTransport(async () => new Response(
+        JSON.stringify({ ok: false }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )),
+      fixedReservation(),
+      { outcome: "indeterminate" },
+    )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+  });
 
   it.each([
     ["abort", abortContinuationReservation, undefined],

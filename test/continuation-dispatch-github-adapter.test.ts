@@ -325,6 +325,7 @@ describe("fixed central dispatch", () => {
 
     expect(() => prepared.assertFresh()).toThrow(ContinuationGitHubAdapterError);
     await expect(prepared.send(request())).rejects.toMatchObject({
+      name: "ContinuationDispatchNotStartedError",
       classification: "upstream_unavailable",
     });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
