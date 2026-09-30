@@ -99,8 +99,9 @@ function harness() {
         baseRef: "main",
       };
     },
-    reserve: async (_env, identity, digest) => {
+    reserve: async (_env, identity, digest, reservationExpiresAt) => {
       calls.push("reserve");
+      expect(reservationExpiresAt).toBe(1_800_000_300);
       if (retained !== undefined) {
         return {
           kind: "replay" as const,

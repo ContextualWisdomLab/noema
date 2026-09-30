@@ -696,6 +696,7 @@ describe("continuation dispatch private command boundary", () => {
       request_digest: digest,
       status: "indeterminate",
       reservation_id: reservation.reservationId,
+      reservation_expires_at: reservationExpiresAtEpochSeconds,
       receipt: { outcome: "indeterminate", receipt_id: "same", signature: "small" },
     });
     const state = new NoemaContinuationDispatchState({
@@ -798,6 +799,18 @@ describe("continuation dispatch state client boundary", () => {
       reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
   });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER])(
+    "rejects a non-canonical reservation expiry %s before transport",
+    async (reservationExpiry) => {
+      const env = envWithTransport(async () => {
+        throw new Error("transport must not run");
+      });
+
+      await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiry))
+        .rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+    },
+  );
 
   it.each([new Error("namespace failed"), "namespace failed"])(
     "maps namespace lookup failure %# without leaking transport details",

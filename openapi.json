@@ -162,6 +162,7 @@
         "description": "Accepts only noema.continuation-dispatch.v1. Validates the exact GitHub Actions OIDC workflow SHA, live pull request state, distributed single-use identity, and durable idempotency reservation before emitting one fixed central event. The credential-free response contains only an Ed25519-signed receipt. Stable failures are ERR_DISPATCH_REQUEST_INVALID, ERR_DISPATCH_IDENTITY_DENIED, ERR_DISPATCH_LIVE_STATE_STALE, ERR_DISPATCH_REPLAY_CONFLICT, ERR_GITHUB_DISPATCH_AUTHORIZATION, and ERR_GITHUB_DISPATCH_UPSTREAM.",
         "security": [{ "githubActionsOidc": [] }],
         "x-request-body-limit-bytes": 8192,
+        "x-request-body-read-deadline-ms": 10000,
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchRequest" } } }
@@ -172,6 +173,7 @@
           "401": { "description": "Identity is missing, invalid, or already consumed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "405": { "description": "Only POST is admitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "408": { "$ref": "#/components/responses/RequestTimeout" },
           "409": { "description": "Live state, in-progress state, or retained identity conflicts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },

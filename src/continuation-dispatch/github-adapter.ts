@@ -66,6 +66,12 @@ export type CentralContinuationDispatchResult = {
   readonly eventType: "noema-review" | "strix-scan";
 };
 
+/** Opaque central-only dispatch capability prepared before any indeterminate receipt is committed. */
+export interface PreparedCentralContinuationDispatch {
+  /** Sends one closed continuation request without exposing the captured installation token. */
+  send(request: ContinuationDispatchRequest): Promise<CentralContinuationDispatchResult>;
+}
+
 type GithubRepository = { readonly full_name?: unknown };
 type GithubPullRequestSide = {
   readonly sha?: unknown;
@@ -106,6 +112,25 @@ function centralAppEnv(env: ContinuationGitHubAdapterEnv): GitHubAppEnv {
     GITHUB_APP_PRIVATE_KEY_PEM: env.CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM,
     GITHUB_APP_INSTALLATION_ID: env.CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID,
   };
+}
+
+/**
+ * Serializes the exact fixed repository-dispatch body used for both transport and receipt hashing.
+ * @param request Closed continuation request whose action maps to one released central event.
+ * @returns Canonical adapter-owned JSON bytes shared by digest calculation and GitHub transport.
+ */
+export function centralDispatchBody(request: ContinuationDispatchRequest): string {
+  return JSON.stringify({
+    event_type: dispatchMapping(request.dispatch_action).eventType,
+    client_payload: {
+      source_repository: request.source_repository,
+      pull_request_number: request.pull_request_number,
+      expected_head_sha: request.expected_head_sha,
+      expected_base_sha: request.expected_base_sha,
+      expected_base_ref: request.expected_base_ref,
+      transport_retry_attempt: request.transport_retry_attempt,
+    },
+  });
 }
 
 /**
@@ -177,16 +202,13 @@ export async function readAndVerifyLivePullRequest(
 /**
  * Mints a distinct central-only installation token and uses it solely for the
  * fixed `.github` repository-dispatch endpoint and closed event payload.
- * @param request Closed request whose released action maps to one fixed event.
  * @param env Separate source-read and central-dispatch GitHub App bindings.
- * @returns A terminal accepted, denied, or indeterminate dispatch result without credentials.
+ * @returns An opaque prepared sender that retains the short-lived token without exposing it.
  * @throws {ContinuationGitHubAdapterError} When central credential minting fails before dispatch.
  */
-export async function dispatchCentralContinuation(
-  request: ContinuationDispatchRequest,
+export async function prepareCentralContinuation(
   env: ContinuationGitHubAdapterEnv,
-): Promise<CentralContinuationDispatchResult> {
-  const eventType = dispatchMapping(request.dispatch_action).eventType;
+): Promise<PreparedCentralContinuationDispatch> {
   let installationToken: string;
   try {
     const installation = await createGitHubInstallationToken(
@@ -199,39 +221,48 @@ export async function dispatchCentralContinuation(
     throw centralCredentialFailure(error);
   }
 
-  let response: Response;
-  try {
-    response = await githubApiRequest(
-      "/repos/ContextualWisdomLab/.github/dispatches",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${installationToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          event_type: eventType,
-          client_payload: {
-            source_repository: request.source_repository,
-            pull_request_number: request.pull_request_number,
-            expected_head_sha: request.expected_head_sha,
-            expected_base_sha: request.expected_base_sha,
-            expected_base_ref: request.expected_base_ref,
-            transport_retry_attempt: request.transport_retry_attempt,
+  return Object.freeze({
+    async send(request: ContinuationDispatchRequest): Promise<CentralContinuationDispatchResult> {
+      const eventType = dispatchMapping(request.dispatch_action).eventType;
+      let response: Response;
+      try {
+        response = await githubApiRequest(
+          "/repos/ContextualWisdomLab/.github/dispatches",
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${installationToken}`,
+              "content-type": "application/json",
+            },
+            body: centralDispatchBody(request),
           },
-        }),
-      },
-      env,
-    );
-  } catch {
-    return Object.freeze({ outcome: "indeterminate", eventType });
-  }
+          env,
+        );
+      } catch {
+        return Object.freeze({ outcome: "indeterminate", eventType });
+      }
 
-  if (response.status === 204) {
-    return Object.freeze({ outcome: "accepted", upstreamStatus: 204, eventType });
-  }
-  if (response.status === 403 || response.status === 404 || response.status === 422) {
-    return Object.freeze({ outcome: "denied", upstreamStatus: response.status, eventType });
-  }
-  return Object.freeze({ outcome: "indeterminate", upstreamStatus: response.status, eventType });
+      if (response.status === 204) {
+        return Object.freeze({ outcome: "accepted", upstreamStatus: 204, eventType });
+      }
+      if (response.status === 403 || response.status === 404 || response.status === 422) {
+        return Object.freeze({ outcome: "denied", upstreamStatus: response.status, eventType });
+      }
+      return Object.freeze({ outcome: "indeterminate", upstreamStatus: response.status, eventType });
+    },
+  });
+}
+
+/**
+ * Prepares the central credential and immediately sends one fixed dispatch for direct adapter callers.
+ * @param request Closed continuation request whose action maps to one released central event.
+ * @param env Separate source-read and central-dispatch GitHub App bindings.
+ * @returns A terminal accepted, denied, or indeterminate dispatch result without credentials.
+ * @throws {ContinuationGitHubAdapterError} When central credential preparation fails before dispatch.
+ */
+export async function dispatchCentralContinuation(
+  request: ContinuationDispatchRequest,
+  env: ContinuationGitHubAdapterEnv,
+): Promise<CentralContinuationDispatchResult> {
+  return (await prepareCentralContinuation(env)).send(request);
 }

@@ -1,4 +1,4 @@
-import { type ErrorCode } from "./error-codes";
+import { errorHints, type ErrorCode } from "./error-codes";
 import {
   ensureGlobalOutboundFetchPolicy,
 } from "./outbound-fetch-policy";
@@ -584,12 +584,17 @@ function dispatchBoundaryResponse(
     "x-latency-ms": "0",
   });
   if (status === 405) headers.set("allow", "POST");
+  if (status === 401) {
+    headers.set("www-authenticate", 'Bearer realm="noema", error="invalid_token"');
+  }
+  const code = (status === 401
+    ? "ERR_DISPATCH_IDENTITY_DENIED"
+    : "ERR_DISPATCH_REQUEST_INVALID") satisfies ErrorCode;
   return new Response(JSON.stringify({
     ok: false,
-    error_code: (status === 401
-      ? "ERR_DISPATCH_IDENTITY_DENIED"
-      : "ERR_DISPATCH_REQUEST_INVALID") satisfies ErrorCode,
+    error_code: code,
     message,
+    details: { hint: errorHints[code] },
     trace_id: traceId,
   }), { status, headers });
 }

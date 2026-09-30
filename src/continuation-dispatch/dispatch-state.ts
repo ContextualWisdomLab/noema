@@ -67,6 +67,7 @@ type StoredDispatchState = {
   readonly request_digest: string;
   readonly status: "reserved" | ContinuationDispatchOutcome;
   readonly reservation_id: string;
+  readonly reservation_expires_at: number;
   readonly receipt?: ContinuationDispatchReceipt;
 };
 
@@ -74,6 +75,7 @@ type ReserveCommand = {
   readonly operation: "reserve";
   readonly identity: string;
   readonly digest: string;
+  readonly reservation_expires_at: number;
 };
 
 type CommitCommand = {
@@ -143,6 +145,12 @@ function isReservationId(value: unknown): value is string {
   return typeof value === "string" && RESERVATION_ID_PATTERN.test(value);
 }
 
+function isEpochSeconds(value: unknown): value is number {
+  return Number.isSafeInteger(value)
+    && (value as number) > 0
+    && (value as number) <= Math.floor(Number.MAX_SAFE_INTEGER / 1_000);
+}
+
 function isOutcome(value: unknown): value is ContinuationDispatchOutcome {
   return typeof value === "string" && TERMINAL_OUTCOMES.has(value as ContinuationDispatchOutcome);
 }
@@ -203,6 +211,7 @@ function isStoredState(value: unknown): value is StoredDispatchState {
     || !isDigest(value.identity)
     || !isDigest(value.request_digest)
     || !isReservationId(value.reservation_id)
+    || !isEpochSeconds(value.reservation_expires_at)
   ) {
     return false;
   }
@@ -213,6 +222,7 @@ function isStoredState(value: unknown): value is StoredDispatchState {
       "request_digest",
       "status",
       "reservation_id",
+      "reservation_expires_at",
     ]);
   }
   const encodedBytes = encodedJsonBytes(value);
@@ -224,6 +234,7 @@ function isStoredState(value: unknown): value is StoredDispatchState {
       "request_digest",
       "status",
       "reservation_id",
+      "reservation_expires_at",
       "receipt",
     ])
     && isReceipt(value.receipt)
@@ -334,9 +345,22 @@ async function readCommand(request: Request): Promise<CommandRead> {
 function parseCommand(value: unknown): DispatchStateCommand | undefined {
   if (!isRecord(value) || typeof value.operation !== "string") return undefined;
   if (value.operation === "reserve") {
-    if (!hasExactKeys(value, ["operation", "identity", "digest"])) return undefined;
-    if (!isDigest(value.identity) || !isDigest(value.digest)) return undefined;
-    return { operation: "reserve", identity: value.identity, digest: value.digest };
+    if (!hasExactKeys(value, ["operation", "identity", "digest", "reservation_expires_at"])) {
+      return undefined;
+    }
+    if (
+      !isDigest(value.identity)
+      || !isDigest(value.digest)
+      || !isEpochSeconds(value.reservation_expires_at)
+    ) {
+      return undefined;
+    }
+    return {
+      operation: "reserve",
+      identity: value.identity,
+      digest: value.digest,
+      reservation_expires_at: value.reservation_expires_at,
+    };
   }
   if (value.operation === "commit") {
     if (!hasExactKeys(value, ["operation", "identity", "digest", "reservation_id", "receipt"])) {
@@ -514,6 +538,7 @@ async function stateStub(
  * @param env Runtime binding for the continuation-dispatch Durable Object namespace.
  * @param identity Lowercase SHA-256 idempotency identity used only to select one serialization point.
  * @param digest Lowercase SHA-256 digest of the complete canonical request and workflow identity.
+ * @param reservationExpiresAtEpochSeconds Exact OIDC authorization expiry that bounds crash recovery.
  * @returns A fresh reservation capability, an in-progress replay, or a completed immutable replay receipt.
  * @throws {ContinuationDispatchStateConflict} When the logical identity is retained with another digest.
  * @throws {ContinuationDispatchStateUnavailable} When binding, transport, parsing, or retained state is untrustworthy.
@@ -522,9 +547,10 @@ export async function reserveContinuationDispatch(
   env: ContinuationDispatchStateEnv,
   identity: string,
   digest: string,
+  reservationExpiresAtEpochSeconds: number,
 ): Promise<ContinuationDispatchReservation> {
-  if (!isDigest(digest)) {
-    throw new ContinuationDispatchStateUnavailable("continuation request digest is not canonical");
+  if (!isDigest(digest) || !isEpochSeconds(reservationExpiresAtEpochSeconds)) {
+    throw new ContinuationDispatchStateUnavailable("continuation reservation request is not canonical");
   }
   const stub = await stateStub(env, identity);
   let response: Response;
@@ -532,7 +558,12 @@ export async function reserveContinuationDispatch(
     response = await stub.fetch(INTERNAL_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operation: "reserve", identity, digest }),
+      body: JSON.stringify({
+        operation: "reserve",
+        identity,
+        digest,
+        reservation_expires_at: reservationExpiresAtEpochSeconds,
+      }),
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown Durable Object failure";
@@ -751,8 +782,10 @@ export class NoemaContinuationDispatchState {
             request_digest: command.digest,
             status: "reserved",
             reservation_id: reservationId,
+            reservation_expires_at: command.reservation_expires_at,
           };
           await transaction.put(STATE_RECORD_KEY, next);
+          await transaction.setAlarm(command.reservation_expires_at * 1_000);
           return {
             kind: "created",
             reservation: {
@@ -842,5 +875,27 @@ export class NoemaContinuationDispatchState {
     } catch {
       return jsonResponse({ ok: false, error: "storage_unavailable" }, 503);
     }
+  }
+
+  /**
+   * Recovers only an expired pre-dispatch reservation at its retained OIDC authorization boundary.
+   * Terminal evidence is immutable, corrupt state fails closed, and a premature alarm is rescheduled exactly.
+   * @returns A promise that resolves after cleanup or exact rescheduling is durably serialized.
+   */
+  async alarm(): Promise<void> {
+    await this.storage.transaction(async (transaction) => {
+      const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
+      if (stored === undefined) return;
+      if (!isStoredState(stored)) {
+        throw new Error("continuation dispatch alarm found invalid retained state");
+      }
+      if (stored.status !== "reserved") return;
+      const expiresAtMilliseconds = stored.reservation_expires_at * 1_000;
+      if (expiresAtMilliseconds <= Date.now()) {
+        await transaction.delete(STATE_RECORD_KEY);
+        return;
+      }
+      await transaction.setAlarm(expiresAtMilliseconds);
+    });
   }
 }
