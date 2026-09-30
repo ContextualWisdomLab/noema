@@ -331,7 +331,7 @@
         "additionalProperties": false,
         "required": ["receipt_version", "contract_version", "algorithm", "key_id", "receipt_id", "trace_id", "request_digest", "idempotency_identity", "workflow_ref", "workflow_sha", "source_repository", "pull_request_number", "source_head_sha", "source_base_sha", "source_base_ref", "central_repository", "event_type", "emitted_payload_digest", "transport_retry_attempt", "outcome", "upstream_status", "issued_at", "expires_at", "signature"],
         "properties": {
-          "receipt_version": { "type": "string", "const": "noema.continuation-receipt.v1" },
+          "receipt_version": { "type": "string", "const": "noema.continuation-dispatch-receipt.v1" },
           "contract_version": { "type": "string", "const": "noema.continuation-dispatch.v1" },
           "algorithm": { "type": "string", "const": "Ed25519" },
           "key_id": { "type": "string" },

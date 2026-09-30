@@ -35,7 +35,7 @@ src/runtime-entrypoint.ts
 
 ### 2.1 Continuation dispatch broker
 
-`POST /v1/continuation-dispatches`는 exact-URL, bearer envelope, distributed rate limit, workflow trust, OIDC verification/replay 계층을 재사용한다. Closed request와 live PR을 검증한 뒤 `NOEMA_CONTINUATION_DISPATCH_STATE`의 identity-scoped SQLite transaction으로 reserve하고, 별도 central App으로 fixed `ContextualWisdomLab/.github` event만 호출하며, terminal accepted/denied/indeterminate receipt를 commit한다. 응답에는 GitHub credential이 없다.
+`POST /v1/continuation-dispatches`는 exact-URL, bearer envelope, distributed rate limit, workflow trust, OIDC verification/replay 계층을 재사용한다. Transport retry metadata를 제외한 logical-effect identity로 `NOEMA_CONTINUATION_DISPATCH_STATE`의 SQLite owner를 고르되 complete request digest는 retry attempt를 포함한다. Exact replay는 live PR 재조회보다 먼저 retained receipt를 반환하며, fresh reservation만 live PR을 검증한다. 외부 dispatch 전에 signed `indeterminate` evidence를 durable commit하고, 204/denial 뒤에는 같은 receipt authority를 accepted/denied로만 강화한다. 따라서 final commit 실패나 crash는 두 번째 dispatch authority를 만들지 않는다. 별도 central App은 fixed `ContextualWisdomLab/.github` event만 호출하고 응답에는 GitHub credential이 없다.
 
 Required bindings: `CONTINUATION_DISPATCH_GITHUB_APP_ID`, `CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM`, `CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID`, `CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM`, `CONTINUATION_RECEIPT_SIGNING_KEY_ID`, `NOEMA_CONTINUATION_DISPATCH_STATE`.
 

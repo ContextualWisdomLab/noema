@@ -34,6 +34,11 @@ describe("continuation dispatch publication contracts", () => {
     expect(JSON.stringify(operation)).not.toMatch(/installation[_ -]?token|access[_ -]?token/i);
     expect(document.components?.schemas).toHaveProperty("ContinuationDispatchRequest");
     expect(document.components?.schemas).toHaveProperty("SignedContinuationReceipt");
+    expect(document.components?.schemas?.SignedContinuationReceipt).toMatchObject({
+      properties: {
+        receipt_version: { const: "noema.continuation-dispatch-receipt.v1" },
+      },
+    });
   });
 
   it("publishes the endpoint and all six stable dispatch errors across buyer contracts", () => {
@@ -83,5 +88,7 @@ describe("continuation dispatch publication contracts", () => {
     expect(api).toMatch(/receipt[\s\S]{0,500}(?:no token|no GitHub credential|credential-free)/iu);
     expect(api).toContain("Ed25519");
     expect(api).toContain("RFC 8785");
+    expect(api).toMatch(/immutable release[\s\S]{0,300}key_id[\s\S]{0,300}SPKI/iu);
+    expect(api).toMatch(/Draft[\s\S]{0,300}offline verification[\s\S]{0,200}(?:not|않)/iu);
   });
 });

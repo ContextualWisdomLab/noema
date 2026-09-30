@@ -9,7 +9,7 @@
 
 ## Continuation dispatch boundary
 
-`POST /v1/continuation-dispatches`는 mutable alias/TOCTOU, repository/workflow identity confusion, stale PR evidence, replay, caller-selected destination/event, broad GitHub capability exfiltration, duplicate effect와 indeterminate outcome을 위협으로 다룬다. Exact URL, closed JSON, OIDC workflow SHA, fresh PR, fixed event, terminal state와 RFC 8785/Ed25519 receipt를 결합하며 GitHub credential을 반환하지 않는다. Missing state/signing/App/replay authority와 ambiguous outcome은 실패-폐쇄한다.
+`POST /v1/continuation-dispatches`는 mutable alias/TOCTOU, repository/workflow identity confusion, stale PR evidence, replay, caller-selected destination/event, broad GitHub capability exfiltration, duplicate effect와 indeterminate outcome을 위협으로 다룬다. Exact URL, closed JSON, OIDC workflow SHA, fresh PR, fixed event, terminal state와 RFC 8785/Ed25519 receipt를 결합하며 GitHub credential을 반환하지 않는다. Retry 1/2는 하나의 logical-effect owner에서 직렬화되고 complete-digest drift는 conflict다. 외부 호출 전에 signed indeterminate evidence를 durable commit하므로 post-effect crash/finalization failure가 재dispatch를 허용하지 않는다. GitHub live-read와 repository-dispatch 사이를 원자화할 수 없으므로 event는 exact expected head/base/ref를 보존하며, downstream `.github#2540`은 실행 직전 이를 다시 검증해야 한다. Missing state/signing/App/replay authority와 ambiguous outcome은 실패-폐쇄한다.
 
 ## 위협
 1. 위조된 OIDC 토큰으로 허가되지 않은 토큰 발급 시도

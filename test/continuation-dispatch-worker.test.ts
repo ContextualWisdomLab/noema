@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import baseWorker from "../src/index";
 import runtimeWorker from "../src/runtime-entrypoint";
 import protectedWorker from "../src/worker";
@@ -7,6 +7,7 @@ import {
   type ContinuationDispatchHandlerDependencies,
 } from "../src/continuation-dispatch/handler";
 import { ContinuationDispatchStateConflict } from "../src/continuation-dispatch/dispatch-state";
+import { ContinuationGitHubAdapterError } from "../src/continuation-dispatch/github-adapter";
 import { verifyContinuationReceipt } from "../src/continuation-dispatch/receipt";
 
 const workflowSha = "1".repeat(40);
@@ -42,6 +43,11 @@ beforeAll(async () => {
   const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
   signingPrivateKeyPem = pem("PRIVATE KEY", await crypto.subtle.exportKey("pkcs8", pair.privateKey));
   signingPublicKeyPem = pem("PUBLIC KEY", await crypto.subtle.exportKey("spki", pair.publicKey));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function request(body: string = JSON.stringify(requestBody), init: RequestInit = {}): Request {
@@ -109,6 +115,13 @@ function harness() {
     },
     commit: async (_env, _reservation, receipt) => {
       calls.push("commit");
+      retained = receipt;
+    },
+    abort: async () => {
+      calls.push("abort");
+    },
+    finalize: async (_env, _reservation, receipt) => {
+      calls.push("finalize");
       retained = receipt;
     },
   };
@@ -193,7 +206,7 @@ describe("continuation dispatch public route", () => {
     expect(response.headers.get("x-oidc-replay-protection")).toBe("verified-before-dispatch");
     expect(payload.ok).toBe(true);
     expect(payload.trace_id).toBe("trace-task-5");
-    expect(calls).toEqual(["claim", "live-pr", "reserve", "dispatch", "commit"]);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch", "finalize"]);
     await expect(verifyContinuationReceipt(payload.data.receipt, signingPublicKeyPem)).resolves.toBe(true);
     expect(JSON.stringify(payload)).not.toMatch(/token|bearer|assertion|private_key/i);
   });
@@ -209,6 +222,56 @@ describe("continuation dispatch public route", () => {
     expect(second.headers.get("x-continuation-replay")).toBe("exact");
     expect(secondPayload.data.receipt).toEqual(firstPayload.data.receipt);
     expect(calls.filter((call) => call === "dispatch")).toHaveLength(1);
+    expect(calls.filter((call) => call === "live-pr")).toHaveLength(1);
+  });
+
+  it("serializes retry attempt two through the first attempt identity without a second dispatch", async () => {
+    const { calls, dependencies, env } = harness();
+    let retainedIdentity: string | undefined;
+    let retainedDigest: string | undefined;
+    dependencies.reserve = async (_env, identity, digest) => {
+      calls.push("reserve");
+      if (retainedIdentity === undefined) {
+        retainedIdentity = identity;
+        retainedDigest = digest;
+        return {
+          kind: "reserved",
+          identity,
+          digest,
+          reservationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        };
+      }
+      expect(identity).toBe(retainedIdentity);
+      expect(digest).not.toBe(retainedDigest);
+      throw new ContinuationDispatchStateConflict();
+    };
+
+    const first = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+    const second = await handleContinuationDispatch(
+      request(JSON.stringify({ ...requestBody, transport_retry_attempt: 2 })),
+      env,
+      "trace-task-5",
+      dependencies,
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(calls.filter((call) => call === "dispatch")).toHaveLength(1);
+  });
+
+  it("commits indeterminate evidence before dispatch and preserves it when finalization fails", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.finalize = async () => {
+      calls.push("finalize");
+      throw new Error("state unavailable");
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+    const payload = await response.json() as { details: { receipt: { outcome: string } } };
+
+    expect(response.status).toBe(503);
+    expect(calls.indexOf("commit")).toBeLessThan(calls.indexOf("dispatch"));
+    expect(payload.details.receipt.outcome).toBe("indeterminate");
   });
 
   it("fails a retained digest conflict closed before dispatch", async () => {
@@ -226,6 +289,19 @@ describe("continuation dispatch public route", () => {
       error_code: "ERR_DISPATCH_REPLAY_CONFLICT",
     });
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("releases a fresh reservation when the final live PR check is stale", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.readLivePullRequest = async () => {
+      calls.push("live-pr");
+      throw new ContinuationGitHubAdapterError("live_state_stale");
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(409);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "abort"]);
   });
 
   it.each(["verifyOidc", "claimOidc"] as const)(
@@ -295,5 +371,39 @@ describe("continuation dispatch public route", () => {
 
     expect(response.status).toBe(413);
     expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stalled body after the absolute read deadline before OIDC verification", async () => {
+    vi.useFakeTimers();
+    const cancellations: string[] = [];
+    const { dependencies, env } = harness();
+    const verify = vi.spyOn(dependencies, "verifyOidc");
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"contract_version":'));
+      },
+      cancel(reason) {
+        cancellations.push(String(reason));
+      },
+    });
+    const pending = handleContinuationDispatch(new Request(
+      "https://noema.example/v1/continuation-dispatches",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${testJwt}`,
+          "content-type": "application/json",
+        },
+        body: stream,
+        duplex: "half",
+      } as RequestInit,
+    ), env, "trace-task-5", dependencies);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const response = await pending;
+
+    expect(response.status).toBe(408);
+    expect(verify).not.toHaveBeenCalled();
+    expect(cancellations).toEqual(["continuation dispatch body read deadline exceeded"]);
   });
 });

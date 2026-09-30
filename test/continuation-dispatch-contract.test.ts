@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  canonicalContinuationIdentity,
   canonicalContinuationRequest,
+  continuationDispatchIdentity,
   continuationRequestDigest,
   dispatchMapping,
   parseContinuationDispatchRequest,
@@ -212,6 +214,20 @@ describe("continuation dispatch canonical identity", () => {
 
     await expect(continuationRequestDigest(request, workflowIdentity)).resolves.toBe(expected);
     expect(expected).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("serializes retry attempts through one logical identity while retaining distinct request digests", async () => {
+    const first = parseValue(validRequest);
+    const second = parseValue({ ...validRequest, transport_retry_attempt: 2 });
+    const canonicalIdentity = canonicalContinuationIdentity(first, workflowIdentity);
+
+    expect(canonicalIdentity).not.toContain("transport_retry_attempt");
+    await expect(continuationDispatchIdentity(first, workflowIdentity)).resolves.toBe(
+      await continuationDispatchIdentity(second, workflowIdentity),
+    );
+    await expect(continuationRequestDigest(first, workflowIdentity)).resolves.not.toBe(
+      await continuationRequestDigest(second, workflowIdentity),
+    );
   });
 
   it("fails closed when runtime workflow identity is not a lowercase full commit SHA", async () => {

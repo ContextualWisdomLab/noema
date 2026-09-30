@@ -289,6 +289,43 @@ export function canonicalContinuationRequest(
 }
 
 /**
+ * Serializes the logical continuation identity independently of transport retry metadata.
+ * @param request Candidate request; every member is revalidated before it gains idempotency authority.
+ * @param workflowIdentity Verified reusable-workflow commit identity.
+ * @returns Deterministic canonical JSON identifying one possible external continuation effect.
+ * @throws {ContinuationDispatchContractError} When request or workflow identity material is not canonical.
+ */
+export function canonicalContinuationIdentity(
+  request: ContinuationDispatchRequest,
+  workflowIdentity: ContinuationWorkflowIdentity,
+): string {
+  const { transport_retry_attempt: _transportRetryAttempt, ...logicalRequest } =
+    admitContinuationDispatchRequest(request);
+  const admittedWorkflow = admitWorkflowIdentity(workflowIdentity);
+  return canonicalFlatObject({ ...logicalRequest, workflow_sha: admittedWorkflow.workflow_sha });
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Computes the lowercase SHA-256 identity of one external continuation effect.
+ * Transport retry attempt is intentionally excluded so attempts 1 and 2 serialize through one owner.
+ * @param request Candidate request revalidated by the canonical serializer.
+ * @param workflowIdentity Verified reusable-workflow commit identity.
+ * @returns A 64-character lowercase hexadecimal identity.
+ * @throws {ContinuationDispatchContractError} When canonical request material is invalid.
+ */
+export async function continuationDispatchIdentity(
+  request: ContinuationDispatchRequest,
+  workflowIdentity: ContinuationWorkflowIdentity,
+): Promise<string> {
+  return sha256Hex(canonicalContinuationIdentity(request, workflowIdentity));
+}
+
+/**
  * Computes the lowercase SHA-256 digest of the exact canonical continuation identity.
  * @param request Candidate request revalidated by the canonical serializer.
  * @param workflowIdentity Verified reusable-workflow commit identity.
@@ -299,9 +336,5 @@ export async function continuationRequestDigest(
   request: ContinuationDispatchRequest,
   workflowIdentity: ContinuationWorkflowIdentity,
 ): Promise<string> {
-  const canonicalBytes = new TextEncoder().encode(
-    canonicalContinuationRequest(request, workflowIdentity),
-  );
-  const digest = await crypto.subtle.digest("SHA-256", canonicalBytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return sha256Hex(canonicalContinuationRequest(request, workflowIdentity));
 }

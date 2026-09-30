@@ -107,10 +107,12 @@ rules. No caller string participates in target origin or path selection.
 ## Exactly-once state
 
 Add `NoemaContinuationDispatchState`, a SQLite-backed Durable Object selected
-by the lowercase hexadecimal SHA-256 digest of an RFC 8785 canonical JSON identity object. Its named members are
+by the lowercase hexadecimal SHA-256 digest of an RFC 8785 logical-effect identity object. Its named members are
 `contract_version`, verified `workflow_sha`, `source_repository`,
 `pull_request_number`, exact head/base/ref, `dispatch_action`,
-`central_repository`, and `transport_retry_attempt`. Named canonical members
+and `central_repository`. `transport_retry_attempt` remains in the complete
+request digest but is excluded from the object-selection identity, so attempts
+1 and 2 cannot acquire separate dispatch authority. Named canonical members
 avoid the delimiter ambiguity of concatenated strings.
 
 Canonical bytes contain only that closed identity schema. RFC 8785 defines
@@ -125,8 +127,12 @@ The Durable Object transaction stores the request digest and one state:
 - `indeterminate`: a network error, 5xx, deadline, or unreadable upstream
   response makes external side-effect completion unknowable.
 
-An exact replay returns the stored signed receipt without another GitHub call.
-The same logical key with a different digest fails closed. `indeterminate` is
+An exact replay returns the stored signed receipt before another live-PR read or
+dispatch. The same logical key with a different complete request digest fails
+closed. Before the external call, Noema durably commits a signed
+`indeterminate` receipt; accepted or denied evidence may strengthen that same
+authority afterward. A crash or finalization failure therefore retains
+replayable evidence and cannot authorize a second dispatch. `indeterminate` is
 never silently redispatched; operator reconciliation is required.
 
 ## Signed receipt
@@ -145,7 +151,9 @@ Receipt fields are:
 - trace id and detached base64url signature.
 
 The signing private key and key id are dedicated Worker bindings and are not
-the GitHub App key. The public key is documented for offline verification.
+the GitHub App key. Offline-verification acceptance begins only when an
+immutable release publishes the exact key-id-to-SPKI artifact and digest;
+Draft source does not claim that a verification key is already available.
 Cloudflare Workers Web Crypto supports Ed25519, including the standards-based
 Secure Curves form: <https://developers.cloudflare.com/workers/runtime-apis/web-crypto/>.
 The receipt is evidence only and authorizes no later dispatch, merge, release,

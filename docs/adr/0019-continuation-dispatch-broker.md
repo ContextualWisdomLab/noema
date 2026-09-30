@@ -8,7 +8,7 @@ GitHub repository dispatch requires `Contents: write`; a consumer-visible “dis
 
 ## Decision
 
-Noema owns `POST /v1/continuation-dispatches`. It authenticates GitHub Actions OIDC, binds repository plus immutable reusable-workflow SHA, rereads the live PR, reserves a canonical RFC 8785 request digest in identity-scoped SQLite Durable Object state, and uses a distinct central App only for one fixed repository-dispatch path/event mapping. It commits accepted, denied, or indeterminate as terminal before returning an Ed25519-signed credential-free receipt. Exact replay returns retained evidence without another dispatch.
+Noema owns `POST /v1/continuation-dispatches`. It authenticates GitHub Actions OIDC, binds repository plus immutable reusable-workflow SHA, serializes transport attempts through one logical-effect identity, rereads the live PR after reservation, and uses a distinct central App only for one fixed repository-dispatch path/event mapping. Before the external call it commits a signed indeterminate receipt; accepted or denied evidence may strengthen that same retained authority afterward, while a failed final commit leaves replayable indeterminate evidence and never grants another dispatch. Exact replay returns retained evidence without another live-state read or dispatch.
 
 The existing `/exchange` remains independent. `.github` owns the consumer workflow and event handler; Noema owns identity, idempotency, fixed dispatch, and receipt evidence only. Model verdict, formal review, merge, release, deployment, and product-domain truth remain separate authorities.
 
@@ -22,7 +22,7 @@ The existing `/exchange` remains independent. `.github` owns the consumer workfl
 
 ## Effects and operational scenes
 
-Operators manage separate source and central Apps, an Ed25519 signing key/key id, and `NOEMA_CONTINUATION_DISPATCH_STATE`. Key loss, Durable Object unavailability, stale PR evidence, or GitHub ambiguity blocks dispatch. Denied/indeterminate receipts require reconciliation rather than blind retry. Public verification keys remain available by immutable release/key id; private material never appears in receipts or logs.
+Operators manage separate source and central Apps, an Ed25519 signing key/key id, and `NOEMA_CONTINUATION_DISPATCH_STATE`. Key loss, Durable Object unavailability, stale PR evidence, or GitHub ambiguity blocks dispatch. Denied/indeterminate receipts require reconciliation rather than blind retry. The current Draft does not publish a verification key. Release acceptance requires an immutable `key_id` to SPKI artifact plus digest mapping before any offline-verification claim; private material never appears in receipts or logs.
 
 ## Acceptance and release order
 

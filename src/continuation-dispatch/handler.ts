@@ -3,12 +3,15 @@ import type { JwtPayload } from "../index";
 import { errorHints, type ErrorCode } from "../error-codes";
 import {
   ContinuationDispatchContractError,
+  continuationDispatchIdentity,
   continuationRequestDigest,
   parseContinuationDispatchRequest,
   type ContinuationDispatchRequest,
 } from "./contract";
 import {
+  abortContinuationReservation,
   commitContinuationOutcome,
+  finalizeContinuationOutcome,
   ContinuationDispatchStateConflict,
   ContinuationDispatchStateUnavailable,
   reserveContinuationDispatch,
@@ -31,6 +34,7 @@ import {
 } from "./receipt";
 
 const MAX_BODY_BYTES = 8_192;
+const BODY_READ_DEADLINE_MS = 10_000;
 const JSON_MEDIA_TYPE = /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu;
 
 /** Runtime authority required by the public continuation-dispatch handler, including state, GitHub adapters, receipt signing, and exact workflow revision. */
@@ -60,6 +64,8 @@ export interface ContinuationDispatchHandlerDependencies {
     env: ContinuationGitHubAdapterEnv,
   ): Promise<CentralContinuationDispatchResult>;
   commit: typeof commitContinuationOutcome;
+  abort: typeof abortContinuationReservation;
+  finalize: typeof finalizeContinuationOutcome;
 }
 
 /** Default owner implementations for every boundary except the existing OIDC verifier/replay claimant. */
@@ -68,6 +74,8 @@ export const continuationDispatchDependencies = {
   reserve: reserveContinuationDispatch,
   dispatch: dispatchCentralContinuation,
   commit: commitContinuationOutcome,
+  abort: abortContinuationReservation,
+  finalize: finalizeContinuationOutcome,
 };
 
 type HandlerErrorCode = Extract<
@@ -163,21 +171,39 @@ async function readBoundedBody(request: Request): Promise<string | Response> {
   }
   const bytes = new Uint8Array(MAX_BODY_BYTES);
   let used = 0;
-  try {
+  let timeoutHandle!: ReturnType<typeof setTimeout>;
+  const cancelReaderBestEffort = (reason: string) => {
+    try {
+      void reader.cancel(reason).catch(() => undefined);
+    } catch {
+      // Cleanup must not replace an established body decision.
+    }
+  };
+  const deadline = new Promise<Response>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      cancelReaderBestEffort("continuation dispatch body read deadline exceeded");
+      resolve(new Response(null, { status: 408 }));
+    }, BODY_READ_DEADLINE_MS);
+  });
+  const readBody = (async (): Promise<string | Response> => {
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
       if (chunk.value.byteLength > MAX_BODY_BYTES - used) {
-        void reader.cancel("continuation dispatch body exceeds its byte envelope").catch(() => undefined);
+        cancelReaderBestEffort("continuation dispatch body exceeds its byte envelope");
         return new Response(null, { status: 413 });
       }
       bytes.set(chunk.value, used);
       used += chunk.value.byteLength;
     }
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, used));
+  })();
+  try {
+    return await Promise.race([readBody, deadline]);
   } catch {
     return new Response(null, { status: 400 });
   } finally {
+    clearTimeout(timeoutHandle);
     try {
       reader.releaseLock();
     } catch {
@@ -253,7 +279,11 @@ export async function handleContinuationDispatch(
     return errorResponse(
       "ERR_DISPATCH_REQUEST_INVALID",
       status,
-      status === 415 ? "Continuation dispatch requires application/json" : "Continuation dispatch body is invalid",
+      status === 415
+        ? "Continuation dispatch requires application/json"
+        : status === 408
+          ? "Continuation dispatch body read deadline exceeded"
+          : "Continuation dispatch body is invalid",
       traceId,
       startedAt,
     );
@@ -287,7 +317,9 @@ export async function handleContinuationDispatch(
   }
 
   try {
-    await dependencies.claimOidc(claims, env);
+    if (!await dependencies.claimOidc(claims, env)) {
+      return errorResponse("ERR_DISPATCH_IDENTITY_DENIED", 401, "Continuation identity was already used or unavailable", traceId, startedAt);
+    }
   } catch (error) {
     if (isUnavailableBoundary(error)) {
       return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "OIDC replay protection unavailable", traceId, startedAt);
@@ -295,24 +327,11 @@ export async function handleContinuationDispatch(
     return errorResponse("ERR_DISPATCH_IDENTITY_DENIED", 401, "Continuation identity was already used or unavailable", traceId, startedAt);
   }
 
-  try {
-    await dependencies.readLivePullRequest(claims, parsed, env);
-  } catch (error) {
-    if (error instanceof ContinuationGitHubAdapterError) {
-      if (error.classification === "identity_denied") {
-        return errorResponse("ERR_DISPATCH_IDENTITY_DENIED", 403, "Continuation identity was denied", traceId, startedAt);
-      }
-      if (error.classification === "live_state_stale") {
-        return errorResponse("ERR_DISPATCH_LIVE_STATE_STALE", 409, "Pull request state no longer matches", traceId, startedAt);
-      }
-    }
-    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "GitHub live-state verification unavailable", traceId, startedAt);
-  }
-
   const digest = await continuationRequestDigest(parsed, { workflow_sha: workflow.workflowSha });
+  const identity = await continuationDispatchIdentity(parsed, { workflow_sha: workflow.workflowSha });
   let reservation: ContinuationDispatchReservation;
   try {
-    reservation = await dependencies.reserve(env, digest, digest);
+    reservation = await dependencies.reserve(env, identity, digest);
   } catch (error) {
     if (error instanceof ContinuationDispatchStateConflict) {
       return errorResponse("ERR_DISPATCH_REPLAY_CONFLICT", 409, "Continuation replay conflicts with retained authority", traceId, startedAt);
@@ -329,6 +348,63 @@ export async function handleContinuationDispatch(
     return successResponse(reservation.receipt, traceId, startedAt, true);
   }
 
+  try {
+    await dependencies.readLivePullRequest(claims, parsed, env);
+  } catch (error) {
+    try {
+      await dependencies.abort(env, reservation);
+    } catch {
+      return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation reservation could not be released", traceId, startedAt);
+    }
+    if (error instanceof ContinuationGitHubAdapterError) {
+      if (error.classification === "identity_denied") {
+        return errorResponse("ERR_DISPATCH_IDENTITY_DENIED", 403, "Continuation identity was denied", traceId, startedAt);
+      }
+      if (error.classification === "live_state_stale") {
+        return errorResponse("ERR_DISPATCH_LIVE_STATE_STALE", 409, "Pull request state no longer matches", traceId, startedAt);
+      }
+    }
+    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "GitHub live-state verification unavailable", traceId, startedAt);
+  }
+
+  const receiptId = crypto.randomUUID();
+  const payloadDigest = await emittedPayloadDigest(parsed);
+  let indeterminateReceipt: SignedContinuationReceipt;
+  try {
+    indeterminateReceipt = await signContinuationReceipt({
+      request: parsed,
+      requestDigest: digest,
+      idempotencyIdentity: identity,
+      workflowRef: workflow.workflowRef,
+      workflowSha: workflow.workflowSha,
+      emittedPayloadDigest: payloadDigest,
+      dispatchResult: {
+        outcome: "indeterminate",
+        eventType: parsed.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan",
+      },
+      oidcLifetime: { iat: workflow.iat, exp: workflow.exp },
+      receiptId,
+      traceId,
+    }, env);
+  } catch {
+    try {
+      await dependencies.abort(env, reservation);
+    } catch {
+      return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation reservation could not be released", traceId, startedAt);
+    }
+    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation evidence could not be signed", traceId, startedAt);
+  }
+
+  try {
+    await dependencies.commit(
+      env,
+      reservation,
+      indeterminateReceipt as unknown as ContinuationDispatchReceipt,
+    );
+  } catch {
+    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation evidence could not be committed", traceId, startedAt);
+  }
+
   let dispatchResult: CentralContinuationDispatchResult;
   try {
     dispatchResult = await dependencies.dispatch(parsed, env);
@@ -336,27 +412,45 @@ export async function handleContinuationDispatch(
     dispatchResult = { outcome: "indeterminate", eventType: parsed.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan" };
   }
 
+  if (dispatchResult.outcome === "indeterminate") {
+    return errorResponse(
+      "ERR_GITHUB_DISPATCH_UPSTREAM",
+      503,
+      "GitHub continuation dispatch outcome is indeterminate",
+      traceId,
+      startedAt,
+      { receipt: indeterminateReceipt },
+    );
+  }
+
   let receipt: SignedContinuationReceipt;
   try {
     receipt = await signContinuationReceipt({
       request: parsed,
       requestDigest: digest,
-      idempotencyIdentity: digest,
+      idempotencyIdentity: identity,
       workflowRef: workflow.workflowRef,
       workflowSha: workflow.workflowSha,
-      emittedPayloadDigest: await emittedPayloadDigest(parsed),
+      emittedPayloadDigest: payloadDigest,
       dispatchResult,
       oidcLifetime: { iat: workflow.iat, exp: workflow.exp },
-      receiptId: crypto.randomUUID(),
+      receiptId,
       traceId,
     }, env);
-    await dependencies.commit(
+    await dependencies.finalize(
       env,
       reservation,
       receipt as unknown as ContinuationDispatchReceipt,
     );
   } catch {
-    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation evidence could not be committed", traceId, startedAt);
+    return errorResponse(
+      "ERR_GITHUB_DISPATCH_UPSTREAM",
+      503,
+      "Continuation final evidence could not be committed",
+      traceId,
+      startedAt,
+      { receipt: indeterminateReceipt },
+    );
   }
 
   if (dispatchResult.outcome === "accepted") {
@@ -372,12 +466,5 @@ export async function handleContinuationDispatch(
       { receipt },
     );
   }
-  return errorResponse(
-    "ERR_GITHUB_DISPATCH_UPSTREAM",
-    503,
-    "GitHub continuation dispatch outcome is indeterminate",
-    traceId,
-    startedAt,
-    { receipt },
-  );
+  return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Unexpected continuation outcome", traceId, startedAt);
 }
