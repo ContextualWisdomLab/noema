@@ -19,7 +19,7 @@ import {
   type ContinuationDispatchStateEnv,
 } from "./dispatch-state";
 import {
-  centralDispatchBody,
+  centralContinuationDispatchBody,
   ContinuationGitHubAdapterError,
   prepareCentralContinuation,
   readAndVerifyLivePullRequest,
@@ -144,6 +144,30 @@ function successResponse(
   });
 }
 
+function replayResponse(
+  reservation: Extract<ContinuationDispatchReservation, { kind: "replay" }>,
+  traceId: string,
+  startedAt: number,
+): Response {
+  if (reservation.outcome === "accepted") {
+    return successResponse(reservation.receipt, traceId, startedAt, true);
+  }
+  const response = errorResponse(
+    reservation.outcome === "denied"
+      ? "ERR_GITHUB_DISPATCH_AUTHORIZATION"
+      : "ERR_GITHUB_DISPATCH_UPSTREAM",
+    reservation.outcome === "denied" ? 502 : 503,
+    reservation.outcome === "denied"
+      ? "GitHub rejected the fixed continuation dispatch"
+      : "GitHub continuation dispatch outcome is indeterminate",
+    traceId,
+    startedAt,
+    { receipt: reservation.receipt },
+  );
+  response.headers.set("x-continuation-replay", "exact");
+  return response;
+}
+
 function cancelBestEffort(body: ReadableStream<Uint8Array> | null, reason: string): void {
   if (body === null) return;
   try {
@@ -229,7 +253,7 @@ async function sha256(value: string): Promise<string> {
 }
 
 async function emittedPayloadDigest(request: ContinuationDispatchRequest): Promise<string> {
-  return sha256(centralDispatchBody(request));
+  return sha256(centralContinuationDispatchBody(request));
 }
 
 function workflowIdentity(claims: JwtPayload, env: ContinuationDispatchHandlerEnv): {
@@ -341,28 +365,7 @@ export async function handleContinuationDispatch(
     return errorResponse("ERR_DISPATCH_REPLAY_CONFLICT", 409, "Continuation dispatch is already in progress", traceId, startedAt);
   }
   if (reservation.kind === "replay") {
-    if (reservation.outcome === "accepted") {
-      return successResponse(reservation.receipt, traceId, startedAt, true);
-    }
-    const replay = reservation.outcome === "denied"
-      ? errorResponse(
-        "ERR_GITHUB_DISPATCH_AUTHORIZATION",
-        502,
-        "GitHub rejected the fixed continuation dispatch",
-        traceId,
-        startedAt,
-        { receipt: reservation.receipt },
-      )
-      : errorResponse(
-        "ERR_GITHUB_DISPATCH_UPSTREAM",
-        503,
-        "GitHub continuation dispatch outcome is indeterminate",
-        traceId,
-        startedAt,
-        { receipt: reservation.receipt },
-      );
-    replay.headers.set("x-continuation-replay", "exact");
-    return replay;
+    return replayResponse(reservation, traceId, startedAt);
   }
 
   try {
@@ -415,6 +418,7 @@ export async function handleContinuationDispatch(
   let preparedDispatch: PreparedCentralContinuationDispatch;
   try {
     preparedDispatch = await dependencies.prepareDispatch(env);
+    preparedDispatch.assertFresh();
   } catch {
     try {
       await dependencies.abort(env, reservation);

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortContinuationReservation,
@@ -22,7 +22,7 @@ const endpoint = "https://noema-continuation-dispatch-state.internal/command";
 class MemoryStorage {
   readonly records = new Map<string, unknown>();
   transactionCount = 0;
-  alarmAt: number | undefined;
+  alarmAt: number | null = null;
 
   async get<T>(key: string): Promise<T | undefined> {
     return structuredClone(this.records.get(key)) as T | undefined;
@@ -41,10 +41,13 @@ class MemoryStorage {
     return callback(this);
   }
 
-  async setAlarm(timestamp: number): Promise<void> {
-    this.alarmAt = timestamp;
+  async getAlarm(): Promise<number | null> { return this.alarmAt; }
+
+  async setAlarm(scheduledTime: number | Date): Promise<void> {
+    this.alarmAt = scheduledTime instanceof Date ? scheduledTime.getTime() : scheduledTime;
   }
 
+  async deleteAlarm(): Promise<void> { this.alarmAt = null; }
   replaceOnlyRecord(value: unknown): void {
     const key = [...this.records.keys()][0];
     if (key === undefined) throw new Error("fixture has no continuation state record");
@@ -119,6 +122,8 @@ function envWithTransport(
 }
 
 describe("continuation dispatch exactly-once state", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("schedules reservation recovery at the exact OIDC authorization expiry", async () => {
     const { env, namespace } = fixture();
 
@@ -126,6 +131,43 @@ describe("continuation dispatch exactly-once state", () => {
 
     expect(namespace.storageByName.get(`continuation:${identity}`)?.alarmAt)
       .toBe(reservationExpiresAtEpochSeconds * 1_000);
+  });
+
+  it("rejects a reservation whose exact OIDC authorization has already expired", async () => {
+    const { env, namespace } = fixture();
+    vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+
+    await expect(reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    )).rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
+
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    expect(storage.records.size).toBe(0);
+    expect(storage.alarmAt).toBeNull();
+  });
+
+  it("cannot commit after exact OIDC expiry even when the alarm is delayed", async () => {
+    const { env, namespace } = fixture();
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const reservation = requireNewReservation(await reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    ));
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+
+    await expect(commitContinuationOutcome(env, reservation, {
+      outcome: "indeterminate",
+      receipt_id: "expired-authority",
+    })).rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
+
+    expect(storage.records.size).toBe(0);
+    expect(storage.alarmAt).toBeNull();
   });
 
   it("releases an expired reserved state so a crashed pre-dispatch attempt can be retried", async () => {
@@ -153,7 +195,7 @@ describe("continuation dispatch exactly-once state", () => {
     const { env, namespace } = fixture();
     await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
     const storage = namespace.storageByName.get(`continuation:${identity}`)!;
-    storage.alarmAt = undefined;
+    storage.alarmAt = null;
     const state = new NoemaContinuationDispatchState({
       id: { name: `continuation:${identity}` } as DurableObjectId,
       storage: storage as unknown as DurableObjectStorage,
@@ -206,6 +248,85 @@ describe("continuation dispatch exactly-once state", () => {
     expect(first).toHaveProperty("reservationId");
     expect(replay).toEqual({ kind: "in_progress", identity, digest });
     expect(namespace.storageByName.get(`continuation:${identity}`)?.transactionCount).toBe(2);
+    expect(namespace.storageByName.get(`continuation:${identity}`)?.alarmAt).not.toBeNull();
+  });
+
+  it("removes only an expired reservation when its alarm fires", async () => {
+    const storage = new MemoryStorage();
+    const object = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    await object.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "reserve",
+        identity,
+        digest,
+        reservation_expires_at: reservationExpiresAtEpochSeconds,
+      }),
+    }));
+    expect(storage.records.size).toBe(1);
+    vi.spyOn(Date, "now").mockReturnValue(storage.alarmAt! + 1);
+
+    await object.alarm();
+
+    expect(storage.records.size).toBe(0);
+    expect(storage.alarmAt).toBeNull();
+  });
+
+  it("keeps malformed and unexpired state fail closed while clearing irrelevant alarms", async () => {
+    const makeObject = (storage: MemoryStorage) => new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+
+    const empty = new MemoryStorage();
+    empty.alarmAt = 10;
+    await makeObject(empty).alarm();
+    expect(empty.alarmAt).toBeNull();
+
+    const malformed = new MemoryStorage();
+    malformed.records.set("continuation-dispatch-state", { status: "reserved" });
+    malformed.alarmAt = 20;
+    await expect(makeObject(malformed).alarm()).rejects.toThrow(
+      "continuation dispatch alarm found invalid retained state",
+    );
+    expect(malformed.records.size).toBe(1);
+    expect(malformed.alarmAt).toBe(20);
+
+    const terminal = new MemoryStorage();
+    terminal.records.set("continuation-dispatch-state", {
+      version: "noema.continuation-dispatch-state.v1",
+      identity,
+      request_digest: digest,
+      status: "accepted",
+      reservation_id: "00000000-0000-4000-8000-000000000000",
+      receipt: { outcome: "accepted" },
+    });
+    terminal.alarmAt = 30;
+    await makeObject(terminal).alarm();
+    expect(terminal.records.size).toBe(1);
+    expect(terminal.alarmAt).toBeNull();
+
+    const unexpired = new MemoryStorage();
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    await makeObject(unexpired).fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "reserve",
+        identity,
+        digest,
+        reservation_expires_at: reservationExpiresAtEpochSeconds,
+      }),
+    }));
+    const scheduled = unexpired.alarmAt;
+    await makeObject(unexpired).alarm();
+    expect(unexpired.records.size).toBe(1);
+    expect(unexpired.alarmAt).toBe(scheduled);
   });
 
   it.each(["accepted", "denied", "indeterminate"] as const)(
@@ -226,6 +347,32 @@ describe("continuation dispatch exactly-once state", () => {
 
       expect(replay).toEqual({ kind: "replay", identity, digest, outcome, receipt });
       expect(namespace.storageByName.get(`continuation:${identity}`)?.transactionCount).toBe(3);
+    },
+  );
+
+  it.each(["accepted", "denied", "indeterminate"] as const)(
+    "replays a legacy v1 terminal %s record while legacy reservations remain fail closed",
+    async (outcome) => {
+      const { env, namespace } = fixture();
+      vi.spyOn(Date, "now").mockReturnValue(1_000);
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+      const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+      const receipt = { outcome, receipt_id: `legacy-${outcome}` } as const;
+      storage.replaceOnlyRecord({
+        version: "noema.continuation-dispatch-state.v1",
+        identity,
+        request_digest: digest,
+        status: outcome,
+        reservation_id: "00000000-0000-4000-8000-000000000000",
+        receipt,
+      });
+
+      await expect(reserveContinuationDispatch(
+        env,
+        identity,
+        digest,
+        reservationExpiresAtEpochSeconds,
+      )).resolves.toEqual({ kind: "replay", identity, digest, outcome, receipt });
     },
   );
 
@@ -696,7 +843,6 @@ describe("continuation dispatch private command boundary", () => {
       request_digest: digest,
       status: "indeterminate",
       reservation_id: reservation.reservationId,
-      reservation_expires_at: reservationExpiresAtEpochSeconds,
       receipt: { outcome: "indeterminate", receipt_id: "same", signature: "small" },
     });
     const state = new NoemaContinuationDispatchState({

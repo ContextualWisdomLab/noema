@@ -90,6 +90,24 @@ describe("machine-readable public HTTP contract", () => {
 
     const continuation = spec.paths["/v1/continuation-dispatches"].post;
     expect(continuation["x-request-body-read-deadline-ms"]).toBe(10000);
+    expect(continuation.responses["408"]).toEqual({ $ref: "#/components/responses/RequestTimeout" });
+    expect(continuation.responses["401"].headers["WWW-Authenticate"]).toBeDefined();
+    expect(continuation.responses["200"].headers["X-Continuation-Replay"]).toBeDefined();
+    for (const status of ["502", "503"]) {
+      expect(continuation.responses[status].headers["X-Continuation-Replay"]).toBeDefined();
+      expect(continuation.responses[status].content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/ContinuationErrorResponse",
+      });
+    }
+    expect(spec.components.schemas.ContinuationErrorDetails).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["hint"],
+    });
+    expect(spec.components.schemas.ContinuationErrorDetails.properties.receipt).toEqual({
+      $ref: "#/components/schemas/SignedContinuationReceipt",
+    });
+    expect(spec.components.responses.UnsupportedMediaType.description).not.toMatch(/Exchange/u);
   });
 
   it("executes the RE2-safe repository locator against realistic owner/name values", async () => {

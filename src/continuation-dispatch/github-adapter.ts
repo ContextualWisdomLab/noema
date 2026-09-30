@@ -68,6 +68,8 @@ export type CentralContinuationDispatchResult = {
 
 /** Opaque central-only dispatch capability prepared before any indeterminate receipt is committed. */
 export interface PreparedCentralContinuationDispatch {
+  /** Fails closed when the privately retained installation token has reached its exact expiry. */
+  assertFresh(): void;
   /** Sends one closed continuation request without exposing the captured installation token. */
   send(request: ContinuationDispatchRequest): Promise<CentralContinuationDispatchResult>;
 }
@@ -84,6 +86,25 @@ type GithubPullRequest = {
   readonly head?: GithubPullRequestSide | null;
   readonly base?: GithubPullRequestSide | null;
 };
+
+/**
+ * Builds the only repository-dispatch body admitted by the continuation broker.
+ * @param request Closed continuation request whose allowlisted action selects the fixed event type.
+ * @returns The exact JSON bytes used by both GitHub transport and signed payload-digest evidence.
+ */
+export function centralContinuationDispatchBody(request: ContinuationDispatchRequest): string {
+  return JSON.stringify({
+    event_type: dispatchMapping(request.dispatch_action).eventType,
+    client_payload: {
+      source_repository: request.source_repository,
+      pull_request_number: request.pull_request_number,
+      expected_head_sha: request.expected_head_sha,
+      expected_base_sha: request.expected_base_sha,
+      expected_base_ref: request.expected_base_ref,
+      transport_retry_attempt: request.transport_retry_attempt,
+    },
+  });
+}
 
 function sourceReadFailure(error: unknown): ContinuationGitHubAdapterError {
   if (error instanceof ApiError) {
@@ -112,25 +133,6 @@ function centralAppEnv(env: ContinuationGitHubAdapterEnv): GitHubAppEnv {
     GITHUB_APP_PRIVATE_KEY_PEM: env.CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM,
     GITHUB_APP_INSTALLATION_ID: env.CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID,
   };
-}
-
-/**
- * Serializes the exact fixed repository-dispatch body used for both transport and receipt hashing.
- * @param request Closed continuation request whose action maps to one released central event.
- * @returns Canonical adapter-owned JSON bytes shared by digest calculation and GitHub transport.
- */
-export function centralDispatchBody(request: ContinuationDispatchRequest): string {
-  return JSON.stringify({
-    event_type: dispatchMapping(request.dispatch_action).eventType,
-    client_payload: {
-      source_repository: request.source_repository,
-      pull_request_number: request.pull_request_number,
-      expected_head_sha: request.expected_head_sha,
-      expected_base_sha: request.expected_base_sha,
-      expected_base_ref: request.expected_base_ref,
-      transport_retry_attempt: request.transport_retry_attempt,
-    },
-  });
 }
 
 /**
@@ -210,6 +212,7 @@ export async function prepareCentralContinuation(
   env: ContinuationGitHubAdapterEnv,
 ): Promise<PreparedCentralContinuationDispatch> {
   let installationToken: string;
+  let installationTokenExpiresAtMilliseconds: number;
   try {
     const installation = await createGitHubInstallationToken(
       CENTRAL_REPOSITORY,
@@ -217,12 +220,21 @@ export async function prepareCentralContinuation(
       { contents: "write" },
     );
     installationToken = installation.token;
+    installationTokenExpiresAtMilliseconds = Date.parse(installation.expires_at);
   } catch (error) {
     throw centralCredentialFailure(error);
   }
 
+  const assertFresh = (): void => {
+    if (Date.now() >= installationTokenExpiresAtMilliseconds) {
+      throw new ContinuationGitHubAdapterError("upstream_unavailable");
+    }
+  };
+
   return Object.freeze({
+    assertFresh,
     async send(request: ContinuationDispatchRequest): Promise<CentralContinuationDispatchResult> {
+      assertFresh();
       const eventType = dispatchMapping(request.dispatch_action).eventType;
       let response: Response;
       try {
@@ -234,7 +246,7 @@ export async function prepareCentralContinuation(
               authorization: `Bearer ${installationToken}`,
               "content-type": "application/json",
             },
-            body: centralDispatchBody(request),
+            body: centralContinuationDispatchBody(request),
           },
           env,
         );

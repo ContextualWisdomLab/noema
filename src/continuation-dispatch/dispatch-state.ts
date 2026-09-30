@@ -67,7 +67,7 @@ type StoredDispatchState = {
   readonly request_digest: string;
   readonly status: "reserved" | ContinuationDispatchOutcome;
   readonly reservation_id: string;
-  readonly reservation_expires_at: number;
+  readonly reservation_expires_at?: number;
   readonly receipt?: ContinuationDispatchReceipt;
 };
 
@@ -211,19 +211,19 @@ function isStoredState(value: unknown): value is StoredDispatchState {
     || !isDigest(value.identity)
     || !isDigest(value.request_digest)
     || !isReservationId(value.reservation_id)
-    || !isEpochSeconds(value.reservation_expires_at)
   ) {
     return false;
   }
   if (value.status === "reserved") {
-    return hasExactKeys(value, [
-      "version",
-      "identity",
-      "request_digest",
-      "status",
-      "reservation_id",
-      "reservation_expires_at",
-    ]);
+    return isEpochSeconds(value.reservation_expires_at)
+      && hasExactKeys(value, [
+        "version",
+        "identity",
+        "request_digest",
+        "status",
+        "reservation_id",
+        "reservation_expires_at",
+      ]);
   }
   const encodedBytes = encodedJsonBytes(value);
   return (
@@ -234,7 +234,6 @@ function isStoredState(value: unknown): value is StoredDispatchState {
       "request_digest",
       "status",
       "reservation_id",
-      "reservation_expires_at",
       "receipt",
     ])
     && isReceipt(value.receipt)
@@ -770,10 +769,21 @@ export class NoemaContinuationDispatchState {
           const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
           if (stored !== undefined) {
             if (!isStoredState(stored)) return { kind: "invalid" } as const;
+            if (
+              stored.status === "reserved"
+              && stored.reservation_expires_at! * 1_000 <= Date.now()
+            ) {
+              await transaction.delete(STATE_RECORD_KEY);
+              await transaction.deleteAlarm();
+              return { kind: "expired" } as const;
+            }
             if (stored.identity !== command.identity || stored.request_digest !== command.digest) {
               return { kind: "conflict" } as const;
             }
             return { kind: "existing", reservation: reservationFromStored(stored) } as const;
+          }
+          if (command.reservation_expires_at * 1_000 <= Date.now()) {
+            return { kind: "expired" } as const;
           }
           const reservationId = crypto.randomUUID();
           const next: StoredDispatchState = {
@@ -797,7 +807,9 @@ export class NoemaContinuationDispatchState {
           } as const;
         });
         if (decision.kind === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
-        if (decision.kind === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
+        if (decision.kind === "conflict" || decision.kind === "expired") {
+          return jsonResponse({ ok: false, error: "conflict" }, 409);
+        }
         return jsonResponse({ ok: true, data: decision.reservation }, decision.kind === "created" ? 201 : 200);
       }
 
@@ -814,6 +826,7 @@ export class NoemaContinuationDispatchState {
             return "conflict";
           }
           await transaction.delete(STATE_RECORD_KEY);
+          await transaction.deleteAlarm();
           return "aborted";
         });
         if (aborted === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
@@ -860,13 +873,22 @@ export class NoemaContinuationDispatchState {
         ) {
           return "conflict";
         }
+        if (stored.reservation_expires_at! * 1_000 <= Date.now()) {
+          await transaction.delete(STATE_RECORD_KEY);
+          await transaction.deleteAlarm();
+          return "conflict";
+        }
         const next: StoredDispatchState = {
-          ...stored,
+          version: stored.version,
+          identity: stored.identity,
+          request_digest: stored.request_digest,
           status: command.receipt.outcome,
+          reservation_id: stored.reservation_id,
           receipt: command.receipt,
         };
         if (new TextEncoder().encode(JSON.stringify(next)).byteLength > MAX_STATE_JSON_BYTES) return "invalid";
         await transaction.put(STATE_RECORD_KEY, next);
+        await transaction.deleteAlarm();
         return "committed";
       });
       if (committed === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
@@ -885,14 +907,21 @@ export class NoemaContinuationDispatchState {
   async alarm(): Promise<void> {
     await this.storage.transaction(async (transaction) => {
       const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
-      if (stored === undefined) return;
+      if (stored === undefined) {
+        await transaction.deleteAlarm();
+        return;
+      }
       if (!isStoredState(stored)) {
         throw new Error("continuation dispatch alarm found invalid retained state");
       }
-      if (stored.status !== "reserved") return;
-      const expiresAtMilliseconds = stored.reservation_expires_at * 1_000;
+      if (stored.status !== "reserved") {
+        await transaction.deleteAlarm();
+        return;
+      }
+      const expiresAtMilliseconds = stored.reservation_expires_at! * 1_000;
       if (expiresAtMilliseconds <= Date.now()) {
         await transaction.delete(STATE_RECORD_KEY);
+        await transaction.deleteAlarm();
         return;
       }
       await transaction.setAlarm(expiresAtMilliseconds);

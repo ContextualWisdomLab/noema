@@ -168,9 +168,32 @@
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchRequest" } } }
         },
         "responses": {
-          "200": { "description": "Accepted dispatch or exact replay evidence.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchSuccess" } } } },
+          "200": {
+            "description": "Accepted dispatch or exact replay evidence. X-Continuation-Replay is present only for exact replay.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Oidc-Replay-Protection": { "$ref": "#/components/headers/ContinuationOidcReplayProtection" },
+              "X-Continuation-Replay": { "$ref": "#/components/headers/ContinuationReplay" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchSuccess" } } }
+          },
           "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "description": "Identity is missing, invalid, or already consumed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": {
+            "description": "Identity is missing, invalid, or already consumed.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "WWW-Authenticate": { "$ref": "#/components/headers/WwwAuthenticate" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationErrorResponse" } } }
+          },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "405": { "description": "Only POST is admitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
           "408": { "$ref": "#/components/responses/RequestTimeout" },
@@ -178,8 +201,30 @@
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
           "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "description": "Distributed rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
-          "502": { "$ref": "#/components/responses/BadGateway" },
-          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+          "502": {
+            "description": "GitHub denied the fixed dispatch. X-Continuation-Replay is present only for exact replay evidence.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Continuation-Replay": { "$ref": "#/components/headers/ContinuationReplay" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationErrorResponse" } } }
+          },
+          "503": {
+            "description": "Continuation authority, evidence, or transport is unavailable or indeterminate. X-Continuation-Replay is present only for exact replay evidence.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Continuation-Replay": { "$ref": "#/components/headers/ContinuationReplay" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationErrorResponse" } } }
+          }
         }
       }
     }
@@ -241,6 +286,14 @@
       "OidcReplayProtection": {
         "description": "Confirms that the successful exchange consumed the verified OIDC identity through the single-use replay boundary.",
         "schema": { "type": "string", "const": "single-use" }
+      },
+      "ContinuationOidcReplayProtection": {
+        "description": "Confirms verification and single-use claim before continuation dispatch.",
+        "schema": { "type": "string", "const": "verified-before-dispatch" }
+      },
+      "ContinuationReplay": {
+        "description": "Present with the value exact only when the response replays retained terminal evidence.",
+        "schema": { "type": "string", "const": "exact" }
       }
     },
     "schemas": {
@@ -374,6 +427,37 @@
           "trace_id": { "type": "string" }
         }
       },
+      "ContinuationErrorDetails": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hint"],
+        "properties": {
+          "hint": { "type": "string" },
+          "receipt": { "$ref": "#/components/schemas/SignedContinuationReceipt" }
+        }
+      },
+      "ContinuationErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "error_code", "message", "details", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "error_code": {
+            "type": "string",
+            "enum": [
+              "ERR_DISPATCH_REQUEST_INVALID",
+              "ERR_DISPATCH_IDENTITY_DENIED",
+              "ERR_DISPATCH_LIVE_STATE_STALE",
+              "ERR_DISPATCH_REPLAY_CONFLICT",
+              "ERR_GITHUB_DISPATCH_AUTHORIZATION",
+              "ERR_GITHUB_DISPATCH_UPSTREAM"
+            ]
+          },
+          "message": { "type": "string" },
+          "details": { "$ref": "#/components/schemas/ContinuationErrorDetails" },
+          "trace_id": { "type": "string" }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": ["ok", "error_code", "message", "trace_id"],
@@ -465,7 +549,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "RequestTimeout": {
-        "description": "Exchange JSON wire body did not complete within the 10,000 ms absolute read deadline.",
+        "description": "JSON wire body did not complete within the operation's 10,000 ms absolute read deadline.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },
@@ -476,7 +560,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "PayloadTooLarge": {
-        "description": "Exchange JSON wire body exceeds 8,192 bytes.",
+        "description": "JSON wire body exceeds the operation's 8,192-byte limit.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },
@@ -487,7 +571,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "UnsupportedMediaType": {
-        "description": "Exchange request body is present but its media-type token is not application/json.",
+        "description": "Request body is present but its media-type token is not application/json.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },

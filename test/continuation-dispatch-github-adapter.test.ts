@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  centralContinuationDispatchBody,
   ContinuationGitHubAdapterError,
   dispatchCentralContinuation,
   prepareCentralContinuation,
@@ -42,6 +43,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -229,6 +231,7 @@ function mockCentralDispatch(dispatchResponse: Response | (() => Response)): Ret
     if (url === `https://api.github.com/repos/${CENTRAL_REPOSITORY}/dispatches`) {
       expect(init?.method).toBe("POST");
       expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${CENTRAL_TOKEN}`);
+      expect(init?.body).toBe(centralContinuationDispatchBody(request()));
       expect(JSON.parse(String(init?.body))).toEqual({
         event_type: "noema-review",
         client_payload: {
@@ -311,6 +314,20 @@ describe("fixed central dispatch", () => {
       eventType: "noema-review",
     });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails the opaque prepared capability closed at its exact installation-token expiry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    const fetchSpy = mockCentralDispatch(new Response(null, { status: 204 }));
+    const prepared = await prepareCentralContinuation(env());
+    vi.setSystemTime(new Date("2030-01-01T00:30:00.000Z"));
+
+    expect(() => prepared.assertFresh()).toThrow(ContinuationGitHubAdapterError);
+    await expect(prepared.send(request())).rejects.toMatchObject({
+      classification: "upstream_unavailable",
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("maps the released Strix action without caller-selected dispatch authority", async () => {
