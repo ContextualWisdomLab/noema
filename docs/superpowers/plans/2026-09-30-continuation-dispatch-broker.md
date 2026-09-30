@@ -88,11 +88,11 @@
 - Produces: `signContinuationReceipt(fields, env): Promise<SignedContinuationReceipt>`
 - Produces: `verifyContinuationReceipt(receipt, publicKey): Promise<boolean>` for tests and documented consumer conformance.
 
-- [ ] Write RED tests for deterministic RFC 8785 bytes, Ed25519 verification, OIDC-derived expiry, field mutation failure, and absence of token/bearer/assertion/private-key material.
-- [ ] Run the focused receipt test; expect missing implementation failure.
-- [ ] Implement dedicated Ed25519 PKCS#8 import, key-id validation, detached base64url signature, and public verification helper.
-- [ ] Run receipt tests and typecheck; expect PASS.
-- [ ] Commit `test+feat(dispatch): issue signed continuation receipts`.
+- [x] Write RED tests for deterministic RFC 8785 bytes, Ed25519 verification, OIDC-derived expiry, field mutation failure, and absence of token/bearer/assertion/private-key material.
+- [x] Run the focused receipt test; expect missing implementation failure.
+- [x] Implement dedicated Ed25519 PKCS#8 import, key-id validation, detached base64url signature, and public verification helper.
+- [x] Run receipt tests and typecheck; expect PASS.
+- [x] Commit `test+feat(dispatch): issue signed continuation receipts`.
 
 ### Task 5: Public route integration
 
