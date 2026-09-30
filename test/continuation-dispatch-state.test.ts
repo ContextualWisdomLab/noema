@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   abortContinuationReservation,
@@ -16,11 +16,13 @@ import * as runtimeEntrypoint from "../src/runtime-entrypoint";
 
 const identity = "a".repeat(64);
 const digest = "b".repeat(64);
+const reservationExpiresAtEpochSeconds = 1_800_000_300;
 const endpoint = "https://noema-continuation-dispatch-state.internal/command";
 
 class MemoryStorage {
   readonly records = new Map<string, unknown>();
   transactionCount = 0;
+  alarmAt: number | undefined;
 
   async get<T>(key: string): Promise<T | undefined> {
     return structuredClone(this.records.get(key)) as T | undefined;
@@ -37,6 +39,10 @@ class MemoryStorage {
   async transaction<T>(callback: (transaction: MemoryStorage) => Promise<T>): Promise<T> {
     this.transactionCount += 1;
     return callback(this);
+  }
+
+  async setAlarm(timestamp: number): Promise<void> {
+    this.alarmAt = timestamp;
   }
 
   replaceOnlyRecord(value: unknown): void {
@@ -113,11 +119,88 @@ function envWithTransport(
 }
 
 describe("continuation dispatch exactly-once state", () => {
+  it("schedules reservation recovery at the exact OIDC authorization expiry", async () => {
+    const { env, namespace } = fixture();
+
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+
+    expect(namespace.storageByName.get(`continuation:${identity}`)?.alarmAt)
+      .toBe(reservationExpiresAtEpochSeconds * 1_000);
+  });
+
+  it("releases an expired reserved state so a crashed pre-dispatch attempt can be retried", async () => {
+    const { env, namespace } = fixture();
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    const state = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+
+    await state.alarm();
+    dateNow.mockRestore();
+
+    await expect(reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    )).resolves.toMatchObject({ kind: "reserved", identity, digest });
+  });
+
+  it("reschedules a non-expired reservation at its exact retained expiry", async () => {
+    const { env, namespace } = fixture();
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    storage.alarmAt = undefined;
+    const state = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(
+      reservationExpiresAtEpochSeconds * 1_000 - 1,
+    );
+
+    await state.alarm();
+    dateNow.mockRestore();
+
+    expect(storage.records.size).toBe(1);
+    expect(storage.alarmAt).toBe(reservationExpiresAtEpochSeconds * 1_000);
+  });
+
+  it("preserves immutable terminal evidence when the reservation alarm fires", async () => {
+    const { env, namespace } = fixture();
+    const reservation = requireNewReservation(await reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    ));
+    await commitContinuationOutcome(env, reservation, { outcome: "accepted", receipt_id: "retained" });
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    const state = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+
+    await state.alarm();
+    dateNow.mockRestore();
+
+    await expect(reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    )).resolves.toMatchObject({ kind: "replay", outcome: "accepted" });
+  });
+
   it("grants only the first atomic reservation while an exact concurrent replay stays in progress", async () => {
     const { env, namespace } = fixture();
 
-    const first = await reserveContinuationDispatch(env, identity, digest);
-    const replay = await reserveContinuationDispatch(env, identity, digest);
+    const first = await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+    const replay = await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
 
     expect(first).toMatchObject({ kind: "reserved", identity, digest });
     expect(first).toHaveProperty("reservationId");
@@ -130,7 +213,7 @@ describe("continuation dispatch exactly-once state", () => {
     async (outcome) => {
       const { env, namespace } = fixture();
       const reservation = requireNewReservation(
-        await reserveContinuationDispatch(env, identity, digest),
+        await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
       );
       const receipt = {
         outcome,
@@ -139,7 +222,7 @@ describe("continuation dispatch exactly-once state", () => {
       } as const;
 
       await commitContinuationOutcome(env, reservation, receipt);
-      const replay = await reserveContinuationDispatch(env, identity, digest);
+      const replay = await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
 
       expect(replay).toEqual({ kind: "replay", identity, digest, outcome, receipt });
       expect(namespace.storageByName.get(`continuation:${identity}`)?.transactionCount).toBe(3);
@@ -148,22 +231,22 @@ describe("continuation dispatch exactly-once state", () => {
 
   it("rejects the same logical identity with a different request digest without changing retained state", async () => {
     const { env, namespace } = fixture();
-    await reserveContinuationDispatch(env, identity, digest);
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
     const storage = namespace.storageByName.get(`continuation:${identity}`)!;
     const retained = structuredClone([...storage.records.values()][0]);
 
-    await expect(reserveContinuationDispatch(env, identity, "c".repeat(64)))
+    await expect(reserveContinuationDispatch(env, identity, "c".repeat(64), reservationExpiresAtEpochSeconds))
       .rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
     expect([...storage.records.values()][0]).toEqual(retained);
   });
 
   it("releases only the exact fresh reservation before an external effect", async () => {
     const { env } = fixture();
-    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds));
 
     await abortContinuationReservation(env, reservation);
 
-    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toMatchObject({
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds)).resolves.toMatchObject({
       kind: "reserved",
       identity,
       digest,
@@ -172,7 +255,7 @@ describe("continuation dispatch exactly-once state", () => {
 
   it("upgrades retained indeterminate evidence without changing immutable receipt authority", async () => {
     const { env } = fixture();
-    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds));
     const pending = {
       outcome: "indeterminate" as const,
       receipt_id: "same-receipt",
@@ -190,7 +273,7 @@ describe("continuation dispatch exactly-once state", () => {
     await commitContinuationOutcome(env, reservation, pending);
     await finalizeContinuationOutcome(env, reservation, accepted);
 
-    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toEqual({
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds)).resolves.toEqual({
       kind: "replay",
       identity,
       digest,
@@ -202,7 +285,7 @@ describe("continuation dispatch exactly-once state", () => {
   it("requires the original reservation capability before committing a terminal outcome", async () => {
     const { env } = fixture();
     const reservation = requireNewReservation(
-      await reserveContinuationDispatch(env, identity, digest),
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
     );
 
     await expect(commitContinuationOutcome(env, {
@@ -213,7 +296,7 @@ describe("continuation dispatch exactly-once state", () => {
       receipt_id: "wrong-capability",
     })).rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
 
-    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toEqual({
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds)).resolves.toEqual({
       kind: "in_progress",
       identity,
       digest,
@@ -230,11 +313,11 @@ describe("continuation dispatch exactly-once state", () => {
     { version: "noema.continuation-dispatch-state.v1", identity, request_digest: digest, status: "reserved", reservation_id: crypto.randomUUID(), receipt: {} },
   ])("fails closed without replacing malformed retained state %#", async (corrupt) => {
     const { env, namespace } = fixture();
-    await reserveContinuationDispatch(env, identity, digest);
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
     const storage = namespace.storageByName.get(`continuation:${identity}`)!;
     storage.replaceOnlyRecord(corrupt);
 
-    await expect(reserveContinuationDispatch(env, identity, digest))
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds))
       .rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
     expect([...storage.records.values()][0]).toEqual(corrupt);
   });
@@ -242,14 +325,14 @@ describe("continuation dispatch exactly-once state", () => {
   it("rejects an oversized receipt while preserving the in-progress reservation", async () => {
     const { env } = fixture();
     const reservation = requireNewReservation(
-      await reserveContinuationDispatch(env, identity, digest),
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
     );
 
     await expect(commitContinuationOutcome(env, reservation, {
       outcome: "accepted",
       evidence: "x".repeat(16_384),
     })).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
-    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toEqual({
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds)).resolves.toEqual({
       kind: "in_progress",
       identity,
       digest,
@@ -259,7 +342,7 @@ describe("continuation dispatch exactly-once state", () => {
   it("retains nested JSON receipt evidence without changing its semantic structure", async () => {
     const { env } = fixture();
     const reservation = requireNewReservation(
-      await reserveContinuationDispatch(env, identity, digest),
+      await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds),
     );
     const receipt = {
       outcome: "accepted",
@@ -268,7 +351,7 @@ describe("continuation dispatch exactly-once state", () => {
 
     await commitContinuationOutcome(env, reservation, receipt);
 
-    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toEqual({
+    await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds)).resolves.toEqual({
       kind: "replay",
       identity,
       digest,
@@ -424,7 +507,8 @@ describe("continuation dispatch private command boundary", () => {
     const response = await object().fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: `{"operation"   :"reserve","identity":"${identity}","digest":"${digest}"}`,
+      body: `{"operation"   :"reserve","identity":"${identity}","digest":"${digest}",`
+        + `"reservation_expires_at":${reservationExpiresAtEpochSeconds}}`,
     }));
 
     expect(response.status).toBe(201);
@@ -463,7 +547,12 @@ describe("continuation dispatch private command boundary", () => {
     const response = await object().fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operation: "reserve", identity, digest: "invalid" }),
+      body: JSON.stringify({
+        operation: "reserve",
+        identity,
+        digest: "invalid",
+        reservation_expires_at: reservationExpiresAtEpochSeconds,
+      }),
     }));
 
     expect(response.status).toBe(400);
@@ -516,7 +605,12 @@ describe("continuation dispatch private command boundary", () => {
     const response = await state.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operation: "reserve", identity, digest }),
+      body: JSON.stringify({
+        operation: "reserve",
+        identity,
+        digest,
+        reservation_expires_at: reservationExpiresAtEpochSeconds,
+      }),
     }));
 
     expect(response.status).toBe(503);
@@ -577,7 +671,7 @@ describe("continuation dispatch private command boundary", () => {
         storage: corruptStorage as unknown as DurableObjectStorage,
       } as unknown as DurableObjectState));
       const { env } = fixture();
-      const fresh = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+      const fresh = requireNewReservation(await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds));
       if (operation === "finalize") {
         await commitContinuationOutcome(env, fresh, { outcome: "accepted" });
       } else {
@@ -625,7 +719,7 @@ describe("continuation dispatch private command boundary", () => {
 
   it("rejects a terminal record whose retained state crosses the byte envelope", async () => {
     const { env } = fixture();
-    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds));
     const receipt = { outcome: "accepted", evidence: "x".repeat(7_900) } as const;
 
     await expect(commitContinuationOutcome(env, reservation, receipt))
@@ -656,6 +750,7 @@ describe("continuation dispatch state client boundary", () => {
       envWithTransport(async () => response),
       identity,
       digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
   });
 
@@ -671,6 +766,7 @@ describe("continuation dispatch state client boundary", () => {
       envWithTransport(async () => response),
       identity,
       digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
   });
 
@@ -685,6 +781,7 @@ describe("continuation dispatch state client boundary", () => {
       envWithTransport(async () => response),
       identity,
       digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
     lock.releaseLock();
   });
@@ -698,6 +795,7 @@ describe("continuation dispatch state client boundary", () => {
       env,
       field === "identity" ? "invalid" : identity,
       field === "digest" ? "invalid" : digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
   });
 
@@ -711,7 +809,7 @@ describe("continuation dispatch state client boundary", () => {
         },
       );
 
-      await expect(reserveContinuationDispatch(env, identity, digest))
+      await expect(reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds))
         .rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
     },
   );
@@ -725,6 +823,7 @@ describe("continuation dispatch state client boundary", () => {
         }),
         identity,
         digest,
+        reservationExpiresAtEpochSeconds,
       )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
     },
   );
@@ -738,6 +837,7 @@ describe("continuation dispatch state client boundary", () => {
       envWithTransport(async () => invalid),
       identity,
       digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
 
     const mismatched = new Response(JSON.stringify({
@@ -751,6 +851,7 @@ describe("continuation dispatch state client boundary", () => {
       envWithTransport(async () => mismatched),
       identity,
       digest,
+      reservationExpiresAtEpochSeconds,
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
   });
 

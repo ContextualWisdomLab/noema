@@ -112,6 +112,10 @@ function harness() {
       }
       return { ...reservation, identity, digest };
     },
+    prepareDispatch: async () => {
+      calls.push("prepare-dispatch");
+      return { send: async () => ({ outcome: "accepted", upstreamStatus: 204, eventType: "noema-review" }) };
+    },
     dispatch: async () => {
       calls.push("dispatch");
       return { outcome: "accepted" as const, upstreamStatus: 204, eventType: "noema-review" as const };
@@ -209,7 +213,15 @@ describe("continuation dispatch public route", () => {
     expect(response.headers.get("x-oidc-replay-protection")).toBe("verified-before-dispatch");
     expect(payload.ok).toBe(true);
     expect(payload.trace_id).toBe("trace-task-5");
-    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch", "finalize"]);
+    expect(calls).toEqual([
+      "claim",
+      "reserve",
+      "live-pr",
+      "prepare-dispatch",
+      "commit",
+      "dispatch",
+      "finalize",
+    ]);
     await expect(verifyContinuationReceipt(payload.data.receipt, signingPublicKeyPem)).resolves.toBe(true);
     expect(JSON.stringify(payload)).not.toMatch(/token|bearer|assertion|private_key/i);
   });
@@ -236,7 +248,15 @@ describe("continuation dispatch public route", () => {
     })), env, "trace-task-5", dependencies);
 
     expect(response.status).toBe(200);
-    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch", "finalize"]);
+    expect(calls).toEqual([
+      "claim",
+      "reserve",
+      "live-pr",
+      "prepare-dispatch",
+      "commit",
+      "dispatch",
+      "finalize",
+    ]);
   });
 
   it("returns the exact retained receipt on replay without a second dispatch", async () => {
@@ -251,6 +271,34 @@ describe("continuation dispatch public route", () => {
     expect(secondPayload.data.receipt).toEqual(firstPayload.data.receipt);
     expect(calls.filter((call) => call === "dispatch")).toHaveLength(1);
     expect(calls.filter((call) => call === "live-pr")).toHaveLength(1);
+  });
+
+  it.each([
+    ["denied", 502, "ERR_GITHUB_DISPATCH_AUTHORIZATION"],
+    ["indeterminate", 503, "ERR_GITHUB_DISPATCH_UPSTREAM"],
+  ] as const)("preserves the %s outcome contract on exact replay", async (outcome, status, errorCode) => {
+    const { calls, dependencies, env } = harness();
+    dependencies.reserve = async (_env, identity, digest) => {
+      calls.push("reserve");
+      return {
+        kind: "replay",
+        identity,
+        digest,
+        outcome,
+        receipt: { outcome, receipt_id: `retained-${outcome}` },
+      };
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(status);
+    expect(response.headers.get("x-continuation-replay")).toBe("exact");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: errorCode,
+      details: { receipt: { outcome, receipt_id: `retained-${outcome}` } },
+    });
+    expect(calls).toEqual(["claim", "reserve"]);
   });
 
   it("serializes retry attempt two through the first attempt identity without a second dispatch", async () => {
@@ -428,7 +476,26 @@ describe("continuation dispatch public route", () => {
     const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
 
     expect(response.status).toBe(503);
-    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit"]);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "prepare-dispatch", "commit", "abort"]);
+  });
+
+  it("releases the reservation when the central credential cannot be prepared", async () => {
+    const { calls, dependencies, env } = harness();
+    Object.assign(dependencies, {
+      prepareDispatch: async () => {
+        calls.push("prepare-dispatch");
+        throw new ContinuationGitHubAdapterError("upstream_unavailable", 503);
+      },
+    });
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "prepare-dispatch", "abort"]);
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: "ERR_GITHUB_DISPATCH_UPSTREAM",
+      message: "Central dispatch credential unavailable",
+    });
   });
 
   it.each(["noema_review_continuation", "strix_scan_continuation"] as const)(
@@ -448,7 +515,14 @@ describe("continuation dispatch public route", () => {
 
       expect(response.status).toBe(503);
       expect(payload.details.receipt.outcome).toBe("indeterminate");
-      expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch"]);
+      expect(calls).toEqual([
+        "claim",
+        "reserve",
+        "live-pr",
+        "prepare-dispatch",
+        "commit",
+        "dispatch",
+      ]);
     },
   );
 
@@ -512,7 +586,13 @@ describe("continuation dispatch public route", () => {
     const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_DISPATCH_IDENTITY_DENIED" });
+    expect(response.headers.get("www-authenticate")).toBe(
+      'Bearer realm="noema", error="invalid_token"',
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: "ERR_DISPATCH_IDENTITY_DENIED",
+      details: { hint: expect.any(String) },
+    });
   });
 
   it("denies a non-infrastructure replay-claim exception", async () => {

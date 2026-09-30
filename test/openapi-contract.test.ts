@@ -65,6 +65,7 @@ describe("machine-readable public HTTP contract", () => {
     expect(spec.paths["/exchange"].post.responses["502"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["503"]).toBeDefined();
     expect(spec.paths["/v1/continuation-dispatches"].post.responses["200"]).toBeDefined();
+    expect(spec.paths["/v1/continuation-dispatches"].post.responses["408"]).toBeDefined();
     expect(spec.paths["/v1/continuation-dispatches"].post.responses["409"]).toBeDefined();
   });
 
@@ -86,6 +87,9 @@ describe("machine-readable public HTTP contract", () => {
     expect(exchange["x-request-body-read-deadline-ms"]).toBe(10000);
     expect(exchange.responses["401"].headers["WWW-Authenticate"]).toBeDefined();
     expect(exchange.responses["429"].headers["Retry-After"]).toBeDefined();
+
+    const continuation = spec.paths["/v1/continuation-dispatches"].post;
+    expect(continuation["x-request-body-read-deadline-ms"]).toBe(10000);
   });
 
   it("executes the RE2-safe repository locator against realistic owner/name values", async () => {

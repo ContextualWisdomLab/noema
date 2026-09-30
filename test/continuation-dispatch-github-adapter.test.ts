@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   ContinuationGitHubAdapterError,
   dispatchCentralContinuation,
+  prepareCentralContinuation,
   readAndVerifyLivePullRequest,
   type ContinuationGitHubAdapterEnv,
 } from "../src/continuation-dispatch/github-adapter";
@@ -246,6 +247,20 @@ function mockCentralDispatch(dispatchResponse: Response | (() => Response)): Ret
 }
 
 describe("fixed central dispatch", () => {
+  it("prepares the central credential before the external dispatch can begin", async () => {
+    const fetchSpy = mockCentralDispatch(new Response(null, { status: 204 }));
+
+    const prepared = await prepareCentralContinuation(env());
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await expect(prepared.send(request())).resolves.toEqual({
+      outcome: "accepted",
+      upstreamStatus: 204,
+      eventType: "noema-review",
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
   it("classifies a missing central App installation as unavailable, never source-PR stale", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       expect(init?.redirect).toBe("error");
