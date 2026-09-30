@@ -32,11 +32,14 @@ RED는 `generateEmbeddedRuntimeInventory({ node: "24.21.0", undici: "7.29.0" }, 
 
 1. inventory가 Node `24.21.0`과 Undici `7.29.1`을 각각 exact-match한다;
 2. Undici는 `pkg:npm/undici@7.29.1` scan plan에 남아 raw per-component Grype receipt를 계속 요구한다;
-3. Docker build는 strip/package-note 전후 모두 실제 executable의 `process.versions.undici`를 검사한다;
-4. Node source SHA, package note/CPE, npm identity, workflow toolchain과 static-runtime applicability versions를 같은 delta에서 갱신한다;
-5. full scanner receipt와 blocking severity policy를 그대로 보존한다.
+3. 최종 static-runtime receipt verifier도 internally consistent한 다른 Undici version을 허용하지 않고 `process.versions.undici === "7.29.1"`을 독립적으로 강제한다;
+4. Docker build는 strip/package-note 전후 모두 실제 executable의 `process.versions.undici`를 검사한다;
+5. Node source SHA, package note/CPE, npm identity, workflow toolchain과 static-runtime applicability versions를 같은 delta에서 갱신한다;
+6. full scanner receipt와 blocking severity policy를 그대로 보존한다.
 
 Local focused verification은 exact Node 24.21.0/npm 11.19.0에서 48 files / 339 tests GREEN이었다. Full typecheck도 GREEN이고, full suite는 763 files / 5,162 tests 가운데 762 files / 5,161 tests가 통과했다. 남은 한 fixture는 executor가 Unix-domain socket 생성을 `listen EPERM`으로 거부해 Noema code에 도달하기 전에 실패했다. 그 unsupported fixture만 제외하면 762 files / 5,161 tests가 모두 통과하지만, 해당 fixture가 unrelated dependency-license special-output branch 한 줄의 유일한 coverage source이므로 aggregate coverage는 99.98%다. Hosted exact-head CI가 socket fixture와 100% configured coverage를 다시 검증해야 한다. 이 결과는 local source evidence일 뿐 exact PR-head image receipt 또는 merge authority가 아니다.
+
+Final-verifier oracle repair의 별도 RED는 inventory, component, PURL, raw scan이 모두 Undici `7.29.0`으로 내부 일치하는 증거가 verifier를 통과한다는 것이었다. Shared reviewed runtime identity를 재사용하는 exact assertion 뒤 verifier 관련 9 files / 147 tests와 patch-validator 32 files / 277 tests, typecheck가 GREEN이다. Local full suite는 763 files 중 758 files, 5,155 tests가 통과했고 1 test가 skip됐다. 남은 5 files / 7 failures는 이 executor의 child-process·Unix-socket·symlink 제약에서 발생했으며 patch-validator delta 파일은 포함하지 않는다. Fresh exact-head hosted workflow가 configured 100% coverage와 image/SBOM/provenance/scanner evidence를 다시 증명해야 한다.
 
 ## Exact embedded-runtime revalidation
 

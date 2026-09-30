@@ -7,7 +7,7 @@ const providerDigestA = `sha256:${"a".repeat(64)}`;
 const providerDigestB = `sha256:${"b".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
-const undiciPurl = "pkg:npm/undici@7.13.0";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function rawScannerOutput(
   identity: string,
@@ -86,7 +86,7 @@ function validInput(): any {
       process_versions: {
         node: "24.21.0",
         openssl: "3.5.2",
-        undici: "7.13.0",
+        undici: "7.29.1",
       },
       components: [
         {
@@ -99,7 +99,7 @@ function validInput(): any {
         {
           key: "undici",
           name: "undici",
-          version: "7.13.0",
+          version: "7.29.1",
           classification: "bundled_dependency",
           purl: undiciPurl,
         },

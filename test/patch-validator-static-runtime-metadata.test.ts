@@ -6,6 +6,7 @@ const imageDigest = `sha256:${"7".repeat(64)}`;
 const providerDigest = `sha256:${"8".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function rawScannerOutput(identity: string): any {
   return {
@@ -65,6 +66,7 @@ function inputWithRuntimeMetadata(): any {
         modules: "137",
         napi: "10",
         openssl: "3.5.2",
+        undici: "7.29.1",
       },
       components: [
         {
@@ -88,6 +90,13 @@ function inputWithRuntimeMetadata(): any {
           classification: "bundled_dependency",
           cpe: opensslCpe,
         },
+        {
+          key: "undici",
+          name: "undici",
+          version: "7.29.1",
+          classification: "bundled_dependency",
+          purl: undiciPurl,
+        },
       ],
     },
     embeddedVulnerabilityScan: {
@@ -99,6 +108,11 @@ function inputWithRuntimeMetadata(): any {
           key: "openssl",
           identity: opensslCpe,
           scanner_output: rawScannerOutput(opensslCpe),
+        },
+        {
+          key: "undici",
+          identity: undiciPurl,
+          scanner_output: rawScannerOutput(undiciPurl),
         },
       ],
       ignoredMatches: [],
@@ -126,7 +140,7 @@ function addNgtcp2(input: any, version: string): void {
 describe("static runtime metadata classification", () => {
   it("keeps ABI metadata exhaustive without pretending it is a vulnerable package", () => {
     expect(verifyStaticRuntimeBinaryEvidence(inputWithRuntimeMetadata())).toMatchObject({
-      embedded_runtime_component_count: 3,
+      embedded_runtime_component_count: 4,
       embedded_runtime_vulnerability_match_count: 0,
       blocked_embedded_runtime_vulnerability_count: 0,
     });
