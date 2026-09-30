@@ -767,20 +767,23 @@ export class NoemaContinuationDispatchState {
       if (command.operation === "reserve") {
         const decision = await this.storage.transaction(async (transaction) => {
           const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
-          if (stored !== undefined) {
-            if (!isStoredState(stored)) return { kind: "invalid" } as const;
+          let retained = stored;
+          if (retained !== undefined) {
+            if (!isStoredState(retained)) return { kind: "invalid" } as const;
             if (
-              stored.status === "reserved"
-              && stored.reservation_expires_at! * 1_000 <= Date.now()
+              retained.status === "reserved"
+              && retained.reservation_expires_at! * 1_000 <= Date.now()
             ) {
               await transaction.delete(STATE_RECORD_KEY);
               await transaction.deleteAlarm();
-              return { kind: "expired" } as const;
+              retained = undefined;
             }
-            if (stored.identity !== command.identity || stored.request_digest !== command.digest) {
+          }
+          if (retained !== undefined) {
+            if (retained.identity !== command.identity || retained.request_digest !== command.digest) {
               return { kind: "conflict" } as const;
             }
-            return { kind: "existing", reservation: reservationFromStored(stored) } as const;
+            return { kind: "existing", reservation: reservationFromStored(retained) } as const;
           }
           if (command.reservation_expires_at * 1_000 <= Date.now()) {
             return { kind: "expired" } as const;
