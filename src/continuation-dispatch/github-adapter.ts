@@ -79,6 +79,21 @@ type GithubPullRequest = {
   readonly base?: GithubPullRequestSide | null;
 };
 
+/** Builds the only repository-dispatch body admitted by the continuation broker. */
+export function centralContinuationDispatchBody(request: ContinuationDispatchRequest): string {
+  return JSON.stringify({
+    event_type: dispatchMapping(request.dispatch_action).eventType,
+    client_payload: {
+      source_repository: request.source_repository,
+      pull_request_number: request.pull_request_number,
+      expected_head_sha: request.expected_head_sha,
+      expected_base_sha: request.expected_base_sha,
+      expected_base_ref: request.expected_base_ref,
+      transport_retry_attempt: request.transport_retry_attempt,
+    },
+  });
+}
+
 function sourceReadFailure(error: unknown): ContinuationGitHubAdapterError {
   if (error instanceof ApiError) {
     if (error.upstreamStatus === 403) {
@@ -185,6 +200,7 @@ export async function readAndVerifyLivePullRequest(
 export async function dispatchCentralContinuation(
   request: ContinuationDispatchRequest,
   env: ContinuationGitHubAdapterEnv,
+  beforeDispatch: () => Promise<void> = async () => undefined,
 ): Promise<CentralContinuationDispatchResult> {
   const eventType = dispatchMapping(request.dispatch_action).eventType;
   let installationToken: string;
@@ -199,6 +215,8 @@ export async function dispatchCentralContinuation(
     throw centralCredentialFailure(error);
   }
 
+  await beforeDispatch();
+
   let response: Response;
   try {
     response = await githubApiRequest(
@@ -209,17 +227,7 @@ export async function dispatchCentralContinuation(
           authorization: `Bearer ${installationToken}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          event_type: eventType,
-          client_payload: {
-            source_repository: request.source_repository,
-            pull_request_number: request.pull_request_number,
-            expected_head_sha: request.expected_head_sha,
-            expected_base_sha: request.expected_base_sha,
-            expected_base_ref: request.expected_base_ref,
-            transport_retry_attempt: request.transport_retry_attempt,
-          },
-        }),
+        body: centralContinuationDispatchBody(request),
       },
       env,
     );

@@ -157,6 +157,51 @@ describe("continuation dispatch exactly-once state", () => {
     expect(storage.alarmAt).toBeNull();
   });
 
+  it("keeps malformed and unexpired state fail closed while clearing irrelevant alarms", async () => {
+    const makeObject = (storage: MemoryStorage) => new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+
+    const empty = new MemoryStorage();
+    empty.alarmAt = 10;
+    await makeObject(empty).alarm();
+    expect(empty.alarmAt).toBeNull();
+
+    const malformed = new MemoryStorage();
+    malformed.records.set("continuation-dispatch-state", { status: "reserved" });
+    malformed.alarmAt = 20;
+    await makeObject(malformed).alarm();
+    expect(malformed.records.size).toBe(1);
+    expect(malformed.alarmAt).toBe(20);
+
+    const terminal = new MemoryStorage();
+    terminal.records.set("continuation-dispatch-state", {
+      version: "noema.continuation-dispatch-state.v1",
+      identity,
+      request_digest: digest,
+      status: "accepted",
+      reservation_id: "00000000-0000-4000-8000-000000000000",
+      receipt: { outcome: "accepted" },
+    });
+    terminal.alarmAt = 30;
+    await makeObject(terminal).alarm();
+    expect(terminal.records.size).toBe(1);
+    expect(terminal.alarmAt).toBeNull();
+
+    const unexpired = new MemoryStorage();
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    await makeObject(unexpired).fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "reserve", identity, digest }),
+    }));
+    const scheduled = unexpired.alarmAt;
+    await makeObject(unexpired).alarm();
+    expect(unexpired.records.size).toBe(1);
+    expect(unexpired.alarmAt).toBe(scheduled);
+  });
+
   it.each(["accepted", "denied", "indeterminate"] as const)(
     "persists an exact %s outcome and replays its receipt without a new dispatch reservation",
     async (outcome) => {

@@ -5,6 +5,7 @@ const STATE_RECORD_KEY = "continuation-dispatch-state";
 const INTERNAL_ENDPOINT = "https://noema-continuation-dispatch-state.internal/command";
 // This private command and retained receipt inherit the released 8 KiB public mutation envelope.
 const MAX_STATE_JSON_BYTES = 8_192;
+const RESERVATION_TTL_MS = 5 * 60_000;
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const RESERVATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const TERMINAL_OUTCOMES = new Set<ContinuationDispatchOutcome>([
@@ -67,6 +68,7 @@ type StoredDispatchState = {
   readonly request_digest: string;
   readonly status: "reserved" | ContinuationDispatchOutcome;
   readonly reservation_id: string;
+  readonly reservation_expires_at_ms?: number;
   readonly receipt?: ContinuationDispatchReceipt;
 };
 
@@ -207,12 +209,15 @@ function isStoredState(value: unknown): value is StoredDispatchState {
     return false;
   }
   if (value.status === "reserved") {
-    return hasExactKeys(value, [
+    return Number.isSafeInteger(value.reservation_expires_at_ms)
+      && (value.reservation_expires_at_ms as number) > 0
+      && hasExactKeys(value, [
       "version",
       "identity",
       "request_digest",
       "status",
       "reservation_id",
+      "reservation_expires_at_ms",
     ]);
   }
   const encodedBytes = encodedJsonBytes(value);
@@ -745,14 +750,17 @@ export class NoemaContinuationDispatchState {
             return { kind: "existing", reservation: reservationFromStored(stored) } as const;
           }
           const reservationId = crypto.randomUUID();
+          const reservationExpiresAtMs = Date.now() + RESERVATION_TTL_MS;
           const next: StoredDispatchState = {
             version: STATE_VERSION,
             identity: command.identity,
             request_digest: command.digest,
             status: "reserved",
             reservation_id: reservationId,
+            reservation_expires_at_ms: reservationExpiresAtMs,
           };
           await transaction.put(STATE_RECORD_KEY, next);
+          await transaction.setAlarm(reservationExpiresAtMs);
           return {
             kind: "created",
             reservation: {
@@ -781,6 +789,7 @@ export class NoemaContinuationDispatchState {
             return "conflict";
           }
           await transaction.delete(STATE_RECORD_KEY);
+          await transaction.deleteAlarm();
           return "aborted";
         });
         if (aborted === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
@@ -828,12 +837,16 @@ export class NoemaContinuationDispatchState {
           return "conflict";
         }
         const next: StoredDispatchState = {
-          ...stored,
+          version: stored.version,
+          identity: stored.identity,
+          request_digest: stored.request_digest,
           status: command.receipt.outcome,
+          reservation_id: stored.reservation_id,
           receipt: command.receipt,
         };
         if (new TextEncoder().encode(JSON.stringify(next)).byteLength > MAX_STATE_JSON_BYTES) return "invalid";
         await transaction.put(STATE_RECORD_KEY, next);
+        await transaction.deleteAlarm();
         return "committed";
       });
       if (committed === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
@@ -842,5 +855,28 @@ export class NoemaContinuationDispatchState {
     } catch {
       return jsonResponse({ ok: false, error: "storage_unavailable" }, 503);
     }
+  }
+
+  /** Removes an abandoned reservation only after its bounded pre-effect lifetime expires. */
+  async alarm(): Promise<void> {
+    await this.storage.transaction(async (transaction) => {
+      const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
+      if (stored === undefined) {
+        await transaction.deleteAlarm();
+        return;
+      }
+      if (!isStoredState(stored)) return;
+      if (stored.status !== "reserved") {
+        await transaction.deleteAlarm();
+        return;
+      }
+      const expiry = stored.reservation_expires_at_ms!;
+      if (expiry > Date.now()) {
+        await transaction.setAlarm(expiry);
+        return;
+      }
+      await transaction.delete(STATE_RECORD_KEY);
+      await transaction.deleteAlarm();
+    });
   }
 }

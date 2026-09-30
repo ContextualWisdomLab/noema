@@ -4,6 +4,7 @@ import { errorHints, type ErrorCode } from "../error-codes";
 import {
   continuationDispatchIdentity,
   continuationRequestDigest,
+  dispatchMapping,
   parseContinuationDispatchRequest,
   type ContinuationDispatchRequest,
 } from "./contract";
@@ -18,6 +19,7 @@ import {
   type ContinuationDispatchStateEnv,
 } from "./dispatch-state";
 import {
+  centralContinuationDispatchBody,
   ContinuationGitHubAdapterError,
   dispatchCentralContinuation,
   readAndVerifyLivePullRequest,
@@ -60,6 +62,7 @@ export interface ContinuationDispatchHandlerDependencies {
   dispatch(
     request: ContinuationDispatchRequest,
     env: ContinuationGitHubAdapterEnv,
+    beforeDispatch: () => Promise<void>,
   ): Promise<CentralContinuationDispatchResult>;
   commit: typeof commitContinuationOutcome;
   abort: typeof abortContinuationReservation;
@@ -107,6 +110,7 @@ function errorResponse(
 ): Response {
   const headers = responseHeaders(traceId, startedAt);
   if (status === 405) headers.set("allow", "POST");
+  if (status === 401) headers.set("www-authenticate", 'Bearer realm="noema", error="invalid_token"');
   return new Response(JSON.stringify({
     ok: false,
     error_code: code,
@@ -129,6 +133,30 @@ function successResponse(
     status: 200,
     headers,
   });
+}
+
+function replayResponse(
+  reservation: Extract<ContinuationDispatchReservation, { kind: "replay" }>,
+  traceId: string,
+  startedAt: number,
+): Response {
+  if (reservation.outcome === "accepted") {
+    return successResponse(reservation.receipt, traceId, startedAt, true);
+  }
+  const response = errorResponse(
+    reservation.outcome === "denied"
+      ? "ERR_GITHUB_DISPATCH_AUTHORIZATION"
+      : "ERR_GITHUB_DISPATCH_UPSTREAM",
+    reservation.outcome === "denied" ? 502 : 503,
+    reservation.outcome === "denied"
+      ? "GitHub rejected the fixed continuation dispatch"
+      : "GitHub continuation dispatch outcome is indeterminate",
+    traceId,
+    startedAt,
+    { receipt: reservation.receipt },
+  );
+  response.headers.set("x-continuation-replay", "exact");
+  return response;
 }
 
 function cancelBestEffort(body: ReadableStream<Uint8Array> | null, reason: string): void {
@@ -216,18 +244,7 @@ async function sha256(value: string): Promise<string> {
 }
 
 async function emittedPayloadDigest(request: ContinuationDispatchRequest): Promise<string> {
-  const eventType = request.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan";
-  return sha256(JSON.stringify({
-    event_type: eventType,
-    client_payload: {
-      source_repository: request.source_repository,
-      pull_request_number: request.pull_request_number,
-      expected_head_sha: request.expected_head_sha,
-      expected_base_sha: request.expected_base_sha,
-      expected_base_ref: request.expected_base_ref,
-      transport_retry_attempt: request.transport_retry_attempt,
-    },
-  }));
+  return sha256(centralContinuationDispatchBody(request));
 }
 
 function workflowIdentity(claims: JwtPayload, env: ContinuationDispatchHandlerEnv): {
@@ -339,7 +356,7 @@ export async function handleContinuationDispatch(
     return errorResponse("ERR_DISPATCH_REPLAY_CONFLICT", 409, "Continuation dispatch is already in progress", traceId, startedAt);
   }
   if (reservation.kind === "replay") {
-    return successResponse(reservation.receipt, traceId, startedAt, true);
+    return replayResponse(reservation, traceId, startedAt);
   }
 
   try {
@@ -374,7 +391,7 @@ export async function handleContinuationDispatch(
       emittedPayloadDigest: payloadDigest,
       dispatchResult: {
         outcome: "indeterminate",
-        eventType: parsed.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan",
+        eventType: dispatchMapping(parsed.dispatch_action).eventType,
       },
       oidcLifetime: { iat: workflow.iat, exp: workflow.exp },
       receiptId,
@@ -389,21 +406,27 @@ export async function handleContinuationDispatch(
     return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation evidence could not be signed", traceId, startedAt);
   }
 
-  try {
-    await dependencies.commit(
-      env,
-      reservation,
-      indeterminateReceipt as unknown as ContinuationDispatchReceipt,
-    );
-  } catch {
-    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation evidence could not be committed", traceId, startedAt);
-  }
-
+  let evidenceCommitted = false;
   let dispatchResult: CentralContinuationDispatchResult;
   try {
-    dispatchResult = await dependencies.dispatch(parsed, env);
+    dispatchResult = await dependencies.dispatch(parsed, env, async () => {
+      await dependencies.commit(
+        env,
+        reservation,
+        indeterminateReceipt as unknown as ContinuationDispatchReceipt,
+      );
+      evidenceCommitted = true;
+    });
   } catch {
-    dispatchResult = { outcome: "indeterminate", eventType: parsed.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan" };
+    if (!evidenceCommitted) {
+      try {
+        await dependencies.abort(env, reservation);
+      } catch {
+        // An ambiguous commit may already have retained indeterminate evidence.
+      }
+      return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation dispatch could not be prepared", traceId, startedAt);
+    }
+    dispatchResult = { outcome: "indeterminate", eventType: dispatchMapping(parsed.dispatch_action).eventType };
   }
 
   if (!(["accepted", "denied", "indeterminate"] as readonly unknown[]).includes(dispatchResult.outcome)) {

@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  centralContinuationDispatchBody,
   ContinuationGitHubAdapterError,
   dispatchCentralContinuation,
   readAndVerifyLivePullRequest,
@@ -228,6 +229,7 @@ function mockCentralDispatch(dispatchResponse: Response | (() => Response)): Ret
     if (url === `https://api.github.com/repos/${CENTRAL_REPOSITORY}/dispatches`) {
       expect(init?.method).toBe("POST");
       expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${CENTRAL_TOKEN}`);
+      expect(init?.body).toBe(centralContinuationDispatchBody(request()));
       expect(JSON.parse(String(init?.body))).toEqual({
         event_type: "noema-review",
         client_payload: {
@@ -247,6 +249,7 @@ function mockCentralDispatch(dispatchResponse: Response | (() => Response)): Ret
 
 describe("fixed central dispatch", () => {
   it("classifies a missing central App installation as unavailable, never source-PR stale", async () => {
+    const beforeDispatch = vi.fn(async () => undefined);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       expect(init?.redirect).toBe("error");
       const url = String(input);
@@ -259,10 +262,11 @@ describe("fixed central dispatch", () => {
       return new Response("unexpected request", { status: 500 });
     });
 
-    await expect(dispatchCentralContinuation(request(), env())).rejects.toMatchObject({
+    await expect(dispatchCentralContinuation(request(), env(), beforeDispatch)).rejects.toMatchObject({
       classification: "upstream_unavailable",
       upstreamStatus: 404,
     });
+    expect(beforeDispatch).not.toHaveBeenCalled();
   });
 
   it("sanitizes a central App installation-token network failure", async () => {
@@ -296,6 +300,20 @@ describe("fixed central dispatch", () => {
       eventType: "noema-review",
     });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("commits retained indeterminate evidence after credential acquisition and before dispatch", async () => {
+    const order: string[] = [];
+    mockCentralDispatch(() => {
+      order.push("dispatch");
+      return new Response(null, { status: 204 });
+    });
+
+    await dispatchCentralContinuation(request(), env(), async () => {
+      order.push("commit");
+    });
+
+    expect(order).toEqual(["commit", "dispatch"]);
   });
 
   it("maps the released Strix action without caller-selected dispatch authority", async () => {
