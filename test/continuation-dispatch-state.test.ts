@@ -389,6 +389,24 @@ describe("continuation dispatch private command boundary", () => {
     }
   });
 
+  it("rejects malformed abort and finalize capabilities before storage", async () => {
+    const reservationId = fixedReservation().reservationId;
+    const requests = [
+      { operation: "abort", identity, digest, reservation_id: reservationId, extra: true },
+      { operation: "abort", identity: "invalid", digest, reservation_id: reservationId },
+      { operation: "finalize", identity, digest, reservation_id: reservationId, receipt: { outcome: "accepted" }, extra: true },
+      { operation: "finalize", identity, digest, reservation_id: reservationId, receipt: { outcome: "indeterminate" } },
+    ].map((body) => new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+
+    for (const request of requests) {
+      await expect(object().fetch(request).then((response) => response.status)).resolves.toBe(400);
+    }
+  });
+
   it("rejects decoded duplicate keys inside escaped nested array evidence", async () => {
     const body = `{"operation":"commit","identity":"${identity}","digest":"${digest}",`
       + `"reservation_id":"${fixedReservation().reservationId}",`
@@ -532,6 +550,77 @@ describe("continuation dispatch private command boundary", () => {
     }));
 
     expect([empty.status, invalid.status]).toEqual([409, 500]);
+  });
+
+  it.each(["abort", "finalize"] as const)(
+    "distinguishes absent, corrupt, and mismatched retained state during %s",
+    async (operation) => {
+      const reservation = fixedReservation();
+      const command = {
+        operation,
+        identity,
+        digest,
+        reservation_id: reservation.reservationId,
+        ...(operation === "finalize" ? { receipt: { outcome: "accepted" } } : {}),
+      };
+      const invoke = (state: NoemaContinuationDispatchState) => state.fetch(new Request(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(command),
+      }));
+
+      const absent = await invoke(object());
+      const corruptStorage = new MemoryStorage();
+      corruptStorage.records.set("continuation-dispatch-state", "corrupt");
+      const corrupt = await invoke(new NoemaContinuationDispatchState({
+        id: { name: `continuation:${identity}` } as DurableObjectId,
+        storage: corruptStorage as unknown as DurableObjectStorage,
+      } as unknown as DurableObjectState));
+      const { env } = fixture();
+      const fresh = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+      if (operation === "finalize") {
+        await commitContinuationOutcome(env, fresh, { outcome: "accepted" });
+      } else {
+        await commitContinuationOutcome(env, fresh, { outcome: "indeterminate" });
+      }
+      const namespace = env.NOEMA_CONTINUATION_DISPATCH_STATE as unknown as InProcessNamespace;
+      const mismatched = await invoke(new NoemaContinuationDispatchState({
+        id: { name: `continuation:${identity}` } as DurableObjectId,
+        storage: namespace.storageByName.get(`continuation:${identity}`)! as unknown as DurableObjectStorage,
+      } as unknown as DurableObjectState));
+
+      expect([absent.status, corrupt.status, mismatched.status]).toEqual([409, 500, 409]);
+    },
+  );
+
+  it("rejects a finalized receipt that would exceed the retained-state byte envelope", async () => {
+    const storage = new MemoryStorage();
+    const reservation = fixedReservation();
+    storage.records.set("continuation-dispatch-state", {
+      version: "noema.continuation-dispatch-state.v1",
+      identity,
+      request_digest: digest,
+      status: "indeterminate",
+      reservation_id: reservation.reservationId,
+      receipt: { outcome: "indeterminate", receipt_id: "same", signature: "small" },
+    });
+    const state = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    const response = await state.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "finalize",
+        identity,
+        digest,
+        reservation_id: reservation.reservationId,
+        receipt: { outcome: "accepted", receipt_id: "same", signature: "x".repeat(7_850) },
+      }),
+    }));
+
+    expect(response.status).toBe(500);
   });
 
   it("rejects a terminal record whose retained state crosses the byte envelope", async () => {
@@ -687,5 +776,55 @@ describe("continuation dispatch state client boundary", () => {
       fixedReservation(),
       { outcome: "accepted" },
     )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+  });
+
+  it.each([
+    ["abort", abortContinuationReservation, fixedReservation(), undefined],
+    ["finalize", finalizeContinuationOutcome, fixedReservation(), { outcome: "accepted" }],
+  ] as const)("rejects a non-canonical %s request before transport", async (_name, operation, reservation, receipt) => {
+    const invalid = { ...reservation, identity: "invalid" };
+    const pending = receipt === undefined
+      ? operation(envWithTransport(async () => new Response()), invalid as never)
+      : operation(envWithTransport(async () => new Response()), invalid as never, receipt as never);
+
+    await expect(pending).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+  });
+
+  it.each([new Error("fetch failed"), "fetch failed"])(
+    "maps abort transport failure %# to unavailable",
+    async (failure) => {
+      await expect(abortContinuationReservation(
+        envWithTransport(async () => { throw failure; }),
+        fixedReservation(),
+      )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+    },
+  );
+
+  it.each([new Error("fetch failed"), "fetch failed"])(
+    "maps finalize transport failure %# to unavailable",
+    async (failure) => {
+      await expect(finalizeContinuationOutcome(
+        envWithTransport(async () => { throw failure; }),
+        fixedReservation(),
+        { outcome: "accepted" },
+      )).rejects.toBeInstanceOf(ContinuationDispatchStateUnavailable);
+    },
+  );
+
+  it.each([
+    ["abort", abortContinuationReservation, undefined],
+    ["finalize", finalizeContinuationOutcome, { outcome: "accepted" }],
+  ] as const)("maps %s conflicts and malformed success decisions", async (_name, operation, receipt) => {
+    for (const response of [
+      new Response(JSON.stringify({ ok: false }), { status: 409, headers: { "content-type": "application/json" } }),
+      new Response(JSON.stringify({ ok: false }), { status: 200, headers: { "content-type": "application/json" } }),
+    ]) {
+      const pending = receipt === undefined
+        ? operation(envWithTransport(async () => response), fixedReservation())
+        : operation(envWithTransport(async () => response), fixedReservation(), receipt);
+      await expect(pending).rejects.toBeInstanceOf(
+        response.status === 409 ? ContinuationDispatchStateConflict : ContinuationDispatchStateUnavailable,
+      );
+    }
   });
 });

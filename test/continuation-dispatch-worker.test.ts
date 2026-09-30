@@ -6,7 +6,10 @@ import {
   handleContinuationDispatch,
   type ContinuationDispatchHandlerDependencies,
 } from "../src/continuation-dispatch/handler";
-import { ContinuationDispatchStateConflict } from "../src/continuation-dispatch/dispatch-state";
+import {
+  ContinuationDispatchStateConflict,
+  ContinuationDispatchStateUnavailable,
+} from "../src/continuation-dispatch/dispatch-state";
 import { ContinuationGitHubAdapterError } from "../src/continuation-dispatch/github-adapter";
 import { verifyContinuationReceipt } from "../src/continuation-dispatch/receipt";
 
@@ -211,6 +214,31 @@ describe("continuation dispatch public route", () => {
     expect(JSON.stringify(payload)).not.toMatch(/token|bearer|assertion|private_key/i);
   });
 
+  it("accepts the workflow_ref fallback and emits the fixed Strix event identity", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.verifyOidc = async () => ({
+      repository: requestBody.source_repository,
+      workflow_ref: workflowRef,
+      workflow_sha: workflowSha,
+      iat: 1_800_000_000,
+      exp: 1_800_000_300,
+      jti: "task-5-strix-jti",
+    });
+    dependencies.dispatch = async (candidate) => {
+      calls.push("dispatch");
+      expect(candidate.dispatch_action).toBe("strix_scan_continuation");
+      return { outcome: "accepted", upstreamStatus: 204, eventType: "strix-scan" };
+    };
+
+    const response = await handleContinuationDispatch(request(JSON.stringify({
+      ...requestBody,
+      dispatch_action: "strix_scan_continuation",
+    })), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch", "finalize"]);
+  });
+
   it("returns the exact retained receipt on replay without a second dispatch", async () => {
     const { calls, dependencies, env } = harness();
     const first = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
@@ -291,6 +319,37 @@ describe("continuation dispatch public route", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it("fails unavailable and in-progress state closed before live GitHub access", async () => {
+    for (const { reserve, status } of [
+      {
+        reserve: async () => { throw new ContinuationDispatchStateUnavailable("state unavailable"); },
+        status: 503,
+      },
+      {
+        reserve: async () => ({ kind: "in_progress" as const, identity: "a".repeat(64), digest: "b".repeat(64) }),
+        status: 409,
+      },
+    ]) {
+      const { calls, dependencies, env } = harness();
+      dependencies.reserve = reserve;
+
+      const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+      expect(response.status).toBe(status);
+      expect(calls).toEqual(["claim"]);
+    }
+  });
+
+  it("maps an unexpected reservation implementation failure to unavailable", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.reserve = async () => { throw new Error("unexpected state failure"); };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    expect(calls).toEqual(["claim"]);
+  });
+
   it("releases a fresh reservation when the final live PR check is stale", async () => {
     const { calls, dependencies, env } = harness();
     dependencies.readLivePullRequest = async () => {
@@ -302,6 +361,123 @@ describe("continuation dispatch public route", () => {
 
     expect(response.status).toBe(409);
     expect(calls).toEqual(["claim", "reserve", "live-pr", "abort"]);
+  });
+
+  it.each([
+    [new ContinuationGitHubAdapterError("identity_denied"), 403],
+    [new ContinuationGitHubAdapterError("upstream_unavailable"), 503],
+    [new Error("GitHub unavailable"), 503],
+  ] as const)("releases the reservation before classifying live-state failure %#", async (failure, status) => {
+    const { calls, dependencies, env } = harness();
+    dependencies.readLivePullRequest = async () => {
+      calls.push("live-pr");
+      throw failure;
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(status);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "abort"]);
+  });
+
+  it("fails closed when a reservation cannot be released after live-state failure", async () => {
+    const { dependencies, env } = harness();
+    dependencies.readLivePullRequest = async () => { throw new Error("GitHub unavailable"); };
+    dependencies.abort = async () => { throw new Error("state unavailable"); };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      message: "Continuation reservation could not be released",
+    });
+  });
+
+  it("releases the reservation when receipt signing is misconfigured", async () => {
+    const { calls, dependencies, env } = harness();
+    const response = await handleContinuationDispatch(request(), {
+      ...env,
+      CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM: "invalid",
+    }, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "abort"]);
+  });
+
+  it("reports signing failure as state-unavailable when its reservation cannot be released", async () => {
+    const { dependencies, env } = harness();
+    dependencies.abort = async () => { throw new Error("state unavailable"); };
+    const response = await handleContinuationDispatch(request(), {
+      ...env,
+      CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM: "invalid",
+    }, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      message: "Continuation reservation could not be released",
+    });
+  });
+
+  it("does not dispatch when pre-dispatch evidence cannot be committed", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.commit = async () => {
+      calls.push("commit");
+      throw new Error("state unavailable");
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit"]);
+  });
+
+  it.each(["noema_review_continuation", "strix_scan_continuation"] as const)(
+    "returns retained indeterminate evidence when the %s dispatch transport throws",
+    async (dispatchAction) => {
+      const { calls, dependencies, env } = harness();
+      dependencies.dispatch = async () => {
+        calls.push("dispatch");
+        throw new Error("transport failed");
+      };
+
+      const response = await handleContinuationDispatch(request(JSON.stringify({
+        ...requestBody,
+        dispatch_action: dispatchAction,
+      })), env, "trace-task-5", dependencies);
+      const payload = await response.json() as { details: { receipt: { outcome: string } } };
+
+      expect(response.status).toBe(503);
+      expect(payload.details.receipt.outcome).toBe("indeterminate");
+      expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "dispatch"]);
+    },
+  );
+
+  it("returns a signed denied receipt when GitHub rejects the fixed dispatch", async () => {
+    const { dependencies, env } = harness();
+    dependencies.dispatch = async () => ({
+      outcome: "denied",
+      upstreamStatus: 403,
+      eventType: "noema-review",
+    });
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+    const payload = await response.json() as { details: { receipt: unknown } };
+
+    expect(response.status).toBe(502);
+    expect(await verifyContinuationReceipt(payload.details.receipt, signingPublicKeyPem)).toBe(true);
+  });
+
+  it("fails closed on an impossible adapter outcome", async () => {
+    const { dependencies, env } = harness();
+    dependencies.dispatch = async () => ({
+      outcome: "unexpected",
+      eventType: "noema-review",
+    }) as never;
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ message: "Unexpected continuation outcome" });
   });
 
   it.each(["verifyOidc", "claimOidc"] as const)(
@@ -321,6 +497,32 @@ describe("continuation dispatch public route", () => {
       });
     },
   );
+
+  it.each([
+    ["verify", async (dependencies: ContinuationDispatchHandlerDependencies) => {
+      dependencies.verifyOidc = async () => { throw "invalid identity"; };
+    }],
+    ["claim", async (dependencies: ContinuationDispatchHandlerDependencies) => {
+      dependencies.claimOidc = async () => false;
+    }],
+  ] as const)("denies a non-infrastructure %s failure", async (_boundary, configure) => {
+    const { dependencies, env } = harness();
+    await configure(dependencies);
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_DISPATCH_IDENTITY_DENIED" });
+  });
+
+  it("denies a non-infrastructure replay-claim exception", async () => {
+    const { dependencies, env } = harness();
+    dependencies.claimOidc = async () => { throw "claim denied"; };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(401);
+  });
 
   it("rejects a workflow SHA mismatch before replay claim or GitHub access", async () => {
     const { calls, dependencies, env } = harness();
@@ -357,6 +559,119 @@ describe("continuation dispatch public route", () => {
 
     expect(response.status).toBe(status);
     expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON and a missing bearer before verification", async () => {
+    const { dependencies, env } = harness();
+    const verify = vi.spyOn(dependencies, "verifyOidc");
+    const malformed = await handleContinuationDispatch(request("{"), env, "trace-task-5", dependencies);
+    const missingBearer = await handleContinuationDispatch(request(JSON.stringify(requestBody), {
+      headers: { authorization: "", "content-type": "application/json" },
+    }), env, "trace-task-5", dependencies);
+
+    expect([malformed.status, missingBearer.status]).toEqual([400, 401]);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid declared length and an absent body", async () => {
+    const { dependencies, env } = harness();
+    const invalidLength = await handleContinuationDispatch(request(JSON.stringify(requestBody), {
+      headers: {
+        authorization: `Bearer ${testJwt}`,
+        "content-type": "application/json",
+        "content-length": "01",
+      },
+    }), env, "trace-task-5", dependencies);
+    const absent = await handleContinuationDispatch(new Request(
+      "https://noema.example/v1/continuation-dispatches",
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${testJwt}`, "content-type": "application/json" },
+      },
+    ), env, "trace-task-5", dependencies);
+
+    expect([invalidLength.status, absent.status]).toEqual([413, 400]);
+  });
+
+  it("rejects an absent media type, an oversized declared length, and an absent bearer", async () => {
+    const { dependencies, env } = harness();
+    const noMediaType = await handleContinuationDispatch(new Request(
+      "https://noema.example/v1/continuation-dispatches",
+      { method: "POST" },
+    ), env, "trace-task-5", dependencies);
+    const declaredOversize = await handleContinuationDispatch(request("{}", {
+      headers: {
+        authorization: `Bearer ${testJwt}`,
+        "content-type": "application/json",
+        "content-length": "8193",
+      },
+    }), env, "trace-task-5", dependencies);
+    const noBearer = await handleContinuationDispatch(new Request(
+      "https://noema.example/v1/continuation-dispatches",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestBody),
+      },
+    ), env, "trace-task-5", dependencies);
+
+    expect([noMediaType.status, declaredOversize.status, noBearer.status]).toEqual([415, 413, 401]);
+  });
+
+  it("normalizes body reader acquisition and stream failures", async () => {
+    const { dependencies, env } = harness();
+    const lockedRequest = request();
+    const lock = lockedRequest.body!.getReader();
+    const locked = await handleContinuationDispatch(lockedRequest, env, "trace-task-5", dependencies);
+    lock.releaseLock();
+    const streamFailure = await handleContinuationDispatch(new Request(
+      "https://noema.example/v1/continuation-dispatches",
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${testJwt}`, "content-type": "application/json" },
+        body: new ReadableStream<Uint8Array>({
+          start(controller) { controller.error(new Error("stream failed")); },
+        }),
+        duplex: "half",
+      } as RequestInit & { duplex: "half" },
+    ), env, "trace-task-5", dependencies);
+
+    expect([locked.status, streamFailure.status]).toEqual([400, 400]);
+  });
+
+  it("keeps rejection authoritative when request-body cancellation rejects", async () => {
+    const { dependencies, env } = harness();
+    const candidate = new Request("https://noema.example/v1/continuation-dispatches", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: new ReadableStream<Uint8Array>({
+        cancel() { throw new Error("cancel failed"); },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    const response = await handleContinuationDispatch(candidate, env, "trace-task-5", dependencies);
+    await Promise.resolve();
+
+    expect(response.status).toBe(415);
+  });
+
+  it("keeps an oversized-stream rejection authoritative when reader cancellation rejects", async () => {
+    const { dependencies, env } = harness();
+    const candidate = new Request("https://noema.example/v1/continuation-dispatches", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new Uint8Array(8_193)); },
+        cancel() { throw new Error("cancel failed"); },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    const response = await handleContinuationDispatch(candidate, env, "trace-task-5", dependencies);
+    await Promise.resolve();
+
+    expect(response.status).toBe(413);
   });
 
   it("rejects a declared or streamed body above 8 KiB before OIDC verification", async () => {

@@ -2,7 +2,6 @@ import { parseExactBearerToken } from "../bearer-authorization";
 import type { JwtPayload } from "../index";
 import { errorHints, type ErrorCode } from "../error-codes";
 import {
-  ContinuationDispatchContractError,
   continuationDispatchIdentity,
   continuationRequestDigest,
   parseContinuationDispatchRequest,
@@ -13,7 +12,6 @@ import {
   commitContinuationOutcome,
   finalizeContinuationOutcome,
   ContinuationDispatchStateConflict,
-  ContinuationDispatchStateUnavailable,
   reserveContinuationDispatch,
   type ContinuationDispatchReceipt,
   type ContinuationDispatchReservation,
@@ -292,8 +290,7 @@ export async function handleContinuationDispatch(
   let parsed: ContinuationDispatchRequest;
   try {
     parsed = parseContinuationDispatchRequest(body);
-  } catch (error) {
-    if (!(error instanceof ContinuationDispatchContractError)) throw error;
+  } catch {
     return errorResponse("ERR_DISPATCH_REQUEST_INVALID", 400, "Continuation dispatch request is invalid", traceId, startedAt);
   }
 
@@ -336,10 +333,7 @@ export async function handleContinuationDispatch(
     if (error instanceof ContinuationDispatchStateConflict) {
       return errorResponse("ERR_DISPATCH_REPLAY_CONFLICT", 409, "Continuation replay conflicts with retained authority", traceId, startedAt);
     }
-    if (error instanceof ContinuationDispatchStateUnavailable) {
-      return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation state unavailable", traceId, startedAt);
-    }
-    throw error;
+    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Continuation state unavailable", traceId, startedAt);
   }
   if (reservation.kind === "in_progress") {
     return errorResponse("ERR_DISPATCH_REPLAY_CONFLICT", 409, "Continuation dispatch is already in progress", traceId, startedAt);
@@ -412,6 +406,10 @@ export async function handleContinuationDispatch(
     dispatchResult = { outcome: "indeterminate", eventType: parsed.dispatch_action === "noema_review_continuation" ? "noema-review" : "strix-scan" };
   }
 
+  if (!(["accepted", "denied", "indeterminate"] as readonly unknown[]).includes(dispatchResult.outcome)) {
+    return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Unexpected continuation outcome", traceId, startedAt);
+  }
+
   if (dispatchResult.outcome === "indeterminate") {
     return errorResponse(
       "ERR_GITHUB_DISPATCH_UPSTREAM",
@@ -456,15 +454,12 @@ export async function handleContinuationDispatch(
   if (dispatchResult.outcome === "accepted") {
     return successResponse(receipt, traceId, startedAt);
   }
-  if (dispatchResult.outcome === "denied") {
-    return errorResponse(
-      "ERR_GITHUB_DISPATCH_AUTHORIZATION",
-      502,
-      "GitHub rejected the fixed continuation dispatch",
-      traceId,
-      startedAt,
-      { receipt },
-    );
-  }
-  return errorResponse("ERR_GITHUB_DISPATCH_UPSTREAM", 503, "Unexpected continuation outcome", traceId, startedAt);
+  return errorResponse(
+    "ERR_GITHUB_DISPATCH_AUTHORIZATION",
+    502,
+    "GitHub rejected the fixed continuation dispatch",
+    traceId,
+    startedAt,
+    { receipt },
+  );
 }
