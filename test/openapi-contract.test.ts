@@ -93,12 +93,17 @@ describe("machine-readable public HTTP contract", () => {
     expect(continuation.responses["408"]).toEqual({ $ref: "#/components/responses/RequestTimeout" });
     expect(continuation.responses["401"].headers["WWW-Authenticate"]).toBeDefined();
     expect(continuation.responses["200"].headers["X-Continuation-Replay"]).toBeDefined();
-    for (const status of ["502", "503"]) {
-      expect(continuation.responses[status].headers["X-Continuation-Replay"]).toBeDefined();
-      expect(continuation.responses[status].content["application/json"].schema).toEqual({
-        $ref: "#/components/schemas/ContinuationErrorResponse",
-      });
-    }
+    expect(continuation.responses["502"].headers["X-Continuation-Replay"]).toBeDefined();
+    expect(continuation.responses["502"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ContinuationErrorResponse",
+    });
+    expect(continuation.responses["503"].headers["X-Continuation-Replay"]).toBeDefined();
+    expect(continuation.responses["503"].content["application/json"].schema).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/ContinuationErrorResponse" },
+        { $ref: "#/components/schemas/ErrorResponse" },
+      ],
+    });
     expect(spec.components.schemas.ContinuationErrorDetails).toMatchObject({
       type: "object",
       additionalProperties: false,

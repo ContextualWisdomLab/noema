@@ -223,7 +223,10 @@
               "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
               "X-Continuation-Replay": { "$ref": "#/components/headers/ContinuationReplay" }
             },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationErrorResponse" } } }
+            "content": { "application/json": { "schema": { "oneOf": [
+              { "$ref": "#/components/schemas/ContinuationErrorResponse" },
+              { "$ref": "#/components/schemas/ErrorResponse" }
+            ] } } }
           }
         }
       }
