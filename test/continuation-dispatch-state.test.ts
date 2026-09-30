@@ -16,7 +16,7 @@ import * as runtimeEntrypoint from "../src/runtime-entrypoint";
 
 const identity = "a".repeat(64);
 const digest = "b".repeat(64);
-const reservationExpiresAtEpochSeconds = 1_800_000_300;
+const reservationExpiresAtEpochSeconds = Math.floor(Date.now() / 1_000) + 3_600;
 const endpoint = "https://noema-continuation-dispatch-state.internal/command";
 
 class MemoryStorage {
@@ -165,6 +165,31 @@ describe("continuation dispatch exactly-once state", () => {
 
     expect(storage.records.size).toBe(0);
     expect(storage.alarmAt).toBeNull();
+  });
+
+  it("creates a fresh reservation after expired retained authority is removed", async () => {
+    const { env, namespace } = fixture();
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const first = requireNewReservation(await reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    ));
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+    const freshExpiry = reservationExpiresAtEpochSeconds + 60;
+
+    const replacement = requireNewReservation(await reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      freshExpiry,
+    ));
+
+    expect(replacement.reservationId).not.toBe(first.reservationId);
+    expect(storage.records.size).toBe(1);
+    expect(storage.alarmAt).toBe(freshExpiry * 1_000);
   });
 
   it("cannot commit after exact OIDC expiry even when the alarm is delayed", async () => {
