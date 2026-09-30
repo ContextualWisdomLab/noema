@@ -149,6 +149,24 @@ describe("continuation dispatch exactly-once state", () => {
     expect(storage.alarmAt).toBeNull();
   });
 
+  it("removes an expired retained reservation before rejecting its stale authority", async () => {
+    const { env, namespace } = fixture();
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    await reserveContinuationDispatch(env, identity, digest, reservationExpiresAtEpochSeconds);
+    const storage = namespace.storageByName.get(`continuation:${identity}`)!;
+    vi.spyOn(Date, "now").mockReturnValue(reservationExpiresAtEpochSeconds * 1_000);
+
+    await expect(reserveContinuationDispatch(
+      env,
+      identity,
+      digest,
+      reservationExpiresAtEpochSeconds,
+    )).rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
+
+    expect(storage.records.size).toBe(0);
+    expect(storage.alarmAt).toBeNull();
+  });
+
   it("cannot commit after exact OIDC expiry even when the alarm is delayed", async () => {
     const { env, namespace } = fixture();
     vi.spyOn(Date, "now").mockReturnValue(1_000);

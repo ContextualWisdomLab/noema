@@ -3,6 +3,7 @@ import baseWorker from "../src/index";
 import runtimeWorker from "../src/runtime-entrypoint";
 import protectedWorker from "../src/worker";
 import {
+  continuationDispatchDependencies,
   handleContinuationDispatch,
   type ContinuationDispatchHandlerDependencies,
 } from "../src/continuation-dispatch/handler";
@@ -145,6 +146,20 @@ function harness() {
 }
 
 describe("continuation dispatch public route", () => {
+  it("delegates the default dispatch boundary to the prepared credential", async () => {
+    const send = vi.fn(async () => ({
+      outcome: "accepted" as const,
+      upstreamStatus: 204,
+      eventType: "noema-review" as const,
+    }));
+
+    await expect(continuationDispatchDependencies.dispatch(
+      requestBody,
+      { assertFresh: () => undefined, send },
+    )).resolves.toMatchObject({ outcome: "accepted", upstreamStatus: 204 });
+    expect(send).toHaveBeenCalledWith(requestBody);
+  });
+
   it("applies the distributed rate limit before dispatch authentication", async () => {
     const limiterFetch = vi.fn(async () => Response.json({
       allowed: false,
@@ -532,6 +547,21 @@ describe("continuation dispatch public route", () => {
     await expect(response.json()).resolves.toMatchObject({
       error_code: "ERR_GITHUB_DISPATCH_UPSTREAM",
       message: "Central dispatch credential unavailable",
+    });
+  });
+
+  it("fails closed when a preparation failure reservation cannot be released", async () => {
+    const { dependencies, env } = harness();
+    dependencies.prepareDispatch = async () => {
+      throw new ContinuationGitHubAdapterError("upstream_unavailable", 503);
+    };
+    dependencies.abort = async () => { throw new Error("state unavailable"); };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      message: "Continuation reservation could not be released",
     });
   });
 
