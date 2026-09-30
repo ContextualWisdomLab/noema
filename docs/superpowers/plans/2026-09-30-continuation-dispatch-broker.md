@@ -76,7 +76,7 @@
 - [x] Extract only the existing App-JWT and bounded GitHub JSON helpers needed by both `/exchange` and the broker; do not duplicate them.
 - [x] Implement read-only source App lookup and a separate central-only dispatch App token used solely for `POST /repos/ContextualWisdomLab/.github/dispatches`.
 - [x] Run adapter tests, existing `test/worker.test.ts`, and typecheck; expect PASS.
-- [ ] Commit `test+feat(dispatch): bind live PR and fixed central event`.
+- [x] Commit `test+feat(dispatch): bind live PR and fixed central event`.
 
 ### Task 4: Credential-free signed receipt
 
