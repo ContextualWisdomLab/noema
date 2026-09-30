@@ -112,7 +112,8 @@ function harness() {
       }
       return { ...reservation, identity, digest };
     },
-    dispatch: async () => {
+    dispatch: async (_request, _env, beforeDispatch) => {
+      await beforeDispatch();
       calls.push("dispatch");
       return { outcome: "accepted" as const, upstreamStatus: 204, eventType: "noema-review" as const };
     },
@@ -224,7 +225,8 @@ describe("continuation dispatch public route", () => {
       exp: 1_800_000_300,
       jti: "task-5-strix-jti",
     });
-    dependencies.dispatch = async (candidate) => {
+    dependencies.dispatch = async (candidate, _env, beforeDispatch) => {
+      await beforeDispatch();
       calls.push("dispatch");
       expect(candidate.dispatch_action).toBe("strix_scan_continuation");
       return { outcome: "accepted", upstreamStatus: 204, eventType: "strix-scan" };
@@ -251,6 +253,29 @@ describe("continuation dispatch public route", () => {
     expect(secondPayload.data.receipt).toEqual(firstPayload.data.receipt);
     expect(calls.filter((call) => call === "dispatch")).toHaveLength(1);
     expect(calls.filter((call) => call === "live-pr")).toHaveLength(1);
+  });
+
+  it.each([
+    ["denied", 502, "ERR_GITHUB_DISPATCH_AUTHORIZATION"],
+    ["indeterminate", 503, "ERR_GITHUB_DISPATCH_UPSTREAM"],
+  ] as const)("replays retained %s evidence with its original failure class", async (outcome, status, errorCode) => {
+    const { dependencies, env } = harness();
+    dependencies.reserve = async (_stateEnv, identity, digest) => ({
+      kind: "replay",
+      identity,
+      digest,
+      outcome,
+      receipt: { outcome, receipt_id: `retained-${outcome}` },
+    });
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(status);
+    expect(response.headers.get("x-continuation-replay")).toBe("exact");
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: errorCode,
+      details: { receipt: { outcome } },
+    });
   });
 
   it("serializes retry attempt two through the first attempt identity without a second dispatch", async () => {
@@ -428,14 +453,27 @@ describe("continuation dispatch public route", () => {
     const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
 
     expect(response.status).toBe(503);
-    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit"]);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "commit", "abort"]);
+  });
+
+  it("aborts a fresh reservation when dispatch credential preparation fails before commit", async () => {
+    const { calls, dependencies, env } = harness();
+    dependencies.dispatch = async () => {
+      throw new ContinuationGitHubAdapterError("upstream_unavailable");
+    };
+
+    const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
+
+    expect(response.status).toBe(503);
+    expect(calls).toEqual(["claim", "reserve", "live-pr", "abort"]);
   });
 
   it.each(["noema_review_continuation", "strix_scan_continuation"] as const)(
     "returns retained indeterminate evidence when the %s dispatch transport throws",
     async (dispatchAction) => {
       const { calls, dependencies, env } = harness();
-      dependencies.dispatch = async () => {
+      dependencies.dispatch = async (_request, _env, beforeDispatch) => {
+        await beforeDispatch();
         calls.push("dispatch");
         throw new Error("transport failed");
       };
@@ -454,11 +492,14 @@ describe("continuation dispatch public route", () => {
 
   it("returns a signed denied receipt when GitHub rejects the fixed dispatch", async () => {
     const { dependencies, env } = harness();
-    dependencies.dispatch = async () => ({
+    dependencies.dispatch = async (_request, _env, beforeDispatch) => {
+      await beforeDispatch();
+      return {
       outcome: "denied",
       upstreamStatus: 403,
       eventType: "noema-review",
-    });
+      };
+    };
 
     const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
     const payload = await response.json() as { details: { receipt: unknown } };
@@ -469,10 +510,13 @@ describe("continuation dispatch public route", () => {
 
   it("fails closed on an impossible adapter outcome", async () => {
     const { dependencies, env } = harness();
-    dependencies.dispatch = async () => ({
+    dependencies.dispatch = async (_request, _env, beforeDispatch) => {
+      await beforeDispatch();
+      return {
       outcome: "unexpected",
       eventType: "noema-review",
-    }) as never;
+      } as never;
+    };
 
     const response = await handleContinuationDispatch(request(), env, "trace-task-5", dependencies);
 
@@ -570,6 +614,7 @@ describe("continuation dispatch public route", () => {
     }), env, "trace-task-5", dependencies);
 
     expect([malformed.status, missingBearer.status]).toEqual([400, 401]);
+    expect(missingBearer.headers.get("www-authenticate")).toContain("Bearer");
     expect(verify).not.toHaveBeenCalled();
   });
 

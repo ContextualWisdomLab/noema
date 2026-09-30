@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   abortContinuationReservation,
@@ -21,6 +21,7 @@ const endpoint = "https://noema-continuation-dispatch-state.internal/command";
 class MemoryStorage {
   readonly records = new Map<string, unknown>();
   transactionCount = 0;
+  alarmAt: number | null = null;
 
   async get<T>(key: string): Promise<T | undefined> {
     return structuredClone(this.records.get(key)) as T | undefined;
@@ -38,6 +39,14 @@ class MemoryStorage {
     this.transactionCount += 1;
     return callback(this);
   }
+
+  async getAlarm(): Promise<number | null> { return this.alarmAt; }
+
+  async setAlarm(scheduledTime: number | Date): Promise<void> {
+    this.alarmAt = scheduledTime instanceof Date ? scheduledTime.getTime() : scheduledTime;
+  }
+
+  async deleteAlarm(): Promise<void> { this.alarmAt = null; }
 
   replaceOnlyRecord(value: unknown): void {
     const key = [...this.records.keys()][0];
@@ -113,6 +122,7 @@ function envWithTransport(
 }
 
 describe("continuation dispatch exactly-once state", () => {
+  afterEach(() => vi.restoreAllMocks());
   it("grants only the first atomic reservation while an exact concurrent replay stays in progress", async () => {
     const { env, namespace } = fixture();
 
@@ -123,6 +133,28 @@ describe("continuation dispatch exactly-once state", () => {
     expect(first).toHaveProperty("reservationId");
     expect(replay).toEqual({ kind: "in_progress", identity, digest });
     expect(namespace.storageByName.get(`continuation:${identity}`)?.transactionCount).toBe(2);
+    expect(namespace.storageByName.get(`continuation:${identity}`)?.alarmAt).not.toBeNull();
+  });
+
+  it("removes only an expired reservation when its alarm fires", async () => {
+    const storage = new MemoryStorage();
+    const object = new NoemaContinuationDispatchState({
+      id: { name: `continuation:${identity}` } as DurableObjectId,
+      storage: storage as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    await object.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "reserve", identity, digest }),
+    }));
+    expect(storage.records.size).toBe(1);
+    vi.spyOn(Date, "now").mockReturnValue(storage.alarmAt! + 1);
+
+    await object.alarm();
+
+    expect(storage.records.size).toBe(0);
+    expect(storage.alarmAt).toBeNull();
   });
 
   it.each(["accepted", "denied", "indeterminate"] as const)(

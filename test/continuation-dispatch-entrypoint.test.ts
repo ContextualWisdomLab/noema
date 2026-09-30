@@ -102,10 +102,12 @@ describe("continuation dispatch production entrypoint", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("allow")).toBeNull();
+    expect(response.headers.get("www-authenticate")).toContain("Bearer");
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
       error_code: "ERR_DISPATCH_IDENTITY_DENIED",
       message: "Continuation identity is malformed",
+      details: { hint: expect.any(String) },
     });
   });
 
