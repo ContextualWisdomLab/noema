@@ -14,6 +14,8 @@ import {
 import { ContinuationGitHubAdapterError } from "../src/continuation-dispatch/github-adapter";
 import { verifyContinuationReceipt } from "../src/continuation-dispatch/receipt";
 
+const oidcIssuedAtEpochSeconds = Math.floor(Date.now() / 1_000);
+const oidcExpiresAtEpochSeconds = oidcIssuedAtEpochSeconds + 300;
 const workflowSha = "1".repeat(40);
 const headSha = "2".repeat(40);
 const baseSha = "3".repeat(40);
@@ -82,8 +84,8 @@ function harness() {
       repository: requestBody.source_repository,
       job_workflow_ref: workflowRef,
       job_workflow_sha: workflowSha,
-      iat: 1_800_000_000,
-      exp: 1_800_000_300,
+      iat: oidcIssuedAtEpochSeconds,
+      exp: oidcExpiresAtEpochSeconds,
       jti: "task-5-jti",
     }),
     claimOidc: async () => {
@@ -102,7 +104,7 @@ function harness() {
     },
     reserve: async (_env, identity, digest, reservationExpiresAt) => {
       calls.push("reserve");
-      expect(reservationExpiresAt).toBe(1_800_000_300);
+      expect(reservationExpiresAt).toBe(oidcExpiresAtEpochSeconds);
       if (retained !== undefined) {
         return {
           kind: "replay" as const,
@@ -251,8 +253,8 @@ describe("continuation dispatch public route", () => {
       repository: requestBody.source_repository,
       workflow_ref: workflowRef,
       workflow_sha: workflowSha,
-      iat: 1_800_000_000,
-      exp: 1_800_000_300,
+      iat: oidcIssuedAtEpochSeconds,
+      exp: oidcExpiresAtEpochSeconds,
       jti: "task-5-strix-jti",
     });
     dependencies.dispatch = async (candidate) => {
@@ -700,8 +702,8 @@ describe("continuation dispatch public route", () => {
       repository: requestBody.source_repository,
       job_workflow_ref: workflowRef,
       job_workflow_sha: "f".repeat(40),
-      iat: 1_800_000_000,
-      exp: 1_800_000_300,
+      iat: oidcIssuedAtEpochSeconds,
+      exp: oidcExpiresAtEpochSeconds,
       jti: "wrong-workflow-sha",
     });
 
