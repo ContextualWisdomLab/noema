@@ -18,7 +18,7 @@ PR #65 establishes a host-side boundary that authenticates an exact Git source, 
 
 The current goal is narrower than production publication: prove that one exact pull-request head can build and execute a credential-free validator image under a least-privileged, fail-closed verification process without conflating image execution with trusted evidence, independent approval, protected merge, provenance, release, or deployment authority.
 
-On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.19.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. Two related threats therefore had to be addressed: a package-oriented scanner could report a clean image while never classifying the self-compiled Node executable, and a Node-level classification could still hide bundled dependency versions inside the static binary. The current design uses independent binary presence evidence plus an exact-image `process.versions` inventory and per-component vulnerability evidence.
+On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.21.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. Two related threats therefore had to be addressed: a package-oriented scanner could report a clean image while never classifying the self-compiled Node executable, and a Node-level classification could still hide bundled dependency versions inside the static binary. The current design uses independent binary presence evidence plus an exact-image `process.versions` inventory and per-component vulnerability evidence.
 
 ## Evidence classification
 
@@ -29,7 +29,7 @@ The pull-request workflow and tests measure or enforce:
 - exact pull-request head checkout and live-head equality before and after verification;
 - a clean worktree and immutable Dockerfile frontend;
 - a digest-pinned Node builder;
-- SHA-256 verification of the official Node.js 24.19.0 source archive;
+- SHA-256 verification of the official Node.js 24.21.0 source archive;
 - a fully static Node build copied into a `scratch` final image;
 - rejection of dynamic interpreters, dynamic `NEEDED` dependencies, shared libraries, native addons, shells, and package managers in the final runtime;
 - numeric non-root runtime identity and a fixed exec-form entrypoint;
@@ -41,7 +41,7 @@ The pull-request workflow and tests measure or enforce:
 - Trivy CycloneDX and vulnerability receipts for package and JavaScript dependency coverage;
 - checksum-manifest-pinned Syft 1.50.0 inventory of the same exact local image;
 - checksum-manifest-pinned Grype 0.116.1 vulnerability scanning of the same exact local image;
-- fail-closed verification that Syft identifies exactly one Node 24.19.0 executable at `/nodejs/bin/node` with the expected Node.js CPE;
+- fail-closed verification that Syft identifies exactly one Node 24.21.0 executable at `/nodejs/bin/node` with the expected Node.js CPE;
 - exact-image `process.versions` capture with exact component-set equality against the reviewed inventory;
 - `modules` and `napi` handled only as reviewed ABI/runtime metadata and never fabricated as vulnerability packages;
 - every other `process.versions` key classified as a bundled dependency with a reviewed PURL or CPE;
@@ -61,7 +61,7 @@ The external sources support these general requirements:
 - SBOM and vulnerability evidence must identify the artifact actually consumed; an empty finding set is not useful if the relevant component was never inventoried.
 - Trivy's OS-package vulnerability scanner does not support third-party or self-compiled packages/binaries. Therefore Trivy alone cannot serve as positive evidence that the self-compiled Node runtime was assessed.
 - Syft's binary classifier catalog includes Node executable classification and Node.js CPE evidence, which supports an explicit runtime-presence assertion.
-- Node.js 24.19.0 documents `process.versions` as an object of version strings for Node.js and its dependencies. This supports using the exact built runtime as the source of reviewed embedded dependency-version declarations, while not claiming it is a complete binary-composition proof.
+- Node.js 24.21.0 documents `process.versions` as an object of version strings for Node.js and its dependencies. This supports using the exact built runtime as the source of reviewed embedded dependency-version declarations, while not claiming it is a complete binary-composition proof.
 - Grype supports container/SBOM inputs and package identities including PURLs and CPEs; matcher selection depends on package type and can fall back to CPE/NVD matching for otherwise modeled packages. Its output remains vulnerability-database- and identity-quality-dependent.
 - Build provenance, artifact signatures, independent approval, branch protection, release acceptance, and deployment authority are separate evidence/authority planes.
 
@@ -82,7 +82,7 @@ Noema keeps Trivy for its existing package/language coverage and adds an indepen
 3. authenticate each Linux/amd64 archive through the already authenticated manifest before extraction;
 4. run Syft against `docker:<exact local image tag>` and retain native Syft JSON;
 5. require Syft's source image ID to equal the trusted Docker image ID;
-6. require exactly one `node` package at version 24.19.0 located at `/nodejs/bin/node` and carrying a Node.js 24.19.0 CPE;
+6. require exactly one `node` package at version 24.21.0 located at `/nodejs/bin/node` and carrying a Node.js 24.21.0 CPE;
 7. run Grype independently against the same exact local Docker image with `--config /dev/null`, preventing a repository-local `.grype.yaml` from silently introducing ignore policy;
 8. require Grype's source image ID to equal the trusted Docker image ID;
 9. reject any non-empty `ignoredMatches` collection;
@@ -104,7 +104,7 @@ Node.js exposes the runtime's own dependency version declarations through `proce
 The exact-image embedded-runtime lane now:
 
 1. executes the exact built `/nodejs/bin/node` and bounds the serialized `process.versions` record;
-2. requires `process.versions.node` to equal the reviewed Node.js version `24.19.0`;
+2. requires `process.versions.node` to equal the reviewed Node.js version `24.21.0` and `process.versions.undici` to equal fixed bundled Undici `7.29.1`;
 3. requires the reviewed inventory component keys to equal every non-`node` `process.versions` key exactly;
 4. treats only `modules` and `napi` as runtime metadata, with exact reviewed meanings, and forbids package identities for those counters;
 5. requires every other key to be a `bundled_dependency` with an explicit reviewed PURL or CPE;
@@ -280,7 +280,7 @@ Before describing an exact head as verified, retain or link:
 - exact immutable workflow source;
 - local image metadata and content ID;
 - Trivy CycloneDX and vulnerability receipts;
-- Syft native binary inventory proving Node 24.19.0 presence;
+- Syft native binary inventory proving Node 24.21.0 presence;
 - Grype exact-image vulnerability receipt with no ignored/blocking findings;
 - bounded exact-image `process.versions` record;
 - reviewed embedded-runtime inventory with exact component-set equality;
@@ -316,7 +316,7 @@ National Institute of Standards and Technology. (2017). *Application container s
 
 National Institute of Standards and Technology. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST Special Publication 800-218). U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-218
 
-Node.js. (2026). *Process: `process.versions` (Node.js v24.19.0 documentation)*. https://nodejs.org/download/release/v24.19.0/docs/api/process.html#processversions
+Node.js. (2026). *Process: `process.versions` (Node.js v24.21.0 documentation)*. https://nodejs.org/download/release/v24.21.0/docs/api/process.html#processversions
 
 Open Container Initiative. (2024). *OCI image format specification* (Version 1.1.1). https://specs.opencontainers.org/image-spec/?v=v1.1.1
 

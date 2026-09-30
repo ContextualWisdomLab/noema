@@ -19,27 +19,27 @@ const OPENSSL_NON_APPLICABLE_REASON =
 const NGHTTP2_NON_APPLICABLE_REASON =
   "CVE affects the nghttpx proxy, not Node's embedded libnghttp2 runtime";
 const LEGACY_V8_NON_APPLICABLE_REASON =
-  "Exact Node 24.19.0 V8 runtime is newer than the reviewed affected legacy V8 releases";
+  "Exact Node 24.21.0 V8 runtime is newer than the reviewed affected legacy V8 releases";
 const V8_ARRAY_SORT_NON_APPLICABLE_REASON =
-  "Exact Node 24.19.0 V8 branch lacks the vulnerable inlined Array.prototype.sort reducers";
+  "Exact Node 24.21.0 V8 branch lacks the vulnerable inlined Array.prototype.sort reducers";
 const SQLITE_NON_APPLICABLE_REASON =
-  "Exact SQLite 3.53.3 runtime is newer than the reviewed affected SQLite ranges";
+  "Exact SQLite 3.53.4 runtime is newer than the reviewed affected SQLite ranges";
 const ZLIB_NON_APPLICABLE_REASON =
   "Advisory applies to the Ruby zlib gem GzipReader wrapper, not Node's embedded C zlib runtime";
-const EXPECTED_NODE_VERSION = "24.19.0";
-const EXPECTED_NGHTTP2_VERSION = "1.69.0";
+const EXPECTED_NODE_VERSION = "24.21.0";
+const EXPECTED_NGHTTP2_VERSION = "1.70.0";
 const EXPECTED_NGHTTP2_CPE =
-  "cpe:2.3:a:nghttp2:nghttp2:1.69.0:*:*:*:*:*:*:*";
-const EXPECTED_V8_VERSION = "13.6.233.17-node.51";
+  "cpe:2.3:a:nghttp2:nghttp2:1.70.0:*:*:*:*:*:*:*";
+const EXPECTED_V8_VERSION = "13.6.233.17-node.53";
 const EXPECTED_V8_SCANNER_VERSION = "13.6.233.17";
 const EXPECTED_V8_CPE =
   "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
-const EXPECTED_SQLITE_VERSION = "3.53.3";
+const EXPECTED_SQLITE_VERSION = "3.53.4";
 const EXPECTED_SQLITE_CPE =
-  "cpe:2.3:a:sqlite:sqlite:3.53.3:*:*:*:*:*:*:*";
-const EXPECTED_ZLIB_VERSION = "1.3.2.1-motley-3246f1b";
+  "cpe:2.3:a:sqlite:sqlite:3.53.4:*:*:*:*:*:*:*";
+const EXPECTED_ZLIB_VERSION = "1.3.2.1-motley-8002e91";
 const EXPECTED_ZLIB_CPE =
-  "cpe:2.3:a:zlib:zlib:1.3.2.1-motley-3246f1b:*:*:*:*:*:*:*";
+  "cpe:2.3:a:zlib:zlib:1.3.2.1-motley-8002e91:*:*:*:*:*:*:*";
 
 function isRecord(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -208,15 +208,15 @@ function scanMatchesExactComponent(rawComponentScan, component) {
  * - OpenSSL CVE-2026-14456 requires exact evidence that both QUIC transport
  *   dependencies are disabled in this Node build.
  * - nghttp2 CVE-2026-58055 describes the nghttpx proxy request-forwarding
- *   behavior; the exact Node 24.19.0 runtime inventories libnghttp2 as a
+ *   behavior; the exact Node 24.21.0 runtime inventories libnghttp2 as a
  *   statically bundled dependency, not the nghttpx proxy executable.
  * - legacy V8 advisories are bounded to historical affected V8/Node releases
- *   that predate the exact Node 24.19.0 / V8 13.6.233.17-node.51 runtime.
+ *   that predate the exact Node 24.21.0 / V8 13.6.233.17-node.53 runtime.
  * - CVE-2026-85046 is tied to V8's inlined Array.prototype.sort reducers. The
- *   exact signed Node 24.19.0 V8 branch contains neither affected reducer, so
+ *   exact signed Node 24.21.0 V8 branch contains neither affected reducer, so
  *   the generic V8 CPE range is not execution-path evidence for this runtime.
  * - the three SQLite findings have reviewed vulnerable ranges ending no later
- *   than 3.50.1, while this exact embedded runtime is SQLite 3.53.3.
+ *   than 3.50.1, while this exact embedded runtime is SQLite 3.53.4.
  * - GHSA-g857-hhfv-j68w is a RubyGems zlib/GzipReader advisory, not an
  *   upstream C zlib-library advisory; the exact Node component is the latter.
  *

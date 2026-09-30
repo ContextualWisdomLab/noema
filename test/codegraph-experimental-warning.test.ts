@@ -12,7 +12,7 @@ const RUNNER_PATHS = [
 
 describe("CodeGraph SQLite warning boundary", () => {
   it("proves the canonical hosted Node line loads node:sqlite without ExperimentalWarning", () => {
-    expect(PACKAGE.devEngines?.runtime?.version).toBe("24.19.0");
+    expect(PACKAGE.devEngines?.runtime?.version).toBe("24.21.0");
 
     const probe = spawnSync(
       process.execPath,

@@ -6,7 +6,8 @@ import {
 } from "./patch-validator-embedded-runtime-catalog.mjs";
 
 const COMPONENT_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const EXPECTED_NODE_VERSION = "24.19.0";
+const EXPECTED_NODE_VERSION = "24.21.0";
+const EXPECTED_UNDICI_VERSION = "7.29.1";
 const VALIDATOR_IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 function isRecord(value) {
@@ -36,6 +37,11 @@ export function generateEmbeddedRuntimeInventory(versions, validatorImageDigest)
   }
   if (versions.node !== EXPECTED_NODE_VERSION) {
     throw new Error("process.versions Node version does not match the reviewed runtime");
+  }
+  if (versions.undici !== EXPECTED_UNDICI_VERSION) {
+    throw new Error(
+      `process.versions undici must equal reviewed fixed version ${EXPECTED_UNDICI_VERSION}`,
+    );
   }
 
   const components = [];

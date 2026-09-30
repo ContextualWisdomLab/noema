@@ -25,9 +25,9 @@ describe("saleable-readiness workflow supply-chain integrity", () => {
   });
 
   it("uses the exact protected-CI Node/npm identities and frozen install flags", () => {
-    expect(workflow).toContain('node-version: "24.19.0"');
-    expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
-    expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(workflow).toContain('node-version: "24.21.0"');
+    expect(workflow).toContain('test "$(node --version)" = "v24.21.0"');
+    expect(workflow).toContain('test "$(npm --version)" = "11.19.0"');
     expect(workflow).toContain(
       "npm ci --legacy-peer-deps=false --install-links=false",
     );

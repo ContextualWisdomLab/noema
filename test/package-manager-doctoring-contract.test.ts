@@ -20,8 +20,8 @@ describe("package-manager reproducibility doctoring", () => {
     const decision = markdownSection(document, "결정");
     const installScripts = markdownSection(document, "Install-script 실행 권한");
 
-    expect(decision).toContain("Node.js 24.19.0");
-    expect(decision).toContain("npm 11.17.0");
+    expect(decision).toContain("Node.js 24.21.0");
+    expect(decision).toContain("npm 11.19.0");
     expect(decision).toContain("`.github/workflows/ci.yml`");
 
     expect(installScripts).toContain("`strict-allow-scripts=true`");
@@ -75,7 +75,7 @@ describe("package-manager reproducibility doctoring", () => {
     expect(changelog).toMatch(/^## Unreleased$/m);
     const unreleased = markdownSection(changelog, "Unreleased");
 
-    expect(unreleased).toContain("Node.js 24.19.0/npm 11.17.0");
+    expect(unreleased).toContain("Node.js 24.21.0/npm 11.19.0");
     expect(unreleased).toContain("strict-allow-scripts=true");
     expect(unreleased).toContain("schema v3");
   });

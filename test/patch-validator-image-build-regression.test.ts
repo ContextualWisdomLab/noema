@@ -6,8 +6,8 @@ const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml"
 
 describe("patch-validator exact-toolchain image build regression", () => {
   it("builds the static runtime with the exact Node/npm toolchain and patched c-ares source", () => {
-    expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
-    expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.17.0"');
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
+    expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.19.0"');
     expect(dockerfile).toContain("ARG CARES_VERSION=1.34.8");
     expect(dockerfile).toContain(
       "ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78",
@@ -18,6 +18,10 @@ describe("patch-validator exact-toolchain image build regression", () => {
     );
     expect(dockerfile).toContain(
       "if (process.versions.ares !== process.env.CARES_VERSION) throw new Error",
+    );
+    expect(dockerfile).toContain("ARG UNDICI_VERSION=7.29.1");
+    expect(dockerfile).toContain(
+      "if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error",
     );
     expect(dockerfile).not.toContain("FROM validator_deps");
     expect(dockerfile).not.toContain("FROM node:24.18.0-alpine3.24");
@@ -36,8 +40,8 @@ describe("patch-validator exact-toolchain image build regression", () => {
   it("materializes lockfile dependencies before Docker and forbids npm registry access in the image build", () => {
     expect(imageWorkflow).toContain("Set up exact dependency materialization toolchain");
     expect(imageWorkflow).toContain("Materialize exact patch-validator dependencies");
-    expect(imageWorkflow).toContain('node-version: "24.19.0"');
-    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(imageWorkflow).toContain('node-version: "24.21.0"');
+    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.19.0"');
     expect(imageWorkflow).toContain("npm ci --include=optional --ignore-scripts --no-audit --no-fund");
     expect(imageWorkflow).toContain(
       "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",

@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { applyReviewedEmbeddedRuntimeApplicability } from "../scripts/lib/patch-validator-embedded-runtime-applicability.mjs";
 
-const nghttp2Cpe = "cpe:2.3:a:nghttp2:nghttp2:1.69.0:*:*:*:*:*:*:*";
+const nghttp2Cpe = "cpe:2.3:a:nghttp2:nghttp2:1.70.0:*:*:*:*:*:*:*";
 const v8Cpe = "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
-const sqliteCpe = "cpe:2.3:a:sqlite:sqlite:3.53.3:*:*:*:*:*:*:*";
-const zlibCpe = "cpe:2.3:a:zlib:zlib:1.3.2.1-motley-3246f1b:*:*:*:*:*:*:*";
+const sqliteCpe = "cpe:2.3:a:sqlite:sqlite:3.53.4:*:*:*:*:*:*:*";
+const zlibCpe = "cpe:2.3:a:zlib:zlib:1.3.2.1-motley-8002e91:*:*:*:*:*:*:*";
 
 function componentScan(
   key: string,
@@ -45,40 +45,40 @@ function componentScan(
 
 function inventory() {
   return {
-    node_version: "24.19.0",
+    node_version: "24.21.0",
     process_versions: {
-      node: "24.19.0",
-      nghttp2: "1.69.0",
-      sqlite: "3.53.3",
-      v8: "13.6.233.17-node.51",
-      zlib: "1.3.2.1-motley-3246f1b",
+      node: "24.21.0",
+      nghttp2: "1.70.0",
+      sqlite: "3.53.4",
+      v8: "13.6.233.17-node.53",
+      zlib: "1.3.2.1-motley-8002e91",
     },
     components: [
       {
         key: "nghttp2",
         name: "nghttp2",
-        version: "1.69.0",
+        version: "1.70.0",
         classification: "bundled_dependency",
         cpe: nghttp2Cpe,
       },
       {
         key: "sqlite",
         name: "sqlite",
-        version: "3.53.3",
+        version: "3.53.4",
         classification: "bundled_dependency",
         cpe: sqliteCpe,
       },
       {
         key: "v8",
         name: "v8",
-        version: "13.6.233.17-node.51",
+        version: "13.6.233.17-node.53",
         classification: "bundled_dependency",
         cpe: v8Cpe,
       },
       {
         key: "zlib",
         name: "zlib",
-        version: "1.3.2.1-motley-3246f1b",
+        version: "1.3.2.1-motley-8002e91",
         classification: "bundled_dependency",
         cpe: zlibCpe,
       },
@@ -93,8 +93,8 @@ describe("reviewed embedded-runtime applicability", () => {
         componentScan(
           "nghttp2",
           "nghttp2",
-          "1.69.0",
-          "1.69.0",
+          "1.70.0",
+          "1.70.0",
           nghttp2Cpe,
           "CVE-2026-58055",
           "Medium",
@@ -116,14 +116,14 @@ describe("reviewed embedded-runtime applicability", () => {
   });
 
   it.each(["CVE-2015-5380", "CVE-2011-5037", "CVE-2011-3886"])(
-    "marks legacy V8 advisory %s non-applicable to the exact Node 24.19.0 V8 runtime even when Grype reports the normalized CPE version",
+    "marks legacy V8 advisory %s non-applicable to the exact Node 24.21.0 V8 runtime even when Grype reports the normalized CPE version",
     (vulnerabilityId) => {
       const scan = {
         components: [
           componentScan(
             "v8",
             "v8",
-            "13.6.233.17-node.51",
+            "13.6.233.17-node.53",
             "13.6.233.17",
             v8Cpe,
             vulnerabilityId,
@@ -141,18 +141,18 @@ describe("reviewed embedded-runtime applicability", () => {
       expect(reviewed.nonApplicableMatches).toContainEqual({
         component_key: "v8",
         vulnerability_id: vulnerabilityId,
-        reason: "Exact Node 24.19.0 V8 runtime is newer than the reviewed affected legacy V8 releases",
+        reason: "Exact Node 24.21.0 V8 runtime is newer than the reviewed affected legacy V8 releases",
       });
     },
   );
 
-  it("marks CVE-2026-85046 non-applicable only to the exact Node 24.19.0 V8 branch/CPE", () => {
+  it("marks CVE-2026-85046 non-applicable only to the exact Node 24.21.0 V8 branch/CPE", () => {
     const scan = {
       components: [
         componentScan(
           "v8",
           "v8",
-          "13.6.233.17-node.51",
+          "13.6.233.17-node.53",
           "13.6.233.17",
           v8Cpe,
           "CVE-2026-85046",
@@ -170,7 +170,7 @@ describe("reviewed embedded-runtime applicability", () => {
     expect(reviewed.nonApplicableMatches).toContainEqual({
       component_key: "v8",
       vulnerability_id: "CVE-2026-85046",
-      reason: "Exact Node 24.19.0 V8 branch lacks the vulnerable inlined Array.prototype.sort reducers",
+      reason: "Exact Node 24.21.0 V8 branch lacks the vulnerable inlined Array.prototype.sort reducers",
     });
 
     const differentNode = inventory();
@@ -189,15 +189,15 @@ describe("reviewed embedded-runtime applicability", () => {
     "BIT-sqlite-2025-29088",
     "BIT-sqlite-2025-6965",
   ])(
-    "marks reviewed fixed-range SQLite finding %s non-applicable to exact SQLite 3.53.3",
+    "marks reviewed fixed-range SQLite finding %s non-applicable to exact SQLite 3.53.4",
     (vulnerabilityId) => {
       const scan = {
         components: [
           componentScan(
             "sqlite",
             "sqlite",
-            "3.53.3",
-            "3.53.3",
+            "3.53.4",
+            "3.53.4",
             sqliteCpe,
             vulnerabilityId,
             "High",
@@ -214,7 +214,7 @@ describe("reviewed embedded-runtime applicability", () => {
       expect(reviewed.nonApplicableMatches).toContainEqual({
         component_key: "sqlite",
         vulnerability_id: vulnerabilityId,
-        reason: "Exact SQLite 3.53.3 runtime is newer than the reviewed affected SQLite ranges",
+        reason: "Exact SQLite 3.53.4 runtime is newer than the reviewed affected SQLite ranges",
       });
     },
   );
@@ -225,8 +225,8 @@ describe("reviewed embedded-runtime applicability", () => {
         componentScan(
           "zlib",
           "zlib",
-          "1.3.2.1-motley-3246f1b",
-          "1.3.2.1-motley-3246f1b",
+          "1.3.2.1-motley-8002e91",
+          "1.3.2.1-motley-8002e91",
           zlibCpe,
           "GHSA-g857-hhfv-j68w",
           "Medium",
@@ -253,8 +253,8 @@ describe("reviewed embedded-runtime applicability", () => {
         componentScan(
           "sqlite",
           "sqlite",
-          "3.53.3",
-          "3.53.3",
+          "3.53.4",
+          "3.53.4",
           sqliteCpe,
           "CVE-2099-4242",
           "High",
@@ -277,8 +277,8 @@ describe("reviewed embedded-runtime applicability", () => {
         componentScan(
           "nghttp2",
           "nghttp2",
-          "1.69.0",
-          "1.69.0",
+          "1.70.0",
+          "1.70.0",
           nghttp2Cpe,
           "CVE-2026-58055",
           "Medium",

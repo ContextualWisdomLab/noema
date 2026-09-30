@@ -116,9 +116,9 @@ describe("patch-validator binary Grype database provenance", () => {
         artifacts: [
           {
             name: "node",
-            version: "24.19.0",
+            version: "24.21.0",
             locations: [{ path: "/nodejs/bin/node" }],
-            cpes: ["cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*"],
+            cpes: ["cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*"],
           },
         ],
       });
@@ -131,8 +131,8 @@ describe("patch-validator binary Grype database provenance", () => {
       const embeddedInventory = writeJson(root, "embedded-inventory.json", {
         schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
         validator_image_digest: imageDigest,
-        node_version: "24.19.0",
-        process_versions: { node: "24.19.0", undici: "7.13.0" },
+        node_version: "24.21.0",
+        process_versions: { node: "24.21.0", undici: "7.13.0" },
         components: [
           {
             key: "undici",
