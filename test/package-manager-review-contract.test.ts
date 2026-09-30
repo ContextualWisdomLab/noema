@@ -78,7 +78,7 @@ describe("package-manager review contracts", () => {
     ]);
 
     const unreleased = markdownSection(changelog, "## Unreleased");
-    expect(unreleased).toContain("Node.js 24.19.0/npm 11.17.0");
+    expect(unreleased).toContain("Node.js 24.21.0/npm 11.19.0");
     expect(unreleased).toContain("strict-allow-scripts=true");
     expect(unreleased).toContain("schema v3");
   });

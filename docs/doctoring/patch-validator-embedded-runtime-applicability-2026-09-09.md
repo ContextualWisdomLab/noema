@@ -44,6 +44,12 @@ The primary V8 fix for Chromium issue 542403045 changes `JSCallReducer::ReduceAr
 
 The derived applicability receipt may remove `CVE-2026-85046` only for exact Node 24.19.0, exact V8 `13.6.233.17-node.51`, reviewed CPE `cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*`, normalized scanner artifact version `13.6.233.17`, Grype 0.116.1, and NVD-CPE provenance. A Node/V8/CPE/scanner/finding mismatch must fail closed.
 
+## 2026-09-30 exact-runtime revalidation
+
+The exact-head image scan later exposed two blocking High-severity findings in Node 24.19.0's embedded `undici@7.29.0`: GHSA-rfgv-xxqx-mfg5 and GHSA-w293-vg96-wgc3. Node.js 24.21.0 updates the embedded Undici runtime to 7.29.1. Noema authenticates the official source archive with SHA-256 `a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc`; the signed `v24.21.0` tag dereferences to commit `955266bfdd854cd280dffd47548673914484e4c0`. The official Linux x64 distribution independently reports Node 24.21.0, npm 11.19.0, Undici 7.29.1, nghttp2 1.70.0, SQLite 3.53.4, V8 13.6.233.17-node.53, and zlib 1.3.2.1-motley-8002e91 through `process.versions` and bundled npm metadata.
+
+The prior applicability conclusions do not transfer by version-range assumption. Inspection of the authenticated 24.21.0 source again finds neither `JSCallReducer::ReduceArraySort` nor `MaglevGraphBuilder::TryReduceArrayPrototypeSort`; SQLite 3.53.4 remains above every reviewed affected range; the nghttp2 finding remains specific to the separate nghttpx proxy; and the zlib finding remains specific to the RubyGems wrapper. The executable contract therefore binds those new identities exactly. Any later Node or embedded-component change again invalidates the derived applicability receipt and must fail closed pending a new review.
+
 ## Risk and follow-up
 
 Applicability review is deliberately exact-version rather than an open-ended semantic-version rule. A future Node, V8, SQLite, zlib, scanner, or CPE change loses the exception automatically and must be reviewed again. c-ares remains a source repair, not an exception. The image lane must rebuild from the new exact head and prove the patched c-ares version, raw scan retention, derived reviewed receipt, strict final verifier, isolation smoke, SBOM, and unchanged image/source binding before integration.
@@ -67,3 +73,5 @@ Open Source Vulnerabilities. (2025; modified 2026). *BIT-sqlite-2025-6965*. http
 V8 Project. (2026, August 7). *[compiler] Don't inline Array.prototype.sort on mixed elements kinds* (commit `e0562d87ad9c17042b581582c99237d798572e67`). https://github.com/v8/v8/commit/e0562d87ad9c17042b581582c99237d798572e67
 
 Node.js. (2026, August 3). *Node.js v24.19.0 Krypton (LTS) release* (signed tag; commit `cdc1b38d40cb567b7ad0b39c86addf830a0af0ae`). https://github.com/nodejs/node/releases/tag/v24.19.0
+
+Node.js. (2026, September 8). *Node.js v24.21.0 Krypton (LTS) release*. https://nodejs.org/en/blog/release/v24.21.0

@@ -37,9 +37,9 @@ function expectExactHeadContract(workflow: string, firstExecutionStep: string): 
 
 /** Assert that application CI uses the reviewed Node/npm identity and explicit tree-shaping flags. */
 function expectPinnedApplicationToolchain(workflow: string): void {
-  expect(workflow).toContain('node-version: "24.19.0"');
-  expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
-  expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
+  expect(workflow).toContain('node-version: "24.21.0"');
+  expect(workflow).toContain('test "$(node --version)" = "v24.21.0"');
+  expect(workflow).toContain('test "$(npm --version)" = "11.19.0"');
   expect(workflow).toContain("npm ci --legacy-peer-deps=false --install-links=false");
 
   const exactHeadGate = workflow.indexOf("- name: verify exact checkout");

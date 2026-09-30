@@ -11,7 +11,7 @@ const RFC3339_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/;
 const GRYPE_DATABASE_SCHEMA = /^v\d+\.\d+\.\d+$/;
 const PROVIDER_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
-const EXPECTED_NODE_VERSION = "24.19.0";
+const EXPECTED_NODE_VERSION = "24.21.0";
 const EXPECTED_NODE_CPE =
   `cpe:2.3:a:nodejs:node.js:${EXPECTED_NODE_VERSION}:*:*:*:*:*:*:*`;
 const EMBEDDED_INVENTORY_SCHEMA =

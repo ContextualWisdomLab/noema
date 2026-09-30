@@ -94,7 +94,7 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
     expect(workflow).toContain("Verify static Node runtime identity");
     expect(workflow).toContain(
-      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
+      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.21.0"',
     );
     expect(workflow).toContain("readelf -l \"$node_binary\"");
     expect(workflow).toContain("readelf -d \"$node_binary\"");

@@ -2,7 +2,7 @@
 
 ## 결정
 
-Noema의 검토·CI·lockfile 재생성 기준 개발 도구 체인은 **Node.js 24.19.0**과 **npm 11.17.0**으로 고정한다. `package.json`의 `packageManager`와 `devEngines`가 그 identity를 선언하고, CI는 설치 전에 실제 `node --version`과 `npm --version`을 exact-match로 다시 확인한다. 제품 자체의 지원 범위인 `engines.node >=22`와 개발·lockfile 생성 도구 체인은 별도 계약이다.
+Noema의 검토·CI·lockfile 재생성 기준 개발 도구 체인은 **Node.js 24.21.0**과 **npm 11.19.0**으로 고정한다. `package.json`의 `packageManager`와 `devEngines`가 그 identity를 선언하고, CI는 설치 전에 실제 `node --version`과 `npm --version`을 exact-match로 다시 확인한다. 제품 자체의 지원 범위인 `engines.node >=22`와 개발·lockfile 생성 도구 체인은 별도 계약이다.
 
 CI의 JavaScript Action도 mutable major tag를 실행 근거로 사용하지 않는다. `actions/checkout` 6.0.2와 `actions/setup-node` 6.4.0의 검토된 full commit SHA를 workflow에 고정한다. 두 action 계열은 Node 24 runtime을 사용하는 현재 release line이다. 이 Action source pin 결정의 범위는 `.github/workflows/ci.yml`이다.
 
@@ -72,7 +72,7 @@ Predecessor head의 green run, model comment, status-only signal, stale base, sy
 
 ## 재생성·검증 절차
 
-1. Node.js 24.19.0 / npm 11.17.0 exact identity를 확인한다.
+1. Node.js 24.21.0 / npm 11.19.0 exact identity를 확인한다.
 2. 현재 protected/base lockfile을 immutable 비교 기준으로 보존한다.
 3. 목표 dependency만 변경하고 unrelated metadata churn을 별도 근거 없이 수용하지 않는다.
 4. lockfile diff가 존재하면 schemaVersion 3 policy를 exact base, exact package before/after digest, exact `topLevelMetadataDigests`, 그리고 필요 시 `bulkChange` evidence에 결합한다.

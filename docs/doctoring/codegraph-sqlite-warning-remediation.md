@@ -8,7 +8,7 @@ Noema's direct CodeGraph sandbox launchers must not pass `--disable-warning=Expe
 
 CodeGraph v1.4.1 is published as a self-contained bundle. Its tagged `scripts/build-bundle.sh` defaults the embedded runtime to Node `v24.16.0`, and the tagged release workflow invokes that build script without overriding the Node version for each platform. This means the lock-pinned Linux package Noema mounts into its quarantine boundary carries Node v24.16.0 rather than inheriting an ambient host Node.
 
-Node changed `node:sqlite` from experimental Stability 1.1 to release-candidate Stability 1.2 in v24.15.0. The exact Node v24.14.0 `lib/sqlite.js` still imports `emitExperimentalWarning` and calls `emitExperimentalWarning('SQLite')`; the exact Node v24.16.0 file contains only the internal SQLite binding export and no warning emitter. Noema's canonical hosted development runtime is newer again, Node v24.19.0, and the executable regression loads `node:sqlite` in that exact hosted runtime and rejects either `ExperimentalWarning` or the former `SQLite is an experimental feature` diagnostic.
+Node changed `node:sqlite` from experimental Stability 1.1 to release-candidate Stability 1.2 in v24.15.0. The exact Node v24.14.0 `lib/sqlite.js` still imports `emitExperimentalWarning` and calls `emitExperimentalWarning('SQLite')`; the exact Node v24.16.0 file contains only the internal SQLite binding export and no warning emitter. Noema's canonical hosted development runtime is newer again, Node v24.21.0, and the executable regression loads `node:sqlite` in that exact hosted runtime and rejects either `ExperimentalWarning` or the former `SQLite is an experimental feature` diagnostic.
 
 Therefore a CodeGraph version bump is neither necessary nor sufficient for this warning repair. The warning source disappeared in the embedded Node line before the currently pinned CodeGraph 1.4.1 bundle was published. Upstream CodeGraph main still carries compatibility warning-suppression logic for other launch paths and older Node lines; that does not justify keeping a blanket suppression in Noema's reviewed direct launcher when Noema's pinned bundle identity already excludes the emitting runtime.
 
@@ -25,7 +25,7 @@ If a future pinned CodeGraph bundle changes its embedded Node line and an `Exper
 - Node v24.14.0 `lib/sqlite.js`: emits the `SQLite` experimental warning.
 - Node v24.16.0 `lib/sqlite.js`: no experimental-warning emitter remains.
 - Node v24.16.0 SQLite documentation records the v24.15.0 promotion to Stability 1.2 (release candidate).
-- Noema `.github/workflows/ci.yml` pins the canonical hosted Node toolchain to v24.19.0.
+- Noema `.github/workflows/ci.yml` pins the canonical hosted Node toolchain to v24.21.0.
 
 ## References
 

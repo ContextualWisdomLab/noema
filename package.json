@@ -3,19 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "npm@11.17.0",
+  "packageManager": "npm@11.19.0",
   "engines": {
     "node": ">=22"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "24.19.0",
+      "version": "24.21.0",
       "onFail": "error"
     },
     "packageManager": {
       "name": "npm",
-      "version": "11.17.0",
+      "version": "11.19.0",
       "onFail": "error"
     }
   },
@@ -76,6 +76,6 @@
   },
   "overrides": {
     "postcss": "^8.5.18",
-    "undici": "7.29.0"
+    "undici": "7.29.1"
   }
 }

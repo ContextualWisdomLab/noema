@@ -24,9 +24,9 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
   });
 
   it("uses exact Node/npm identities without installing dependency code", () => {
-    expect(workflow).toContain('node-version: "24.19.0"');
-    expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
-    expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(workflow).toContain('node-version: "24.21.0"');
+    expect(workflow).toContain('test "$(node --version)" = "v24.21.0"');
+    expect(workflow).toContain('test "$(npm --version)" = "11.19.0"');
     expect(workflow).not.toContain('node-version: "24"');
     expect(workflow).not.toMatch(/\bnpm\s+(?:ci|install|i)\b/);
     expect(workflow).not.toContain("      - name: install");

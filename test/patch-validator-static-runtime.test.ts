@@ -11,13 +11,13 @@ const workflow = readFileSync(
 const alpineBuilder =
   "alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f";
 const nodeSourceSha256 =
-  "f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f";
-const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+  "a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 
 describe("patch-validator static scratch runtime", () => {
   it("builds and inventories the checksum-pinned current Node 24 source", () => {
     expect(dockerfile).toContain(`FROM ${alpineBuilder} AS node_builder`);
-    expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
     expect(dockerfile).toContain(`ARG NODE_SOURCE_SHA256=${nodeSourceSha256}`);
     expect(dockerfile).toContain(
       [
@@ -36,7 +36,7 @@ describe("patch-validator static scratch runtime", () => {
     expect(dockerfile).not.toContain("--with-intl=none");
     expect(dockerfile).toContain("--with-intl=small-icu");
     expect(dockerfile).toContain(
-      'test "$(/opt/node/bin/npm --version)" = "11.17.0"',
+      'test "$(/opt/node/bin/npm --version)" = "11.19.0"',
     );
     expect(dockerfile).toContain("--without-corepack");
     expect(dockerfile).toContain(
@@ -79,7 +79,7 @@ describe("patch-validator static scratch runtime", () => {
     expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
     expect(workflow).toContain("Verify static Node runtime identity");
     expect(workflow).toContain(
-      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
+      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.21.0"',
     );
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
     expect(workflow).toContain("--exit-code 1");

@@ -5,7 +5,7 @@ import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validato
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const providerDigest = `sha256:${"a".repeat(64)}`;
-const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.7:*:*:*:*:*:*:*";
 
 function scannerOutput(vulnerabilityId: string) {
@@ -54,7 +54,7 @@ function scannerOutput(vulnerabilityId: string) {
 
 function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean) {
   const processVersions: Record<string, string> = {
-    node: "24.19.0",
+    node: "24.21.0",
     openssl: "3.5.7",
   };
   const components: any[] = [
@@ -96,7 +96,7 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
       artifacts: [
         {
           name: "node",
-          version: "24.19.0",
+          version: "24.21.0",
           locations: [{ path: "/nodejs/bin/node" }],
           cpes: [nodeCpe],
         },
@@ -111,7 +111,7 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
     embeddedRuntimeInventory: {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
-      node_version: "24.19.0",
+      node_version: "24.21.0",
       process_versions: processVersions,
       components,
     },

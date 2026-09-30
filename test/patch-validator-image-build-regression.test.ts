@@ -3,11 +3,24 @@ import { describe, expect, it } from "vitest";
 
 const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
 const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml", "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+  devEngines: { runtime: { version: string } };
+  overrides: { undici: string };
+};
 
 describe("patch-validator exact-toolchain image build regression", () => {
+  it("pins the Node release that embeds the patched undici runtime", () => {
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
+    expect(dockerfile).toContain(
+      "ARG NODE_SOURCE_SHA256=a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc",
+    );
+    expect(packageJson.devEngines.runtime.version).toBe("24.21.0");
+    expect(packageJson.overrides.undici).toBe("7.29.1");
+  });
+
   it("builds the static runtime with the exact Node/npm toolchain and patched c-ares source", () => {
-    expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
-    expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.17.0"');
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
+    expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.19.0"');
     expect(dockerfile).toContain("ARG CARES_VERSION=1.34.8");
     expect(dockerfile).toContain(
       "ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78",
@@ -36,8 +49,8 @@ describe("patch-validator exact-toolchain image build regression", () => {
   it("materializes lockfile dependencies before Docker and forbids npm registry access in the image build", () => {
     expect(imageWorkflow).toContain("Set up exact dependency materialization toolchain");
     expect(imageWorkflow).toContain("Materialize exact patch-validator dependencies");
-    expect(imageWorkflow).toContain('node-version: "24.19.0"');
-    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(imageWorkflow).toContain('node-version: "24.21.0"');
+    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.19.0"');
     expect(imageWorkflow).toContain("npm ci --include=optional --ignore-scripts --no-audit --no-fund");
     expect(imageWorkflow).toContain(
       "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",

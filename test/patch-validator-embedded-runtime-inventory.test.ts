@@ -8,7 +8,7 @@ describe("patch-validator embedded runtime inventory", () => {
   it("uses reviewed c-ares and Brotli identities and keeps disabled QUIC keys explicit", () => {
     const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
       {
-        node: "24.19.0",
+        node: "24.21.0",
         ares: "1.34.6",
         brotli: "1.2.0",
         cldr: "48.0",
@@ -51,7 +51,7 @@ describe("patch-validator embedded runtime inventory", () => {
   it("keeps Node-internal ncrypto version evidence out of the external vulnerability scan plan", () => {
     const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
       {
-        node: "24.19.0",
+        node: "24.21.0",
         ares: "1.34.6",
         ncrypto: "0.0.1",
       },
@@ -76,7 +76,7 @@ describe("patch-validator embedded runtime inventory", () => {
   it("fails closed on an unreviewed non-empty bundled dependency", () => {
     expect(() =>
       generateEmbeddedRuntimeInventory(
-        { node: "24.19.0", unknown_native_dependency: "1.2.3" },
+        { node: "24.21.0", unknown_native_dependency: "1.2.3" },
         imageDigest,
       ),
     ).toThrow(/no reviewed vulnerability identity/i);
@@ -85,7 +85,7 @@ describe("patch-validator embedded runtime inventory", () => {
   it("rejects an empty version unless the key is a reviewed disabled feature", () => {
     expect(() =>
       generateEmbeddedRuntimeInventory(
-        { node: "24.19.0", openssl: "" },
+        { node: "24.21.0", openssl: "" },
         imageDigest,
       ),
     ).toThrow(/invalid version/i);
