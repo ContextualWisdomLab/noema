@@ -57,7 +57,7 @@
 - [x] Implement one SQLite transaction per logical identity, bounded stored JSON, and fail-closed private command parsing.
 - [x] Export/bind `NOEMA_CONTINUATION_DISPATCH_STATE` in `runtime-entrypoint.ts` and `wrangler.toml`.
 - [x] Run state tests and `corepack npm run typecheck`; expect PASS.
-- [ ] Commit `test+feat(dispatch): add exactly-once continuation state`.
+- [x] Commit `test+feat(dispatch): add exactly-once continuation state`.
 
 ### Task 3: Live PR and fixed GitHub adapter
 
