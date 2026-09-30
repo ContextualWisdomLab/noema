@@ -9,7 +9,7 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const sourceRevision = "1".repeat(40);
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const imageReference = `noema-patch-validator:${sourceRevision}`;
-const undiciPurl = "pkg:npm/undici@7.13.0";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 const providerDigest = `sha256:${"a".repeat(64)}`;
 
 function writeJson(root: string, name: string, value: unknown): string {
@@ -132,12 +132,12 @@ describe("patch-validator binary Grype database provenance", () => {
         schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
         validator_image_digest: imageDigest,
         node_version: "24.21.0",
-        process_versions: { node: "24.21.0", undici: "7.13.0" },
+        process_versions: { node: "24.21.0", undici: "7.29.1" },
         components: [
           {
             key: "undici",
             name: "undici",
-            version: "7.13.0",
+            version: "7.29.1",
             classification: "bundled_dependency",
             purl: undiciPurl,
           },

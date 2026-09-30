@@ -32,6 +32,10 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(dockerfile).toContain(
       "if (process.versions.ares !== process.env.CARES_VERSION) throw new Error",
     );
+    expect(dockerfile).toContain("ARG UNDICI_VERSION=7.29.1");
+    expect(dockerfile).toContain(
+      "if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error",
+    );
     expect(dockerfile).not.toContain("FROM validator_deps");
     expect(dockerfile).not.toContain("FROM node:24.18.0-alpine3.24");
     expect(dockerfile).not.toContain("--without-npm");

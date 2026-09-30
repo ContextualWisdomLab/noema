@@ -4,7 +4,7 @@ import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validato
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
-const undiciPurl = "pkg:npm/undici@7.13.0";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function inputWithProviderDigest(providerInput: string): any {
   return {
@@ -31,12 +31,12 @@ function inputWithProviderDigest(providerInput: string): any {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
       node_version: "24.21.0",
-      process_versions: { node: "24.21.0", undici: "7.13.0" },
+      process_versions: { node: "24.21.0", undici: "7.29.1" },
       components: [
         {
           key: "undici",
           name: "undici",
-          version: "7.13.0",
+          version: "7.29.1",
           classification: "bundled_dependency",
           purl: undiciPurl,
         },

@@ -6,7 +6,7 @@ const imageDigest = `sha256:${"2".repeat(64)}`;
 const providerDigest = `sha256:${"a".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
-const undiciPurl = "pkg:npm/undici@7.13.0";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function rawScannerOutput(
   identity: string,
@@ -111,7 +111,7 @@ function validInput(): any {
       process_versions: {
         node: "24.21.0",
         openssl: "3.5.2",
-        undici: "7.13.0",
+        undici: "7.29.1",
       },
       components: [
         {
@@ -124,7 +124,7 @@ function validInput(): any {
         {
           key: "undici",
           name: "undici",
-          version: "7.13.0",
+          version: "7.29.1",
           classification: "bundled_dependency",
           purl: undiciPurl,
         },
@@ -145,7 +145,7 @@ function validInput(): any {
               {
                 artifact: {
                   name: "undici",
-                  version: "7.13.0",
+                  version: "7.29.1",
                   purl: undiciPurl,
                 },
                 vulnerability: { id: "GHSA-2099-0001", severity: "Low" },
@@ -174,6 +174,23 @@ describe("static runtime binary evidence verifier", () => {
       embedded_runtime_vulnerability_database_identity: expect.stringContaining(providerDigest),
       blocked_embedded_runtime_vulnerability_count: 0,
     });
+  });
+
+  it("rejects internally consistent evidence for a non-reviewed Undici version", () => {
+    const input = validInput();
+    const stalePurl = "pkg:npm/undici@7.29.0";
+    input.embeddedRuntimeInventory.process_versions.undici = "7.29.0";
+    input.embeddedRuntimeInventory.components[1].version = "7.29.0";
+    input.embeddedRuntimeInventory.components[1].purl = stalePurl;
+    input.embeddedVulnerabilityScan.components[1] = {
+      key: "undici",
+      identity: stalePurl,
+      scanner_output: rawScannerOutput(stalePurl),
+    };
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /undici.*reviewed fixed version 7\.29\.1/i,
+    );
   });
 
   it("accepts Syft imageId spelling, accessPath, and string CPE serialization", () => {

@@ -113,7 +113,7 @@ A zero match count is not independently interpreted as proof that every static d
 
 ## Embedded-runtime component evidence
 
-The workflow runs the exact built Node executable and records `process.versions`. The trusted verifier requires `node` to equal `24.21.0`. It accepts `modules` and `napi` only as reviewed runtime metadata with explicit reasons; every other key must be represented by the reviewed component-identity catalog.
+The workflow runs the exact built Node executable and records `process.versions`. The trusted verifier requires `node` to equal `24.21.0` and `undici` to equal the reviewed fixed version `7.29.1`. The Docker build checks that Undici identity both before and after binary stripping/package-note insertion. It accepts `modules` and `napi` only as reviewed runtime metadata with explicit reasons; every other key must be represented by the reviewed component-identity catalog.
 
 For each reviewed embedded dependency, the catalog binds the exact `process.versions` key, inventory name, version, and either a supported npm PURL package identity or a reviewed application CPE vendor/product identity. Wildcards, placeholders, partial identities, arbitrary aliases, version substitution, package substitution, and unknown components fail closed.
 

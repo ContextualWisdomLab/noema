@@ -16,7 +16,7 @@ CI의 JavaScript Action도 mutable major tag를 실행 근거로 사용하지 �
 
 ## Frozen install과 predecessor 보존
 
-이 stack은 선행 보안 remediation이 고정한 `nanoid@3.3.17`을 그대로 보존한다. `npm ci --legacy-peer-deps=false --install-links=false`는 reviewed predecessor의 frozen-install 경계이며, 후속 재현성 작업이 이를 임의의 기본값으로 되돌리지 않는다.
+이 stack은 선행 보안 remediation이 고정한 `nanoid@3.3.18`을 그대로 보존한다. `npm ci --legacy-peer-deps=false --install-links=false`는 reviewed predecessor의 frozen-install 경계이며, 후속 재현성 작업이 이를 임의의 기본값으로 되돌리지 않는다.
 
 npm 문서가 설명하듯 `npm ci`는 project manifest와 lockfile이 불일치하면 lockfile을 고쳐 주는 복구 경로가 아니라 실패하는 clean-install 경로다. 따라서 CI가 lockfile을 생성·수정하거나 PR branch를 자동 수선하지 않는다.
 

@@ -18,7 +18,7 @@ PR #65 establishes a host-side boundary that authenticates an exact Git source, 
 
 The current goal is narrower than production publication: prove that one exact pull-request head can build and execute a credential-free validator image under a least-privileged, fail-closed verification process without conflating image execution with trusted evidence, independent approval, protected merge, provenance, release, or deployment authority.
 
-On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.19.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. Two related threats therefore had to be addressed: a package-oriented scanner could report a clean image while never classifying the self-compiled Node executable, and a Node-level classification could still hide bundled dependency versions inside the static binary. The current design uses independent binary presence evidence plus an exact-image `process.versions` inventory and per-component vulnerability evidence. On 2026-09-30, the same design advanced to Node.js 24.21.0 to remove the embedded undici 7.29.0 vulnerabilities without changing those evidence boundaries.
+On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.21.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. Two related threats therefore had to be addressed: a package-oriented scanner could report a clean image while never classifying the self-compiled Node executable, and a Node-level classification could still hide bundled dependency versions inside the static binary. The current design uses independent binary presence evidence plus an exact-image `process.versions` inventory and per-component vulnerability evidence.
 
 ## Evidence classification
 
@@ -104,7 +104,7 @@ Node.js exposes the runtime's own dependency version declarations through `proce
 The exact-image embedded-runtime lane now:
 
 1. executes the exact built `/nodejs/bin/node` and bounds the serialized `process.versions` record;
-2. requires `process.versions.node` to equal the reviewed Node.js version `24.21.0`;
+2. requires `process.versions.node` to equal the reviewed Node.js version `24.21.0` and `process.versions.undici` to equal fixed bundled Undici `7.29.1`;
 3. requires the reviewed inventory component keys to equal every non-`node` `process.versions` key exactly;
 4. treats only `modules` and `napi` as runtime metadata, with exact reviewed meanings, and forbids package identities for those counters;
 5. requires every other key to be a `bundled_dependency` with an explicit reviewed PURL or CPE;

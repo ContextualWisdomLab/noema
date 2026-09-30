@@ -5,6 +5,7 @@ import { generateEmbeddedRuntimeInventory } from "../scripts/lib/patch-validator
 const versions = {
   node: "24.21.0",
   acorn: "8.15.0",
+  undici: "7.29.1",
 };
 
 const validDigest = `sha256:${"4".repeat(64)}`;

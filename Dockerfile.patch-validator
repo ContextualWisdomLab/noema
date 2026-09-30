@@ -8,6 +8,7 @@ ARG OPENSSL_VERSION=3.5.8
 ARG OPENSSL_SOURCE_SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
 ARG CARES_VERSION=1.34.8
 ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78
+ARG UNDICI_VERSION=7.29.1
 
 RUN apk add --no-cache \
       binutils-gold \
@@ -110,6 +111,7 @@ RUN ./configure \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && test "$(/opt/node/bin/npm --version)" = "11.19.0" \
     && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
+    && UNDICI_VERSION="${UNDICI_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error(`unexpected Undici ${process.versions.undici}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
@@ -126,6 +128,7 @@ RUN ./configure \
       | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
+    && UNDICI_VERSION="${UNDICI_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error(`unexpected Undici ${process.versions.undici}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \

@@ -7,6 +7,7 @@ const imageDigest = `sha256:${"2".repeat(64)}`;
 const providerDigest = `sha256:${"a".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.7:*:*:*:*:*:*:*";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function scannerOutput(vulnerabilityId: string) {
   return {
@@ -56,6 +57,7 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
   const processVersions: Record<string, string> = {
     node: "24.21.0",
     openssl: "3.5.7",
+    undici: "7.29.1",
   };
   const components: any[] = [
     {
@@ -64,6 +66,13 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
       version: "3.5.7",
       classification: "bundled_dependency",
       cpe: opensslCpe,
+    },
+    {
+      key: "undici",
+      name: "undici",
+      version: "7.29.1",
+      classification: "bundled_dependency",
+      purl: undiciPurl,
     },
   ];
 
@@ -125,6 +134,15 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
           key: "openssl",
           identity: opensslCpe,
           scanner_output: scannerOutput(vulnerabilityId),
+        },
+        {
+          key: "undici",
+          identity: undiciPurl,
+          scanner_output: {
+            ...scannerOutput(vulnerabilityId),
+            source: { type: "purl", target: undiciPurl },
+            matches: [],
+          },
         },
       ],
     },

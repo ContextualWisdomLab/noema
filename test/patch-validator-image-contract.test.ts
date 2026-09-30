@@ -54,6 +54,8 @@ describe("patch-validator image contract", () => {
     expect(dockerfile).toContain(
       'test "$(/opt/node/bin/npm --version)" = "11.19.0"',
     );
+    expect(dockerfile).toContain("ARG UNDICI_VERSION=7.29.1");
+    expect(dockerfile).toContain("process.versions.undici");
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
 

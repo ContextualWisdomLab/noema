@@ -5,10 +5,20 @@ import { generateEmbeddedRuntimeInventory } from "../scripts/lib/patch-validator
 const imageDigest = `sha256:${"4".repeat(64)}`;
 
 describe("patch-validator embedded runtime inventory", () => {
+  it("rejects the vulnerable Undici bundled by the superseded Node runtime", () => {
+    expect(() =>
+      generateEmbeddedRuntimeInventory(
+        { node: "24.21.0", undici: "7.29.0" },
+        imageDigest,
+      ),
+    ).toThrow(/undici.*7\.29\.1/i);
+  });
+
   it("uses reviewed c-ares and Brotli identities and keeps disabled QUIC keys explicit", () => {
     const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
       {
         node: "24.21.0",
+        undici: "7.29.1",
         ares: "1.34.6",
         brotli: "1.2.0",
         cldr: "48.0",
@@ -31,6 +41,10 @@ describe("patch-validator embedded runtime inventory", () => {
         key: "brotli",
         identity: "cpe:2.3:a:google:brotli:1.2.0:*:*:*:*:*:*:*",
       },
+      {
+        key: "undici",
+        identity: "pkg:npm/undici@7.29.1",
+      },
     ]);
     expect(inventory.components).toContainEqual({
       key: "ngtcp2",
@@ -52,6 +66,7 @@ describe("patch-validator embedded runtime inventory", () => {
     const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
       {
         node: "24.21.0",
+        undici: "7.29.1",
         ares: "1.34.6",
         ncrypto: "0.0.1",
       },
@@ -62,6 +77,10 @@ describe("patch-validator embedded runtime inventory", () => {
       {
         key: "ares",
         identity: "cpe:2.3:a:c-ares:c-ares:1.34.6:*:*:*:*:*:*:*",
+      },
+      {
+        key: "undici",
+        identity: "pkg:npm/undici@7.29.1",
       },
     ]);
     expect(inventory.components).toContainEqual({
@@ -76,7 +95,11 @@ describe("patch-validator embedded runtime inventory", () => {
   it("fails closed on an unreviewed non-empty bundled dependency", () => {
     expect(() =>
       generateEmbeddedRuntimeInventory(
-        { node: "24.21.0", unknown_native_dependency: "1.2.3" },
+        {
+          node: "24.21.0",
+          undici: "7.29.1",
+          unknown_native_dependency: "1.2.3",
+        },
         imageDigest,
       ),
     ).toThrow(/no reviewed vulnerability identity/i);
@@ -85,7 +108,7 @@ describe("patch-validator embedded runtime inventory", () => {
   it("rejects an empty version unless the key is a reviewed disabled feature", () => {
     expect(() =>
       generateEmbeddedRuntimeInventory(
-        { node: "24.21.0", openssl: "" },
+        { node: "24.21.0", undici: "7.29.1", openssl: "" },
         imageDigest,
       ),
     ).toThrow(/invalid version/i);

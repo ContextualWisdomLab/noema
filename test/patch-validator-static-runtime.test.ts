@@ -38,6 +38,8 @@ describe("patch-validator static scratch runtime", () => {
     expect(dockerfile).toContain(
       'test "$(/opt/node/bin/npm --version)" = "11.19.0"',
     );
+    expect(dockerfile).toContain("ARG UNDICI_VERSION=7.29.1");
+    expect(dockerfile.match(/if \(process\.versions\.undici/g)).toHaveLength(2);
     expect(dockerfile).toContain("--without-corepack");
     expect(dockerfile).toContain(
       "test \"$(/opt/node/bin/node --version)\" = \"v${NODE_VERSION}\"",
