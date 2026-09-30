@@ -107,7 +107,7 @@ rules. No caller string participates in target origin or path selection.
 ## Exactly-once state
 
 Add `NoemaContinuationDispatchState`, a SQLite-backed Durable Object selected
-by SHA-256 of an RFC 8785 canonical JSON identity object. Its named members are
+by the lowercase hexadecimal SHA-256 digest of an RFC 8785 canonical JSON identity object. Its named members are
 `contract_version`, verified `workflow_sha`, `source_repository`,
 `pull_request_number`, exact head/base/ref, `dispatch_action`,
 `central_repository`, and `transport_retry_attempt`. Named canonical members

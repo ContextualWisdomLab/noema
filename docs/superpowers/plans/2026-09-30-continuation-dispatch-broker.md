@@ -33,11 +33,11 @@
 - Produces: `continuationRequestDigest(...): Promise<string>`
 - Produces: `dispatchMapping(action): { eventType: "noema-review" | "strix-scan" }`
 
-- [ ] Write RED tests for the exact valid request and every rejected unknown, duplicate, typed, whitespace, multiple-value, SHA/ref, target, action, and retry case.
-- [ ] Run `corepack npm exec vitest run test/continuation-dispatch-contract.test.ts`; expect the module import to fail.
-- [ ] Implement the closed parser, lexicographic RFC 8785 canonicalizer for the admitted JSON value domain, action mapping, and SHA-256 base64url digest without dependencies.
-- [ ] Run the focused test; expect PASS with no warning output.
-- [ ] Commit `test+feat(dispatch): define closed continuation contract`.
+- [x] Write RED tests for the exact valid request and every rejected unknown, duplicate, typed, whitespace, multiple-value, SHA/ref, target, action, and retry case.
+- [x] Run `corepack npm exec vitest run test/continuation-dispatch-contract.test.ts`; expect the module import to fail.
+- [x] Implement the closed parser, lexicographic RFC 8785 canonicalizer for the admitted JSON value domain, action mapping, and lowercase hexadecimal SHA-256 digest without dependencies.
+- [x] Run the focused test; expect PASS with no warning output.
+- [x] Commit `test+feat(dispatch): define closed continuation contract`.
 
 ### Task 2: Durable exactly-once state
 
