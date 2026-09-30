@@ -52,11 +52,11 @@
 - Produces: `reserveContinuationDispatch(env, identity, digest): Promise<Reservation>`
 - Produces: `commitContinuationOutcome(env, reservation, receipt): Promise<void>`
 
-- [ ] Write RED tests for first reservation, exact replay, conflicting digest, accepted/denied/indeterminate persistence, and malformed stored records.
-- [ ] Run the focused state test; expect missing implementation failure.
-- [ ] Implement one SQLite transaction per logical identity, bounded stored JSON, and fail-closed private command parsing.
-- [ ] Export/bind `NOEMA_CONTINUATION_DISPATCH_STATE` in `runtime-entrypoint.ts` and `wrangler.toml`.
-- [ ] Run state tests and `corepack npm run typecheck`; expect PASS.
+- [x] Write RED tests for first reservation, exact replay, conflicting digest, accepted/denied/indeterminate persistence, and malformed stored records.
+- [x] Run the focused state test; expect missing implementation failure.
+- [x] Implement one SQLite transaction per logical identity, bounded stored JSON, and fail-closed private command parsing.
+- [x] Export/bind `NOEMA_CONTINUATION_DISPATCH_STATE` in `runtime-entrypoint.ts` and `wrangler.toml`.
+- [x] Run state tests and `corepack npm run typecheck`; expect PASS.
 - [ ] Commit `test+feat(dispatch): add exactly-once continuation state`.
 
 ### Task 3: Live PR and fixed GitHub adapter

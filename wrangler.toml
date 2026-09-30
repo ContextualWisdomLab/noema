@@ -18,6 +18,10 @@ class_name = "NoemaWorkflowState"
 name = "NOEMA_EXTERNAL_EXTENSION_LIFECYCLE"
 class_name = "NoemaExternalExtensionLifecycle"
 
+[[durable_objects.bindings]]
+name = "NOEMA_CONTINUATION_DISPATCH_STATE"
+class_name = "NoemaContinuationDispatchState"
+
 [exports.NoemaRateLimiter]
 type = "durable-object"
 storage = "sqlite"
@@ -31,6 +35,10 @@ type = "durable-object"
 storage = "sqlite"
 
 [exports.NoemaExternalExtensionLifecycle]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.NoemaContinuationDispatchState]
 type = "durable-object"
 storage = "sqlite"
 

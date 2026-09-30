@@ -6,8 +6,10 @@ import entrypoint, {
 } from "./entrypoint";
 import { normalizeGitHubAppPrivateKeyPem } from "./github-app-private-key";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
+import { type ContinuationDispatchStateEnv } from "./continuation-dispatch/dispatch-state";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+export { NoemaContinuationDispatchState } from "./continuation-dispatch/dispatch-state";
 export { NoemaWorkflowState } from "./workflow-task-execution/workflow-state-durable-object";
 export { NoemaExternalExtensionLifecycle } from "./tool-capability/external-extension-lifecycle-durable-object";
 
@@ -17,7 +19,7 @@ export { NoemaExternalExtensionLifecycle } from "./tool-capability/external-exte
  * consumed by the delegated application entrypoint and adds the immutable source revision
  * expected for the configured central reusable workflow.
  */
-export interface Env extends BaseEnv {
+export interface Env extends BaseEnv, ContinuationDispatchStateEnv {
   ALLOWED_WORKFLOW_SHA?: string;
 }
 
