@@ -71,11 +71,11 @@
 - Produces: `readAndVerifyLivePullRequest(...)`
 - Produces: `dispatchCentralContinuation(...)`
 
-- [ ] Write RED tests for moved/closed/draft/fork PRs, wrong repository/base/ref, fixed target/path/event/payload, redirect denial, GitHub 403/404/422/5xx/network classification, and token absence from errors/logs.
-- [ ] Run the focused adapter test; expect missing implementation failure.
-- [ ] Extract only the existing App-JWT and bounded GitHub JSON helpers needed by both `/exchange` and the broker; do not duplicate them.
-- [ ] Implement read-only source App lookup and a separate central-only dispatch App token used solely for `POST /repos/ContextualWisdomLab/.github/dispatches`.
-- [ ] Run adapter tests, existing `test/worker.test.ts`, and typecheck; expect PASS.
+- [x] Write RED tests for moved/closed/draft/fork PRs, wrong repository/base/ref, fixed target/path/event/payload, redirect denial, GitHub 403/404/422/5xx/network classification, and token absence from errors/logs.
+- [x] Run the focused adapter test; expect missing implementation failure.
+- [x] Extract only the existing App-JWT and bounded GitHub JSON helpers needed by both `/exchange` and the broker; do not duplicate them.
+- [x] Implement read-only source App lookup and a separate central-only dispatch App token used solely for `POST /repos/ContextualWisdomLab/.github/dispatches`.
+- [x] Run adapter tests, existing `test/worker.test.ts`, and typecheck; expect PASS.
 - [ ] Commit `test+feat(dispatch): bind live PR and fixed central event`.
 
 ### Task 4: Credential-free signed receipt
