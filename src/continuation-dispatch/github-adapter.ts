@@ -79,7 +79,11 @@ type GithubPullRequest = {
   readonly base?: GithubPullRequestSide | null;
 };
 
-/** Builds the only repository-dispatch body admitted by the continuation broker. */
+/**
+ * Builds the only repository-dispatch body admitted by the continuation broker.
+ * @param request Closed continuation request whose allowlisted action selects the fixed event type.
+ * @returns The exact JSON bytes used by both GitHub transport and signed payload-digest evidence.
+ */
 export function centralContinuationDispatchBody(request: ContinuationDispatchRequest): string {
   return JSON.stringify({
     event_type: dispatchMapping(request.dispatch_action).eventType,
