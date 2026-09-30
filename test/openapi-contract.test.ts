@@ -35,6 +35,39 @@ function schemaMatchesString(spec: Record<string, any>, schema: Record<string, a
   return true;
 }
 
+function schemaMatchesValue(spec: Record<string, any>, schema: Record<string, any>, value: unknown): boolean {
+  const resolved = resolveLocalRef(spec, schema);
+  if (Array.isArray(resolved.allOf) && !resolved.allOf.every((part: Record<string, any>) => schemaMatchesValue(spec, part, value))) {
+    return false;
+  }
+  if (Array.isArray(resolved.anyOf) && !resolved.anyOf.some((part: Record<string, any>) => schemaMatchesValue(spec, part, value))) {
+    return false;
+  }
+  if (
+    Array.isArray(resolved.oneOf)
+    && resolved.oneOf.filter((part: Record<string, any>) => schemaMatchesValue(spec, part, value)).length !== 1
+  ) {
+    return false;
+  }
+  if (resolved.const !== undefined && value !== resolved.const) return false;
+  if (Array.isArray(resolved.enum) && !resolved.enum.includes(value)) return false;
+  if (resolved.type === "string") {
+    return typeof value === "string"
+      && (typeof resolved.pattern !== "string" || new RegExp(resolved.pattern).test(value));
+  }
+  if (resolved.type === "boolean") return typeof value === "boolean";
+  if (resolved.type !== "object") return true;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(resolved.required) && resolved.required.some((key: string) => !(key in record))) return false;
+  const properties = resolved.properties ?? {};
+  if (resolved.additionalProperties === false && Object.keys(record).some((key) => !(key in properties))) return false;
+  return Object.entries(properties).every(([key, propertySchema]) => (
+    !(key in record) || schemaMatchesValue(spec, propertySchema as Record<string, any>, record[key])
+  ));
+}
+
 describe("machine-readable public HTTP contract", () => {
   it("publishes the supported health, readiness, and exchange surface", async () => {
     const spec = await loadOpenApi();
@@ -98,12 +131,34 @@ describe("machine-readable public HTTP contract", () => {
       $ref: "#/components/schemas/ContinuationErrorResponse",
     });
     expect(continuation.responses["503"].headers["X-Continuation-Replay"]).toBeDefined();
-    expect(continuation.responses["503"].content["application/json"].schema).toEqual({
-      oneOf: [
+    const unavailableSchema = continuation.responses["503"].content["application/json"].schema;
+    expect(unavailableSchema).toEqual({
+      anyOf: [
         { $ref: "#/components/schemas/ContinuationErrorResponse" },
         { $ref: "#/components/schemas/ErrorResponse" },
       ],
     });
+    const dispatchUnavailable = {
+      ok: false,
+      error_code: "ERR_GITHUB_DISPATCH_UPSTREAM",
+      message: "GitHub continuation dispatch outcome is indeterminate",
+      details: { hint: "Retry only with the same idempotency identity." },
+      trace_id: "trace-dispatch",
+    };
+    const configurationUnavailable = {
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API configuration is invalid",
+      details: { policy: "CONTINUATION_DISPATCH_GITHUB_APP_ID must be canonical." },
+      trace_id: "trace-configuration",
+    };
+    const [continuationErrorSchema, errorSchema] = unavailableSchema.anyOf;
+    expect(schemaMatchesValue(spec, continuationErrorSchema, dispatchUnavailable)).toBe(true);
+    expect(schemaMatchesValue(spec, errorSchema, dispatchUnavailable)).toBe(true);
+    expect(schemaMatchesValue(spec, unavailableSchema, dispatchUnavailable)).toBe(true);
+    expect(schemaMatchesValue(spec, continuationErrorSchema, configurationUnavailable)).toBe(false);
+    expect(schemaMatchesValue(spec, errorSchema, configurationUnavailable)).toBe(true);
+    expect(schemaMatchesValue(spec, unavailableSchema, configurationUnavailable)).toBe(true);
     expect(spec.components.schemas.ContinuationErrorDetails).toMatchObject({
       type: "object",
       additionalProperties: false,
