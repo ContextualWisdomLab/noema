@@ -56,7 +56,7 @@ Noema is an evidence-producing credential and maintenance control plane. Its run
 
 ### 4.1 Credential exchange
 
-The Cloudflare Worker exposes `/health`, `/ready`, and `/exchange`.
+The Cloudflare Worker exposes `/health`, `/ready`, `/exchange`, and the Proposed `/v1/continuation-dispatches` broker. The broker performs one fixed central continuation without returning `Contents: write` capability: it binds exact workflow/source/PR evidence, retains terminal idempotency state, and returns only a credential-free signed receipt. Immutable Noema release must precede the `ContextualWisdomLab/.github#2540` consumer pin.
 
 The observed protected branch point uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name and pairs it with immutable `ALLOWED_WORKFLOW_SHA` trust. Cryptographic OIDC verification validates issuer, audience, repository identity, exact workflow ref, the immutable `job_workflow_sha` workflow-source identity, token time semantics, and replay requirements before GitHub App token exchange. `wrangler.toml` pins the trusted central `.github` workflow source commit; that dependency remains read-only from the Noema writer and any future central movement requires an explicit Noema roll-forward plus fresh evidence.
 
@@ -120,7 +120,7 @@ Procedural graph ownership follows existing CWL boundaries. Any released cross-s
 
 | ID | Requirement |
 | --- | --- |
-| FR-001 | `/health`, `/ready`, and `/exchange` retain distinct liveness, readiness, and credential-exchange semantics. |
+| FR-001 | `/health`, `/ready`, `/exchange`, and `/v1/continuation-dispatches` retain distinct liveness, readiness, credential-exchange, and fixed-continuation semantics. |
 | FR-002 | Validate OIDC issuer, audience, repository/organization, the configured exact full workflow ref, and immutable configured workflow-source SHA before credential minting. |
 | FR-003 | Treat workflow-ref/SHA configuration as exact authority and fail closed on absent, malformed, mismatched, stale, or non-canonical trust identity; do not promote a central source movement without explicit Noema roll-forward evidence. |
 | FR-004 | Restrict credential-bearing GitHub/OIDC requests by reviewed origin, path, method, redirect, timeout, and bounded body/response behavior. |

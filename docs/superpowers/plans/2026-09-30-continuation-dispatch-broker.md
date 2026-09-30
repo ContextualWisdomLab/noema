@@ -110,11 +110,11 @@
 - Consumes: Tasks 1-4.
 - Produces: `POST /v1/continuation-dispatches` standard success/error envelope.
 
-- [ ] Write end-to-end RED tests proving method/content-type/body bounds, exact URL, rate limit, workflow SHA, single-use OIDC, live PR, one dispatch, exact replay, conflict, receipt signature, and operational headers.
-- [ ] Run the focused worker test; expect 404/missing route failures.
-- [ ] Admit the new route through each existing layer, add the six dispatch error codes/hints, require all new secret/DO bindings in readiness, and preserve `/exchange` byte-for-byte behavior tests.
-- [ ] Run focused worker tests, all existing Worker tests, and typecheck; expect PASS.
-- [ ] Commit `test+feat(dispatch): expose versioned continuation broker`.
+- [x] Write end-to-end RED tests proving method/content-type/body bounds, exact URL, rate limit, workflow SHA, single-use OIDC, live PR, one dispatch, exact replay, conflict, receipt signature, and operational headers.
+- [x] Run the focused worker test; expect 404/missing route failures.
+- [x] Admit the new route through each existing layer, add the six dispatch error codes/hints, require all new secret/DO bindings in readiness, and preserve `/exchange` byte-for-byte behavior tests.
+- [x] Run focused worker tests, all existing Worker tests, and typecheck; expect PASS.
+- [x] Commit `test+feat(dispatch): expose versioned continuation broker`.
 
 ### Task 6: Product, security, and operability contracts
 
@@ -136,9 +136,9 @@
 **Interfaces:**
 - Publishes: v1 OpenAPI schema, public receipt verification contract, configuration/runbook, and immutable release prerequisites.
 
-- [ ] Write RED docs-contract tests for endpoint/schema/error codes, required secret/DO bindings, no-token response, ADR status Proposed, and downstream `.github#2540` release order.
-- [ ] Run the docs-contract test; expect missing-contract failures.
-- [ ] Update every listed contract with the exact design and primary-source references; keep the ADR Proposed until protected integration.
+- [x] Write RED docs-contract tests for endpoint/schema/error codes, required secret/DO bindings, no-token response, ADR status Proposed, and downstream `.github#2540` release order.
+- [x] Run the docs-contract test; expect missing-contract failures.
+- [x] Update every listed contract with the exact design and primary-source references; keep the ADR Proposed until protected integration.
 - [ ] Run docs tests, typecheck, focused broker tests, `corepack npm test`, `corepack npm run security:scan`, and `corepack npm run release:verify`.
 - [ ] Record the two pre-existing local baseline failures verbatim if they remain; do not filter, downgrade, or call the full suite GREEN.
 - [ ] Commit `docs(dispatch): publish broker contracts and release gates`.

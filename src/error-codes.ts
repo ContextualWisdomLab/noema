@@ -19,6 +19,12 @@ export type ErrorCode =
   | "ERR_GITHUB_API"
   | "ERR_GITHUB_INSTALLATION"
   | "ERR_RATE_LIMIT"
+  | "ERR_DISPATCH_REQUEST_INVALID"
+  | "ERR_DISPATCH_IDENTITY_DENIED"
+  | "ERR_DISPATCH_LIVE_STATE_STALE"
+  | "ERR_DISPATCH_REPLAY_CONFLICT"
+  | "ERR_GITHUB_DISPATCH_AUTHORIZATION"
+  | "ERR_GITHUB_DISPATCH_UPSTREAM"
   | "ERR_SERVICE_NOT_READY"
   | "ERR_INTERNAL";
 
@@ -39,6 +45,12 @@ export const errorHints: Record<ErrorCode, string> = {
   ERR_GITHUB_API: "Retry after checking GitHub API availability and the app installation state.",
   ERR_GITHUB_INSTALLATION: "Verify the GitHub App is installed on the target repository.",
   ERR_RATE_LIMIT: "Back off and retry after the rate-limit window resets.",
+  ERR_DISPATCH_REQUEST_INVALID: "Send one bounded request matching noema.continuation-dispatch.v1.",
+  ERR_DISPATCH_IDENTITY_DENIED: "Request a fresh OIDC token from the exact released reusable workflow and source repository.",
+  ERR_DISPATCH_LIVE_STATE_STALE: "Refresh the pull request head, base, ref, and draft state before requesting continuation.",
+  ERR_DISPATCH_REPLAY_CONFLICT: "Do not redispatch; reconcile the retained continuation identity and terminal receipt.",
+  ERR_GITHUB_DISPATCH_AUTHORIZATION: "Repair the central dispatch App installation or fixed repository permission before retrying with a new identity.",
+  ERR_GITHUB_DISPATCH_UPSTREAM: "Reconcile the retained continuation state before any retry because the external outcome may be unknown.",
   ERR_SERVICE_NOT_READY: "Repair the listed configuration checks before routing credential-exchange traffic.",
   ERR_INTERNAL: "Use trace_id to find the matching operational log entry.",
 };

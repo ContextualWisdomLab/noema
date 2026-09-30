@@ -1,5 +1,9 @@
 # Noema Product and Technical Gap Baseline
 
+## Proposed continuation dispatch broker (#735/#736)
+
+The Proposed `POST /v1/continuation-dispatches` source replaces the impossible consumer-side “dispatch-only token” design by retaining `Contents: write` authority inside Noema. Tasks 1–6 cover closed request/digest, retry-independent logical-effect identity, SQLite terminal idempotency, replay-before-live-read recovery, pre-effect reservation abort, pre-dispatch signed indeterminate commit, accepted/denied evidence strengthening, live PR ACL, fixed central adapter, RFC 8785/Ed25519 credential-free receipt, exact URL, distributed rate limit, workflow SHA, stalled-body deadline, readiness, OpenAPI, and stable errors. The GitHub live-read/dispatch interval is not an atomic GitHub primitive; exact expected head/base/ref therefore remains in the fixed event and downstream `ContextualWisdomLab/.github#2540` must revalidate it immediately before review execution. Status remains Proposed until exact-head hosted review/gates, protected integration, immutable Noema release with key-id-to-SPKI artifact/digest, deployment/recovery evidence, and downstream consumer pin.
+
 ## Authority and update rule
 
 이 문서는 protected source, active candidate, transient workflow evidence와 foreign-owner authority를 분리한다. Open PR exact head, protected base, required workflow, review thread, release와 central dependency는 mutation·merge·release 직전에 다시 읽는다. predecessor GREEN, queued/pending/in_progress/skipped/cancelled run, 오래된 PR base snapshot과 scanner/model judgement는 다음 revision의 merge authority로 전용하지 않는다. queued는 GREEN이 아니다.

@@ -84,7 +84,22 @@ type CommitCommand = {
   readonly receipt: ContinuationDispatchReceipt;
 };
 
-type DispatchStateCommand = ReserveCommand | CommitCommand;
+type AbortCommand = {
+  readonly operation: "abort";
+  readonly identity: string;
+  readonly digest: string;
+  readonly reservation_id: string;
+};
+
+type FinalizeCommand = {
+  readonly operation: "finalize";
+  readonly identity: string;
+  readonly digest: string;
+  readonly reservation_id: string;
+  readonly receipt: ContinuationDispatchReceipt;
+};
+
+type DispatchStateCommand = ReserveCommand | CommitCommand | AbortCommand | FinalizeCommand;
 
 type CommandRead =
   | { readonly ok: true; readonly value: unknown }
@@ -343,7 +358,51 @@ function parseCommand(value: unknown): DispatchStateCommand | undefined {
       receipt: value.receipt,
     };
   }
+  if (value.operation === "abort") {
+    if (!hasExactKeys(value, ["operation", "identity", "digest", "reservation_id"])) return undefined;
+    if (!isDigest(value.identity) || !isDigest(value.digest) || !isReservationId(value.reservation_id)) {
+      return undefined;
+    }
+    return {
+      operation: "abort",
+      identity: value.identity,
+      digest: value.digest,
+      reservation_id: value.reservation_id,
+    };
+  }
+  if (value.operation === "finalize") {
+    if (!hasExactKeys(value, ["operation", "identity", "digest", "reservation_id", "receipt"])) {
+      return undefined;
+    }
+    if (
+      !isDigest(value.identity)
+      || !isDigest(value.digest)
+      || !isReservationId(value.reservation_id)
+      || !isReceipt(value.receipt)
+      || value.receipt.outcome === "indeterminate"
+    ) {
+      return undefined;
+    }
+    return {
+      operation: "finalize",
+      identity: value.identity,
+      digest: value.digest,
+      reservation_id: value.reservation_id,
+      receipt: value.receipt,
+    };
+  }
   return undefined;
+}
+
+function sameReceiptAuthority(
+  retained: ContinuationDispatchReceipt,
+  candidate: ContinuationDispatchReceipt,
+): boolean {
+  const omitted = new Set(["outcome", "signature", "upstream_status"]);
+  const stable = (receipt: ContinuationDispatchReceipt) => Object.fromEntries(
+    Object.entries(receipt).filter(([key]) => !omitted.has(key)),
+  );
+  return JSON.stringify(stable(retained)) === JSON.stringify(stable(candidate));
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -547,6 +606,99 @@ export async function commitContinuationOutcome(
 }
 
 /**
+ * Releases a fresh reservation before any external side effect has been attempted.
+ * @param env Runtime binding for the continuation-dispatch Durable Object namespace.
+ * @param reservation Unguessable fresh reservation capability returned by reserve.
+ * @returns A promise that resolves only after the exact reservation is removed.
+ * @throws {ContinuationDispatchStateConflict} When the reservation is stale, wrong, or already terminal.
+ * @throws {ContinuationDispatchStateUnavailable} When transport or storage authority is unavailable.
+ */
+export async function abortContinuationReservation(
+  env: ContinuationDispatchStateEnv,
+  reservation: NewReservation,
+): Promise<void> {
+  if (
+    reservation.kind !== "reserved"
+    || !isDigest(reservation.identity)
+    || !isDigest(reservation.digest)
+    || !isReservationId(reservation.reservationId)
+  ) {
+    throw new ContinuationDispatchStateUnavailable("continuation reservation is not canonical");
+  }
+  const stub = await stateStub(env, reservation.identity);
+  let response: Response;
+  try {
+    response = await stub.fetch(INTERNAL_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "abort",
+        identity: reservation.identity,
+        digest: reservation.digest,
+        reservation_id: reservation.reservationId,
+      }),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown Durable Object failure";
+    throw new ContinuationDispatchStateUnavailable(detail);
+  }
+  const decision = await readDecision(response);
+  if (response.status === 409) throw new ContinuationDispatchStateConflict();
+  if (response.status !== 200 || !isRecord(decision) || !hasExactKeys(decision, ["ok"]) || decision.ok !== true) {
+    throw new ContinuationDispatchStateUnavailable(`continuation state returned HTTP ${response.status}`);
+  }
+}
+
+/**
+ * Replaces a pre-dispatch indeterminate receipt with the exact accepted or denied result.
+ * @param env Runtime binding for the continuation-dispatch Durable Object namespace.
+ * @param reservation Original reservation capability retained across the dispatch attempt.
+ * @param receipt Accepted or denied receipt with identical immutable authority fields.
+ * @returns A promise that resolves only after the stronger terminal evidence is durable.
+ * @throws {ContinuationDispatchStateConflict} When state or immutable receipt authority differs.
+ * @throws {ContinuationDispatchStateUnavailable} When transport or storage authority is unavailable.
+ */
+export async function finalizeContinuationOutcome(
+  env: ContinuationDispatchStateEnv,
+  reservation: NewReservation,
+  receipt: ContinuationDispatchReceipt,
+): Promise<void> {
+  if (
+    reservation.kind !== "reserved"
+    || !isDigest(reservation.identity)
+    || !isDigest(reservation.digest)
+    || !isReservationId(reservation.reservationId)
+    || !isReceipt(receipt)
+    || receipt.outcome === "indeterminate"
+  ) {
+    throw new ContinuationDispatchStateUnavailable("continuation final outcome is not canonical bounded JSON");
+  }
+  const stub = await stateStub(env, reservation.identity);
+  let response: Response;
+  try {
+    response = await stub.fetch(INTERNAL_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "finalize",
+        identity: reservation.identity,
+        digest: reservation.digest,
+        reservation_id: reservation.reservationId,
+        receipt,
+      }),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown Durable Object failure";
+    throw new ContinuationDispatchStateUnavailable(detail);
+  }
+  const decision = await readDecision(response);
+  if (response.status === 409) throw new ContinuationDispatchStateConflict();
+  if (response.status !== 200 || !isRecord(decision) || !hasExactKeys(decision, ["ok"]) || decision.ok !== true) {
+    throw new ContinuationDispatchStateUnavailable(`continuation state returned HTTP ${response.status}`);
+  }
+}
+
+/**
  * Cloudflare Durable Object that serializes one logical continuation identity through reservation and terminal receipt.
  * Its closed private protocol preserves indeterminate outcomes so concurrent or retried callers never duplicate dispatch.
  */
@@ -614,6 +766,54 @@ export class NoemaContinuationDispatchState {
         if (decision.kind === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
         if (decision.kind === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
         return jsonResponse({ ok: true, data: decision.reservation }, decision.kind === "created" ? 201 : 200);
+      }
+
+      if (command.operation === "abort") {
+        const aborted = await this.storage.transaction(async (transaction) => {
+          const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
+          if (!isStoredState(stored)) return stored === undefined ? "conflict" : "invalid";
+          if (
+            stored.status !== "reserved"
+            || stored.identity !== command.identity
+            || stored.request_digest !== command.digest
+            || stored.reservation_id !== command.reservation_id
+          ) {
+            return "conflict";
+          }
+          await transaction.delete(STATE_RECORD_KEY);
+          return "aborted";
+        });
+        if (aborted === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
+        if (aborted === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
+        return jsonResponse({ ok: true });
+      }
+
+      if (command.operation === "finalize") {
+        const finalized = await this.storage.transaction(async (transaction) => {
+          const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
+          if (!isStoredState(stored)) return stored === undefined ? "conflict" : "invalid";
+          if (
+            stored.status !== "indeterminate"
+            || stored.identity !== command.identity
+            || stored.request_digest !== command.digest
+            || stored.reservation_id !== command.reservation_id
+            || stored.receipt === undefined
+            || !sameReceiptAuthority(stored.receipt, command.receipt)
+          ) {
+            return "conflict";
+          }
+          const next: StoredDispatchState = {
+            ...stored,
+            status: command.receipt.outcome,
+            receipt: command.receipt,
+          };
+          if (new TextEncoder().encode(JSON.stringify(next)).byteLength > MAX_STATE_JSON_BYTES) return "invalid";
+          await transaction.put(STATE_RECORD_KEY, next);
+          return "finalized";
+        });
+        if (finalized === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
+        if (finalized === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
+        return jsonResponse({ ok: true });
       }
 
       const committed = await this.storage.transaction(async (transaction) => {

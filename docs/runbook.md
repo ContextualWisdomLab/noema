@@ -5,6 +5,12 @@
 - `trace_id`를 기준으로 요청, 에러, 장애 대응을 상호 연결합니다.
 - 토큰 응답/비밀번호/비밀키를 절대로 로그에 출력하지 않습니다.
 
+## Continuation dispatch configuration
+
+`POST /v1/continuation-dispatches` requires `CONTINUATION_DISPATCH_GITHUB_APP_ID`, `CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM`, `CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID`, `CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM`, `CONTINUATION_RECEIPT_SIGNING_KEY_ID`, and `NOEMA_CONTINUATION_DISPATCH_STATE`. Never place a secret value in logs, issues, receipts, or source. Rotate central-App and receipt keys independently and retain the public receipt key by key id.
+
+For `ERR_DISPATCH_REPLAY_CONFLICT` or indeterminate evidence, inspect retained state and never blind-retry. For `ERR_GITHUB_DISPATCH_AUTHORIZATION`, repair the central App installation/permission and use a fresh identity. For `ERR_GITHUB_DISPATCH_UPSTREAM`, reconcile GitHub outcome before a new logical request.
+
 ## 장애 대응 우선순위
 
 ### 1) `/exchange` 5xx 급증

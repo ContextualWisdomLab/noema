@@ -153,6 +153,33 @@
           "503": { "$ref": "#/components/responses/ServiceUnavailable" }
         }
       }
+    },
+    "/v1/continuation-dispatches": {
+      "post": {
+        "tags": ["Exchange"],
+        "operationId": "createContinuationDispatch",
+        "summary": "Dispatch one exact allowlisted continuation",
+        "description": "Accepts only noema.continuation-dispatch.v1. Validates the exact GitHub Actions OIDC workflow SHA, live pull request state, distributed single-use identity, and durable idempotency reservation before emitting one fixed central event. The credential-free response contains only an Ed25519-signed receipt. Stable failures are ERR_DISPATCH_REQUEST_INVALID, ERR_DISPATCH_IDENTITY_DENIED, ERR_DISPATCH_LIVE_STATE_STALE, ERR_DISPATCH_REPLAY_CONFLICT, ERR_GITHUB_DISPATCH_AUTHORIZATION, and ERR_GITHUB_DISPATCH_UPSTREAM.",
+        "security": [{ "githubActionsOidc": [] }],
+        "x-request-body-limit-bytes": 8192,
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Accepted dispatch or exact replay evidence.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContinuationDispatchSuccess" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "description": "Identity is missing, invalid, or already consumed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "405": { "description": "Only POST is admitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "409": { "description": "Live state, in-progress state, or retained identity conflicts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "description": "Distributed rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "502": { "$ref": "#/components/responses/BadGateway" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
     }
   },
   "components": {
@@ -279,6 +306,68 @@
               "workflow_ref": { "type": "string" },
               "token_expires_at": { "type": "string", "format": "date-time" }
             }
+          },
+          "trace_id": { "type": "string" }
+        }
+      },
+      "ContinuationDispatchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contract_version", "dispatch_action", "central_repository", "source_repository", "pull_request_number", "expected_head_sha", "expected_base_sha", "expected_base_ref", "transport_retry_attempt"],
+        "properties": {
+          "contract_version": { "type": "string", "const": "noema.continuation-dispatch.v1" },
+          "dispatch_action": { "type": "string", "enum": ["noema_review_continuation", "strix_scan_continuation"] },
+          "central_repository": { "type": "string", "const": "ContextualWisdomLab/.github" },
+          "source_repository": { "$ref": "#/components/schemas/RepositoryLocator" },
+          "pull_request_number": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          "expected_head_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "expected_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "expected_base_ref": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "transport_retry_attempt": { "type": "integer", "enum": [1, 2] }
+        }
+      },
+      "SignedContinuationReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["receipt_version", "contract_version", "algorithm", "key_id", "receipt_id", "trace_id", "request_digest", "idempotency_identity", "workflow_ref", "workflow_sha", "source_repository", "pull_request_number", "source_head_sha", "source_base_sha", "source_base_ref", "central_repository", "event_type", "emitted_payload_digest", "transport_retry_attempt", "outcome", "upstream_status", "issued_at", "expires_at", "signature"],
+        "properties": {
+          "receipt_version": { "type": "string", "const": "noema.continuation-dispatch-receipt.v1" },
+          "contract_version": { "type": "string", "const": "noema.continuation-dispatch.v1" },
+          "algorithm": { "type": "string", "const": "Ed25519" },
+          "key_id": { "type": "string" },
+          "receipt_id": { "type": "string", "format": "uuid" },
+          "trace_id": { "type": "string" },
+          "request_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "idempotency_identity": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "workflow_ref": { "type": "string" },
+          "workflow_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "source_repository": { "$ref": "#/components/schemas/RepositoryLocator" },
+          "pull_request_number": { "type": "integer", "minimum": 1 },
+          "source_head_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "source_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "source_base_ref": { "type": "string" },
+          "central_repository": { "type": "string", "const": "ContextualWisdomLab/.github" },
+          "event_type": { "type": "string", "enum": ["noema-review", "strix-scan"] },
+          "emitted_payload_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "transport_retry_attempt": { "type": "integer", "enum": [1, 2] },
+          "outcome": { "type": "string", "enum": ["accepted", "denied", "indeterminate"] },
+          "upstream_status": { "type": ["integer", "null"] },
+          "issued_at": { "type": "integer" },
+          "expires_at": { "type": "integer" },
+          "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
+        }
+      },
+      "ContinuationDispatchSuccess": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "data", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["receipt"],
+            "properties": { "receipt": { "$ref": "#/components/schemas/SignedContinuationReceipt" } }
           },
           "trace_id": { "type": "string" }
         }

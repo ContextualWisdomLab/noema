@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  abortContinuationReservation,
   ContinuationDispatchStateConflict,
   ContinuationDispatchStateUnavailable,
   NoemaContinuationDispatchState,
   commitContinuationOutcome,
+  finalizeContinuationOutcome,
   reserveContinuationDispatch,
   type ContinuationDispatchReservation,
   type ContinuationDispatchStateEnv,
@@ -26,6 +28,10 @@ class MemoryStorage {
 
   async put<T>(key: string, value: T): Promise<void> {
     this.records.set(key, structuredClone(value));
+  }
+
+  async delete(key: string): Promise<boolean> {
+    return this.records.delete(key);
   }
 
   async transaction<T>(callback: (transaction: MemoryStorage) => Promise<T>): Promise<T> {
@@ -149,6 +155,48 @@ describe("continuation dispatch exactly-once state", () => {
     await expect(reserveContinuationDispatch(env, identity, "c".repeat(64)))
       .rejects.toBeInstanceOf(ContinuationDispatchStateConflict);
     expect([...storage.records.values()][0]).toEqual(retained);
+  });
+
+  it("releases only the exact fresh reservation before an external effect", async () => {
+    const { env } = fixture();
+    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+
+    await abortContinuationReservation(env, reservation);
+
+    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toMatchObject({
+      kind: "reserved",
+      identity,
+      digest,
+    });
+  });
+
+  it("upgrades retained indeterminate evidence without changing immutable receipt authority", async () => {
+    const { env } = fixture();
+    const reservation = requireNewReservation(await reserveContinuationDispatch(env, identity, digest));
+    const pending = {
+      outcome: "indeterminate" as const,
+      receipt_id: "same-receipt",
+      request_digest: digest,
+      upstream_status: null,
+      signature: "pending-signature",
+    };
+    const accepted = {
+      ...pending,
+      outcome: "accepted" as const,
+      upstream_status: 204,
+      signature: "accepted-signature",
+    };
+
+    await commitContinuationOutcome(env, reservation, pending);
+    await finalizeContinuationOutcome(env, reservation, accepted);
+
+    await expect(reserveContinuationDispatch(env, identity, digest)).resolves.toEqual({
+      kind: "replay",
+      identity,
+      digest,
+      outcome: "accepted",
+      receipt: accepted,
+    });
   });
 
   it("requires the original reservation capability before committing a terminal outcome", async () => {

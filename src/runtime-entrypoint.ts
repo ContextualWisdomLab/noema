@@ -6,7 +6,6 @@ import entrypoint, {
 } from "./entrypoint";
 import { normalizeGitHubAppPrivateKeyPem } from "./github-app-private-key";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
-import { type ContinuationDispatchStateEnv } from "./continuation-dispatch/dispatch-state";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 export { NoemaContinuationDispatchState } from "./continuation-dispatch/dispatch-state";
@@ -19,8 +18,9 @@ export { NoemaExternalExtensionLifecycle } from "./tool-capability/external-exte
  * consumed by the delegated application entrypoint and adds the immutable source revision
  * expected for the configured central reusable workflow.
  */
-export interface Env extends BaseEnv, ContinuationDispatchStateEnv {
+export interface Env extends BaseEnv {
   ALLOWED_WORKFLOW_SHA?: string;
+  NOEMA_CONTINUATION_DISPATCH_STATE: DurableObjectNamespace;
 }
 
 const canonicalTraceHeaderPattern = /^[A-Za-z0-9._:-]+$/;
@@ -162,16 +162,43 @@ function exchangeUrlResponse(request: Request): Response {
   });
 }
 
-function recordExchangeUrlFailure(request: Request): void {
+function continuationDispatchUrlResponse(request: Request): Response {
+  const traceId = traceIdFromRequest(request);
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: "ERR_DISPATCH_REQUEST_INVALID" satisfies ErrorCode,
+    message: "Continuation dispatch URL contains unreviewed authority",
+    details: {
+      hint: "Send the exact /v1/continuation-dispatches resource URL without a query or fragment.",
+      policy: "exact-continuation-dispatch-url",
+    },
+    trace_id: traceId,
+  }), {
+    status: 400,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      pragma: "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-trace-id": traceId,
+      "x-latency-ms": "0",
+    },
+  });
+}
+
+function recordExactUrlFailure(request: Request, route: string): void {
+  const exchangeRoute = route === "/exchange";
   try {
     console.log(JSON.stringify({
-      event: "exchange_url",
-      route: "/exchange",
+      event: exchangeRoute ? "exchange_url" : "continuation_dispatch_url",
+      route,
       method: request.method,
       status_code: 400,
-      error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
+      error_code: exchangeRoute
+        ? "ERR_VALIDATION_INPUT" satisfies ErrorCode
+        : "ERR_DISPATCH_REQUEST_INVALID" satisfies ErrorCode,
       outcome: "rejected",
-      policy: "exact-exchange-url",
+      policy: exchangeRoute ? "exact-exchange-url" : "exact-continuation-dispatch-url",
     }));
   } catch {
     // Logging must not convert a fail-closed input response into an exception.
@@ -260,11 +287,13 @@ export default {
     const boundedRequest = canonicalTraceRequest(request);
     const url = new URL(boundedRequest.url);
     if (
-      url.pathname === "/exchange"
+      (url.pathname === "/exchange" || url.pathname === "/v1/continuation-dispatches")
       && url.href !== `${url.origin}${url.pathname}`
     ) {
-      recordExchangeUrlFailure(boundedRequest);
-      return exchangeUrlResponse(boundedRequest);
+      recordExactUrlFailure(boundedRequest, url.pathname);
+      return url.pathname === "/exchange"
+        ? exchangeUrlResponse(boundedRequest)
+        : continuationDispatchUrlResponse(boundedRequest);
     }
     const runtimeEnv = runtimeCredentialEnv(env);
     if (url.pathname === "/ready") {

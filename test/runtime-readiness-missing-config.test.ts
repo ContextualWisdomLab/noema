@@ -27,9 +27,15 @@ describe("Noema readiness with absent configuration", () => {
         "github_app_private_key",
         "noema_rate_limiter",
         "noema_oidc_replay_guard",
+        "continuation_dispatch_github_app_id",
+        "continuation_dispatch_github_app_private_key",
+        "continuation_dispatch_github_app_installation_id",
+        "continuation_receipt_signing_private_key",
+        "continuation_receipt_signing_key_id",
+        "noema_continuation_dispatch_state",
       ].join(","),
     );
-    expect(payload.details.failed_checks).not.toContain("github_app_installation_id");
+    expect(payload.details.failed_checks.split(",")).not.toContain("github_app_installation_id");
 
     vi.restoreAllMocks();
   });
