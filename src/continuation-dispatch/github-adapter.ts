@@ -45,6 +45,18 @@ export class ContinuationGitHubAdapterError extends Error {
 }
 
 /**
+ * Signals that exact installation-token expiry was observed before the fixed
+ * central GitHub dispatch request could begin, preserving safe retry authority.
+ */
+export class ContinuationDispatchNotStartedError extends ContinuationGitHubAdapterError {
+  /** Creates a credential-free pre-effect failure. */
+  constructor() {
+    super("upstream_unavailable");
+    this.name = "ContinuationDispatchNotStartedError";
+  }
+}
+
+/**
  * Exact live pull-request identity retained after source-state verification,
  * excluding GitHub response metadata that is not part of continuation authority.
  */
@@ -227,7 +239,7 @@ export async function prepareCentralContinuation(
 
   const assertFresh = (): void => {
     if (Date.now() >= installationTokenExpiresAtMilliseconds) {
-      throw new ContinuationGitHubAdapterError("upstream_unavailable");
+      throw new ContinuationDispatchNotStartedError();
     }
   };
 

@@ -12,6 +12,7 @@ import {
   abortContinuationReservation,
   commitContinuationOutcome,
   finalizeContinuationOutcome,
+  releasePreEffectContinuationOutcome,
   ContinuationDispatchStateConflict,
   reserveContinuationDispatch,
   type ContinuationDispatchReceipt,
@@ -20,6 +21,7 @@ import {
 } from "./dispatch-state";
 import {
   centralContinuationDispatchBody,
+  ContinuationDispatchNotStartedError,
   ContinuationGitHubAdapterError,
   prepareCentralContinuation,
   readAndVerifyLivePullRequest,
@@ -70,6 +72,7 @@ export interface ContinuationDispatchHandlerDependencies {
   ): Promise<CentralContinuationDispatchResult>;
   commit: typeof commitContinuationOutcome;
   abort: typeof abortContinuationReservation;
+  releasePreEffect: typeof releasePreEffectContinuationOutcome;
   finalize: typeof finalizeContinuationOutcome;
 }
 
@@ -83,6 +86,7 @@ export const continuationDispatchDependencies = {
   ),
   commit: commitContinuationOutcome,
   abort: abortContinuationReservation,
+  releasePreEffect: releasePreEffectContinuationOutcome,
   finalize: finalizeContinuationOutcome,
 };
 
@@ -446,7 +450,31 @@ export async function handleContinuationDispatch(
   let dispatchResult: CentralContinuationDispatchResult;
   try {
     dispatchResult = await dependencies.dispatch(parsed, preparedDispatch);
-  } catch {
+  } catch (error) {
+    if (error instanceof ContinuationDispatchNotStartedError) {
+      try {
+        await dependencies.releasePreEffect(
+          env,
+          reservation,
+          indeterminateReceipt as unknown as ContinuationDispatchReceipt,
+        );
+      } catch {
+        return errorResponse(
+          "ERR_GITHUB_DISPATCH_UPSTREAM",
+          503,
+          "Pre-effect continuation evidence could not be released",
+          traceId,
+          startedAt,
+        );
+      }
+      return errorResponse(
+        "ERR_GITHUB_DISPATCH_UPSTREAM",
+        503,
+        "Central dispatch did not start",
+        traceId,
+        startedAt,
+      );
+    }
     dispatchResult = { outcome: "indeterminate", eventType: dispatchMapping(parsed.dispatch_action).eventType };
   }
 

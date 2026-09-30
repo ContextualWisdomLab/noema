@@ -101,7 +101,20 @@ type FinalizeCommand = {
   readonly receipt: ContinuationDispatchReceipt;
 };
 
-type DispatchStateCommand = ReserveCommand | CommitCommand | AbortCommand | FinalizeCommand;
+type ReleasePreEffectCommand = {
+  readonly operation: "release_pre_effect";
+  readonly identity: string;
+  readonly digest: string;
+  readonly reservation_id: string;
+  readonly receipt: ContinuationDispatchReceipt;
+};
+
+type DispatchStateCommand =
+  | ReserveCommand
+  | CommitCommand
+  | AbortCommand
+  | FinalizeCommand
+  | ReleasePreEffectCommand;
 
 type CommandRead =
   | { readonly ok: true; readonly value: unknown }
@@ -414,7 +427,35 @@ function parseCommand(value: unknown): DispatchStateCommand | undefined {
       receipt: value.receipt,
     };
   }
+  if (value.operation === "release_pre_effect") {
+    if (!hasExactKeys(value, ["operation", "identity", "digest", "reservation_id", "receipt"])) {
+      return undefined;
+    }
+    if (
+      !isDigest(value.identity)
+      || !isDigest(value.digest)
+      || !isReservationId(value.reservation_id)
+      || !isReceipt(value.receipt)
+      || value.receipt.outcome !== "indeterminate"
+    ) {
+      return undefined;
+    }
+    return {
+      operation: "release_pre_effect",
+      identity: value.identity,
+      digest: value.digest,
+      reservation_id: value.reservation_id,
+      receipt: value.receipt,
+    };
+  }
   return undefined;
+}
+
+function sameReceiptExact(
+  retained: ContinuationDispatchReceipt,
+  candidate: ContinuationDispatchReceipt,
+): boolean {
+  return JSON.stringify(retained) === JSON.stringify(candidate);
 }
 
 function sameReceiptAuthority(
@@ -680,6 +721,55 @@ export async function abortContinuationReservation(
 }
 
 /**
+ * Removes committed indeterminate evidence only when the caller proves that dispatch never started.
+ * @param env Runtime binding for the continuation-dispatch Durable Object namespace.
+ * @param reservation Original reservation capability retained across the pre-effect commit.
+ * @param receipt Exact indeterminate receipt committed before dispatch.
+ * @returns A promise that resolves only after the matching terminal record is removed.
+ * @throws {ContinuationDispatchStateConflict} When capability, state, or exact receipt differs.
+ * @throws {ContinuationDispatchStateUnavailable} When transport or storage authority is unavailable.
+ */
+export async function releasePreEffectContinuationOutcome(
+  env: ContinuationDispatchStateEnv,
+  reservation: NewReservation,
+  receipt: ContinuationDispatchReceipt,
+): Promise<void> {
+  if (
+    reservation.kind !== "reserved"
+    || !isDigest(reservation.identity)
+    || !isDigest(reservation.digest)
+    || !isReservationId(reservation.reservationId)
+    || !isReceipt(receipt)
+    || receipt.outcome !== "indeterminate"
+  ) {
+    throw new ContinuationDispatchStateUnavailable("continuation pre-effect outcome is not canonical bounded JSON");
+  }
+  const stub = await stateStub(env, reservation.identity);
+  let response: Response;
+  try {
+    response = await stub.fetch(INTERNAL_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "release_pre_effect",
+        identity: reservation.identity,
+        digest: reservation.digest,
+        reservation_id: reservation.reservationId,
+        receipt,
+      }),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown Durable Object failure";
+    throw new ContinuationDispatchStateUnavailable(detail);
+  }
+  const decision = await readDecision(response);
+  if (response.status === 409) throw new ContinuationDispatchStateConflict();
+  if (response.status !== 200 || !isRecord(decision) || !hasExactKeys(decision, ["ok"]) || decision.ok !== true) {
+    throw new ContinuationDispatchStateUnavailable(`continuation state returned HTTP ${response.status}`);
+  }
+}
+
+/**
  * Replaces a pre-dispatch indeterminate receipt with the exact accepted or denied result.
  * @param env Runtime binding for the continuation-dispatch Durable Object namespace.
  * @param reservation Original reservation capability retained across the dispatch attempt.
@@ -859,6 +949,29 @@ export class NoemaContinuationDispatchState {
         });
         if (finalized === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
         if (finalized === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
+        return jsonResponse({ ok: true });
+      }
+
+      if (command.operation === "release_pre_effect") {
+        const released = await this.storage.transaction(async (transaction) => {
+          const stored = await transaction.get<unknown>(STATE_RECORD_KEY);
+          if (!isStoredState(stored)) return stored === undefined ? "conflict" : "invalid";
+          if (
+            stored.status !== "indeterminate"
+            || stored.identity !== command.identity
+            || stored.request_digest !== command.digest
+            || stored.reservation_id !== command.reservation_id
+            || stored.receipt === undefined
+            || !sameReceiptExact(stored.receipt, command.receipt)
+          ) {
+            return "conflict";
+          }
+          await transaction.delete(STATE_RECORD_KEY);
+          await transaction.deleteAlarm();
+          return "released";
+        });
+        if (released === "invalid") return jsonResponse({ ok: false, error: "invalid_state" }, 500);
+        if (released === "conflict") return jsonResponse({ ok: false, error: "conflict" }, 409);
         return jsonResponse({ ok: true });
       }
 
