@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import { normalizeGitHubAppPrivateKeyPem } from "../src/github-app-private-key";
 import runtimeWorker, { type Env as RuntimeEnv } from "../src/runtime-entrypoint";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
@@ -107,12 +108,13 @@ function acceptingReplayGuard(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
-function readinessEnv(privateKeyPem: string): RuntimeEnv {
+async function readinessEnv(privateKeyPem: string): Promise<RuntimeEnv> {
   const namespace = {
     idFromName: vi.fn(),
     get: vi.fn(),
   } as unknown as DurableObjectNamespace;
   return {
+    ...await continuationReadyBindings(namespace),
     ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
     ALLOWED_AUDIENCE: "cwl-noema-review",
     ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
@@ -194,7 +196,7 @@ describe("GitHub App private-key authority", () => {
   it("makes the production runtime ready with the PKCS#1 RSA key format downloaded from GitHub Apps", async () => {
     const response = await runtimeWorker.fetch(
       new Request("https://noema.example/ready"),
-      readinessEnv(appPrivateKeyPkcs1Pem),
+      await readinessEnv(appPrivateKeyPkcs1Pem),
     );
 
     expect(response.status).toBe(200);
@@ -210,7 +212,7 @@ describe("GitHub App private-key authority", () => {
   it("makes the production runtime ready with a canonical PKCS#8 key ending in one newline", async () => {
     const response = await runtimeWorker.fetch(
       new Request("https://noema.example/ready"),
-      readinessEnv(`${appPrivateKeyPem}\n`),
+      await readinessEnv(`${appPrivateKeyPem}\n`),
     );
 
     expect(response.status).toBe(200);

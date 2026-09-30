@@ -136,9 +136,9 @@
 **Interfaces:**
 - Publishes: v1 OpenAPI schema, public receipt verification contract, configuration/runbook, and immutable release prerequisites.
 
-- [ ] Write RED docs-contract tests for endpoint/schema/error codes, required secret/DO bindings, no-token response, ADR status Proposed, and downstream `.github#2540` release order.
-- [ ] Run the docs-contract test; expect missing-contract failures.
-- [ ] Update every listed contract with the exact design and primary-source references; keep the ADR Proposed until protected integration.
+- [x] Write RED docs-contract tests for endpoint/schema/error codes, required secret/DO bindings, no-token response, ADR status Proposed, and downstream `.github#2540` release order.
+- [x] Run the docs-contract test; expect missing-contract failures.
+- [x] Update every listed contract with the exact design and primary-source references; keep the ADR Proposed until protected integration.
 - [ ] Run docs tests, typecheck, focused broker tests, `corepack npm test`, `corepack npm run security:scan`, and `corepack npm run release:verify`.
 - [ ] Record the two pre-existing local baseline failures verbatim if they remain; do not filter, downgrade, or call the full suite GREEN.
 - [ ] Commit `docs(dispatch): publish broker contracts and release gates`.

@@ -41,7 +41,12 @@ describe("machine-readable public HTTP contract", () => {
 
     expect(spec.openapi).toBe("3.1.0");
     expect(spec.info).toMatchObject({ title: "Noema API", version: "0.1.0" });
-    expect(Object.keys(spec.paths).sort()).toEqual(["/exchange", "/health", "/ready"]);
+    expect(Object.keys(spec.paths).sort()).toEqual([
+      "/exchange",
+      "/health",
+      "/ready",
+      "/v1/continuation-dispatches",
+    ]);
     expect(spec.paths["/health"].get.responses["200"]).toBeDefined();
     expect(spec.paths["/ready"].get.responses["200"]).toBeDefined();
     expect(spec.paths["/ready"].get.responses["503"]).toBeDefined();
@@ -59,6 +64,8 @@ describe("machine-readable public HTTP contract", () => {
     expect(spec.paths["/exchange"].post.responses["500"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["502"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["503"]).toBeDefined();
+    expect(spec.paths["/v1/continuation-dispatches"].post.responses["200"]).toBeDefined();
+    expect(spec.paths["/v1/continuation-dispatches"].post.responses["409"]).toBeDefined();
   });
 
   it("keeps authentication and bounded-input semantics explicit", async () => {

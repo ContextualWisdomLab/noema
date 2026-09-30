@@ -50,6 +50,16 @@
 - 상세: `docs/runtime-readiness.md`
 
 ### `POST /exchange`
+
+### `POST /v1/continuation-dispatches`
+
+`noema.continuation-dispatch.v1`의 닫힌 JSON 요청만 받으며 UTF-8 wire body는 8,192 bytes 이하이다. OIDC repository와 exact reusable-workflow ref/SHA, live open/non-draft/non-fork PR head/base/ref를 모두 결합하고 `ContextualWisdomLab/.github`의 `noema-review` 또는 `strix-scan` 이벤트만 서버 내부에서 선택한다. 같은 canonical digest는 저장된 terminal receipt를 반환하고 두 번째 dispatch를 만들지 않는다.
+
+성공 응답은 `{ ok: true, data: { receipt }, trace_id }`이다. Receipt contains no token and no GitHub credential. RFC 8785 canonical receipt bytes의 detached Ed25519 signature는 문서화된 SPKI public key로 검증한다. 안정 오류 코드는 `ERR_DISPATCH_REQUEST_INVALID`, `ERR_DISPATCH_IDENTITY_DENIED`, `ERR_DISPATCH_LIVE_STATE_STALE`, `ERR_DISPATCH_REPLAY_CONFLICT`, `ERR_GITHUB_DISPATCH_AUTHORIZATION`, `ERR_GITHUB_DISPATCH_UPSTREAM`이다.
+
+Primary references: GitHub. (2026). *OpenID Connect reference*; GitHub. (2026). *Create a repository dispatch event*; Rundgren, A., Jordan, B., & Erdtman, S. (2020). *JSON Canonicalization Scheme (JCS)* (RFC 8785). RFC Editor. https://doi.org/10.17487/RFC8785; Cloudflare. (2026). *Web Crypto*.
+
+### `/exchange` request contract
 헤더:
 - `authorization: Bearer <github_actions_oidc_jwt>`
 - `content-type: application/json` (선택)

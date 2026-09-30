@@ -27,12 +27,19 @@ src/runtime-entrypoint.ts
             ├─ replay protection → NoemaOidcReplayGuard
             └─ src/index.ts
                  ├─ /health
-                 └─ /exchange core OIDC + GitHub App protocol
+                 ├─ /exchange core OIDC + GitHub App protocol
+                 └─ /v1/continuation-dispatches → live PR ACL → SQLite idempotency → fixed dispatch → Ed25519 receipt
 ```
 
 자세한 구현과 route ownership은 `ARCHITECTURE.md`, `docs/api-spec.md`를 따릅니다.
 
-### 2.1 `/exchange` inbound body deadline
+### 2.1 Continuation dispatch broker
+
+`POST /v1/continuation-dispatches`는 exact-URL, bearer envelope, distributed rate limit, workflow trust, OIDC verification/replay 계층을 재사용한다. Closed request와 live PR을 검증한 뒤 `NOEMA_CONTINUATION_DISPATCH_STATE`의 identity-scoped SQLite transaction으로 reserve하고, 별도 central App으로 fixed `ContextualWisdomLab/.github` event만 호출하며, terminal accepted/denied/indeterminate receipt를 commit한다. 응답에는 GitHub credential이 없다.
+
+Required bindings: `CONTINUATION_DISPATCH_GITHUB_APP_ID`, `CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM`, `CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID`, `CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM`, `CONTINUATION_RECEIPT_SIGNING_KEY_ID`, `NOEMA_CONTINUATION_DISPATCH_STATE`.
+
+### 2.2 `/exchange` inbound body deadline
 
 `POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
 

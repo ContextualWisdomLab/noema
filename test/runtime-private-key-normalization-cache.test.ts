@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import runtimeWorker, { type Env as RuntimeEnv } from "../src/runtime-entrypoint";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 let appPrivateKeyPem: string;
 
@@ -24,12 +25,13 @@ beforeAll(async () => {
   appPrivateKeyPem = pemFromPkcs8(pkcs8);
 });
 
-function readinessEnv(privateKeyPem: string): RuntimeEnv {
+async function readinessEnv(privateKeyPem: string): Promise<RuntimeEnv> {
   const namespace = {
     idFromName: vi.fn(),
     get: vi.fn(),
   } as unknown as DurableObjectNamespace;
   return {
+    ...await continuationReadyBindings(namespace),
     ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
     ALLOWED_AUDIENCE: "cwl-noema-review",
     ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
@@ -48,7 +50,7 @@ function readinessEnv(privateKeyPem: string): RuntimeEnv {
 
 describe("runtime private-key normalization cache", () => {
   it("reuses the WebCrypto import decision for an unchanged newline-terminated secret", async () => {
-    const env = readinessEnv(`${appPrivateKeyPem}\n`);
+    const env = await readinessEnv(`${appPrivateKeyPem}\n`);
     const importSpy = vi.spyOn(crypto.subtle, "importKey");
 
     const first = await runtimeWorker.fetch(
@@ -62,11 +64,11 @@ describe("runtime private-key normalization cache", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(importSpy).toHaveBeenCalledTimes(1);
+    expect(importSpy).toHaveBeenCalledTimes(3);
   });
 
   it("does not retain a withdrawn binding in the cached normalized environment", async () => {
-    const env = readinessEnv(`${appPrivateKeyPem}\n`);
+    const env = await readinessEnv(`${appPrivateKeyPem}\n`);
 
     const first = await runtimeWorker.fetch(
       new Request("https://noema.example/ready"),

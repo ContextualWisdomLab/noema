@@ -33,7 +33,7 @@ import {
 const MAX_BODY_BYTES = 8_192;
 const JSON_MEDIA_TYPE = /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu;
 
-/** Runtime authority required by the public continuation-dispatch handler. */
+/** Runtime authority required by the public continuation-dispatch handler, including state, GitHub adapters, receipt signing, and exact workflow revision. */
 export interface ContinuationDispatchHandlerEnv
   extends ContinuationDispatchStateEnv,
     ContinuationGitHubAdapterEnv,
@@ -229,6 +229,11 @@ function workflowIdentity(claims: JwtPayload, env: ContinuationDispatchHandlerEn
 /**
  * Executes one versioned, credential-free continuation dispatch from bounded request through signed evidence.
  * Exact replays return retained evidence and all uncertain external outcomes become terminal before responding.
+ * @param request Bounded public HTTP request whose method, media type, bearer, and closed JSON body are admitted here.
+ * @param env Typed Worker bindings for exact workflow trust, GitHub adapters, durable state, and receipt signing.
+ * @param traceId Non-secret canonical request correlation identifier.
+ * @param dependencies Injected verification, state, and dispatch boundaries used by production and tests.
+ * @returns A standard no-store JSON response containing either one signed receipt or a stable dispatch error.
  */
 export async function handleContinuationDispatch(
   request: Request,
