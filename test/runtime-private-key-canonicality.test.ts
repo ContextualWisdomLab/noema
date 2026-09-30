@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { normalizeGitHubAppPrivateKeyPem } from "../src/github-app-private-key";
 import runtimeWorker, { type Env as RuntimeEnv } from "../src/runtime-entrypoint";
 import { evaluateRuntimeReadiness } from "../src/runtime-readiness";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
@@ -85,5 +86,21 @@ describe("runtime GitHub App private-key canonical authority", () => {
 
     expect(result.ready).toBe(false);
     expect(result.failedChecks).toContain("github_app_private_key");
+  });
+
+  it("rejects a syntactically wrapped but non-importable continuation receipt key", async () => {
+    const keyPair = await generateRsaKeyPair();
+    const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    const env = readinessEnv(pemFromPkcs8(pkcs8));
+    Object.assign(env, await continuationReadyBindings(env.NOEMA_RATE_LIMITER));
+    env.CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM =
+      "-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result).toEqual({
+      ready: false,
+      failedChecks: ["continuation_receipt_signing_private_key"],
+    });
   });
 });

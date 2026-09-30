@@ -87,6 +87,28 @@ describe("continuation dispatch production entrypoint", () => {
     expect([missingCentralApp.status, missingCentralInstallation.status]).toEqual([503, 503]);
   });
 
+  it("rejects a malformed continuation bearer with the dispatch identity contract", async () => {
+    const response = await entrypoint.fetch(
+      new Request("https://noema.example/v1/continuation-dispatches", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer invalid",
+          "content-type": "application/json",
+        },
+        body: dispatchBody(),
+      }),
+      {} as Env,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("allow")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_DISPATCH_IDENTITY_DENIED",
+      message: "Continuation identity is malformed",
+    });
+  });
+
   it("verifies a signed production OIDC identity before failing closed on a missing replay guard", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
