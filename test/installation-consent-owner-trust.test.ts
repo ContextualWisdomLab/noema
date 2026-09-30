@@ -148,6 +148,43 @@ afterEach(() => {
 });
 
 describe("installation consent replaces the fixed owner allowlist", () => {
+
+  it("rejects an OIDC owner login outside GitHub's login grammar", async () => {
+    const invalidOwner = "invalid_owner";
+    const result = await exchange({
+      claims: {
+        ...foreignCaller,
+        repository_owner: invalidOwner,
+        repository: `${invalidOwner}/llm-gateway-console`,
+      },
+      installation: {
+        id: 777,
+        account: { id: Number(foreignOwnerId), login: invalidOwner },
+      },
+    });
+    expect(result.status).toBe(403);
+    expect(result.body).toMatchObject({ error_code: "ERR_REPO_NOT_ALLOWED" });
+  });
+
+  it("rejects a central target whose owner is outside GitHub's login grammar", async () => {
+    const result = await exchange({
+      claims: {
+        repository_owner: "ContextualWisdomLab",
+        repository_owner_id: "295022177",
+        repository: "ContextualWisdomLab/.github",
+        repository_id: "1274066402",
+        sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+      },
+      target: "invalid_owner/repository",
+      installation: {
+        id: 777,
+        account: { id: 900000001, login: "invalid_owner" },
+      },
+    });
+    expect(result.status).toBe(403);
+    expect(result.body).toMatchObject({ error_code: "ERR_REPO_NOT_ALLOWED" });
+  });
+
   it("mints for a caller outside ContextualWisdomLab when its owner installed the App", async () => {
     const result = await exchange({ claims: foreignCaller, installation: foreignInstallation });
     expect(result.status).toBe(200);
