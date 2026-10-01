@@ -16,10 +16,13 @@ node scripts/verify-orchestrator-gateway.mjs --print-contract
 ```
 
 Reusable validation lives in `scripts/lib/orchestrator-gateway.mjs`
-(`parseOrchestratorGatewayUrl`, `resolveOrchestratorModel`,
+(`parseOrchestratorGatewayUrl`, `parseOrchestratorGatewayApiUrlAllowlist`,
+`requireAllowedOrchestratorGatewayUrl`, `resolveOrchestratorModel`,
 `requireOrchestratorApiKey`, `verifyOrchestratorHealthz`,
-`orchestratorGatewayConsumerContract`). The OpenCode config writer in the
-same module is Noema-only. Do not clone an OpenCode sidecar into naruon.
+`orchestratorGatewayConsumerContract`). Admission must parse the allowlist and
+call `requireAllowedOrchestratorGatewayUrl`; `parseOrchestratorGatewayUrl`
+alone is not sufficient. The OpenCode config writer in the same module is
+Noema-only. Do not clone an OpenCode sidecar into naruon.
 
 ## Required settings
 

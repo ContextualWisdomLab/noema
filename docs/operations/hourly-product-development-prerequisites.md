@@ -26,7 +26,7 @@ dispatch=false
 reason=maintainer_app_unavailable
 ```
 
-`NOEMA_LLM_API_KEY`, `NOEMA_LLM_API_URL`, 또는 `NOEMA_LLM_API_URL_ALLOWLIST_JSON`이 없거나 선택 URL이 exact member가 아니면 `orchestrator_gateway_unavailable`로 종료합니다. pull request inventory를 읽지 못하거나 열린 PR이 있으면 각각 `pull_request_inventory_unavailable`, `open_pull_request`로 종료합니다.
+`NOEMA_LLM_API_KEY`, `NOEMA_LLM_API_URL`, 또는 `NOEMA_LLM_API_URL_ALLOWLIST_JSON`이 없으면 `orchestrator_gateway_unavailable`로 종료합니다. 선택 URL이 exact member가 아니면 gateway preflight 단계가 health 요청과 credential-bearing 설정 전에 실패합니다. pull request inventory를 읽지 못하거나 열린 PR이 있으면 각각 `pull_request_inventory_unavailable`, `open_pull_request`로 종료합니다.
 
 ## dry_run
 

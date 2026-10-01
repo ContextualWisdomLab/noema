@@ -62,6 +62,15 @@ describe("hourly product-development publication prerequisites", () => {
     ]) {
       expect(operations).toContain(requiredText);
     }
+    expect(operations).toContain(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON`이 없으면 `orchestrator_gateway_unavailable`로 종료합니다.",
+    );
+    expect(operations).toContain(
+      "선택 URL이 exact member가 아니면 gateway preflight 단계가 health 요청과 credential-bearing 설정 전에 실패합니다.",
+    );
+    expect(operations).not.toContain(
+      "없거나 선택 URL이 exact member가 아니면 `orchestrator_gateway_unavailable`",
+    );
     expect(doctoring).toContain("NIST SP 800-218");
     expect(doctoring).toContain("APA 7");
     expect(doctoring).toContain("least privilege");
