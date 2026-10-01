@@ -107,36 +107,36 @@ describe("contextual-orchestrator released endpoint admission", () => {
   });
 
   it.each([
-    "https://ORCHESTRATOR-A.example/v1",
-    "https://orchestrator-a.example/v1/",
-    "https://orchestrator-a.example:443/v1",
-    "https://éxample.example/v1",
-    " https://orchestrator-a.example/v1 ",
-    "https://orchestrator-a.example./v1",
-    "https://[2001:0db8:0:0:0:0:0:1]/v1",
-    "https://orchestrator-a.example/./v1",
-    "https://orchestrator-a.example/x/../v1",
-    "https://127.1/v1",
-    "https://2130706433/v1",
-    "https://0x7f000001/v1",
-    "https://0177.0.0.1/v1",
-    "https://%61pi.openai.com/v1",
-    "https://api%2eopenai.com/v1",
-    "https://[fe80::1%25eth0]/v1",
-    "https://orchestrator-a.example/a\\b/v1",
-    "https://orchestrator-a.example\\evil.example/v1",
-    "https://foo..example/v1",
-    `https://${"a".repeat(64)}.example/v1`,
-    "https://[::ffff:192.0.2.1]/v1",
-    "https://[::ffff:c000:201]/v1",
-  ])("rejects a non-canonical selected endpoint %s", async (apiUrl) => {
+    { apiUrl: "https://ORCHESTRATOR-A.example/v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example/v1/", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example:443/v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://éxample.example/v1", error: /canonical endpoint URL/ },
+    { apiUrl: " https://orchestrator-a.example/v1 ", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example./v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://[2001:0db8:0:0:0:0:0:1]/v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example/./v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example/x/../v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://127.1/v1", error: /loopback endpoint/ },
+    { apiUrl: "https://2130706433/v1", error: /loopback endpoint/ },
+    { apiUrl: "https://0x7f000001/v1", error: /loopback endpoint/ },
+    { apiUrl: "https://0177.0.0.1/v1", error: /loopback endpoint/ },
+    { apiUrl: "https://%61pi.openai.com/v1", error: /direct model provider/ },
+    { apiUrl: "https://api%2eopenai.com/v1", error: /direct model provider/ },
+    { apiUrl: "https://[fe80::1%25eth0]/v1", error: /absolute HTTPS URL/ },
+    { apiUrl: "https://orchestrator-a.example/a\\b/v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://orchestrator-a.example\\evil.example/v1", error: /canonical endpoint URL/ },
+    { apiUrl: "https://foo..example/v1", error: /canonical endpoint URL/ },
+    { apiUrl: `https://${"a".repeat(64)}.example/v1`, error: /canonical endpoint URL/ },
+    { apiUrl: "https://[::ffff:192.0.2.1]/v1", error: /IPv4-mapped IPv6 endpoint/ },
+    { apiUrl: "https://[::ffff:c000:201]/v1", error: /IPv4-mapped IPv6 endpoint/ },
+  ])("rejects a non-canonical selected endpoint $apiUrl", async ({ apiUrl, error }) => {
     await expect(verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: apiUrl,
         NOEMA_LLM_API_URL_ALLOWLIST_JSON: allowlistJson,
       },
       fetchImpl: vi.fn(),
-    })).rejects.toThrow(/canonical endpoint URL/);
+    })).rejects.toThrow(error);
   });
 
   it("refuses token-bearing OpenCode config without exact membership", () => {
