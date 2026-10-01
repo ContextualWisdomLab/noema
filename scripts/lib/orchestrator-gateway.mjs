@@ -193,49 +193,50 @@ export function boundedGatewayError(error) {
 /**
  * Parse and accept only an HTTPS OpenAI-compatible gateway base URL ending in /v1.
  *
- * @param {string} rawUrl Candidate `NOEMA_LLM_API_URL`.
+ * @param {string} rawUrl Candidate endpoint URL.
+ * @param {string} [name] Configuration name used in bounded diagnostics.
  * @returns {{ href: string, healthzUrl: string, hostname: string }} Canonical URL parts.
  * @throws {Error} When the URL is not the production gateway contract.
  */
-export function parseOrchestratorGatewayUrl(rawUrl) {
+export function parseOrchestratorGatewayUrl(rawUrl, name = "NOEMA_LLM_API_URL") {
   const apiUrl = String(rawUrl ?? "");
   let parsed;
   try {
     parsed = new URL(apiUrl);
   } catch {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+    throw new Error(`${name} must be an absolute HTTPS URL`);
   }
   if (parsed.protocol !== "https:") {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+    throw new Error(`${name} must be an absolute HTTPS URL`);
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error(
-      "NOEMA_LLM_API_URL must not contain credentials, query, or fragment",
+      `${name} must not contain credentials, query, or fragment`,
     );
   }
   const rawHostname = parsed.hostname.toLowerCase();
   if (rawHostname.endsWith(".")) {
-    throw new Error("NOEMA_LLM_API_URL must be a canonical endpoint URL");
+    throw new Error(`${name} must be a canonical endpoint URL`);
   }
   const hostname = rawHostname.replace(/\.+$/u, "");
   if (!hostname) {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+    throw new Error(`${name} must be an absolute HTTPS URL`);
   }
   if (!hostname.startsWith("[")) {
     const hostnameLabels = hostname.split(".");
     if (hostnameLabels.some((label) => !label || label.length > 63)) {
-      throw new Error("NOEMA_LLM_API_URL must be a canonical endpoint URL");
+      throw new Error(`${name} must be a canonical endpoint URL`);
     }
   }
   if (DIRECT_PROVIDER_HOSTS.includes(hostname)) {
     throw new Error(
-      "Noema production jobs must use contextual-orchestrator, not a direct model provider",
+      `${name} must use contextual-orchestrator, not a direct model provider`,
     );
   }
   const ipHostname = hostname.replace(/^\[|\]$/gu, "");
   const ipVersion = isIP(ipHostname);
   if (ipVersion === 6 && ipHostname.startsWith("::ffff:")) {
-    throw new Error("NOEMA_LLM_API_URL must not use an IPv4-mapped IPv6 endpoint");
+    throw new Error(`${name} must not use an IPv4-mapped IPv6 endpoint`);
   }
   if (
     hostname === "localhost" ||
@@ -245,11 +246,11 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
       ipVersion === 4 ? "ipv4" : "ipv6",
     ))
   ) {
-    throw new Error("NOEMA_LLM_API_URL must not target a loopback endpoint");
+    throw new Error(`${name} must not target a loopback endpoint`);
   }
   const path = parsed.pathname.replace(/\/+$/u, "") || "";
   if (!path.endsWith("/v1")) {
-    throw new Error("NOEMA_LLM_API_URL must end in /v1");
+    throw new Error(`${name} must end in /v1`);
   }
   const healthPath = `${path.slice(0, -3)}/healthz`;
   parsed.pathname = path;
@@ -258,7 +259,7 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
   const healthUrl = new URL(parsed.href);
   healthUrl.pathname = healthPath;
   if (apiUrl !== parsed.href) {
-    throw new Error("NOEMA_LLM_API_URL must be a canonical endpoint URL");
+    throw new Error(`${name} must be a canonical endpoint URL`);
   }
   return {
     href: parsed.href,
@@ -298,7 +299,10 @@ export function parseOrchestratorGatewayApiUrlAllowlist(rawJson) {
         "NOEMA_LLM_API_URL_ALLOWLIST_JSON members must be exact released endpoint URLs",
       );
     }
-    const parsed = parseOrchestratorGatewayUrl(value);
+    const parsed = parseOrchestratorGatewayUrl(
+      value,
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
+    );
     if (canonical.includes(parsed.href)) {
       throw new Error(
         "NOEMA_LLM_API_URL_ALLOWLIST_JSON must not contain duplicate endpoints",
