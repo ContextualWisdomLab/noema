@@ -6,6 +6,7 @@ describe("OpenCode tool capability boundary", () => {
   it("denies unknown tools by default and allows only worktree analysis/edit capabilities", () => {
     const config = buildOpenCodeOrchestratorConfig({
       apiUrl: "https://orchestrator.example/v1",
+      allowedApiUrls: ["https://orchestrator.example/v1"],
       model: "orchestrator/free",
     });
 

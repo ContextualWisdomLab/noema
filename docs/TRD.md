@@ -301,7 +301,7 @@ Atomic proposal-publication과 publisher-lease control은 protected main에 구�
 
 - GitHub Actions development/maintenance model work는 OpenCode Agent가 `contextual-orchestrator`의 released API/client/schema contract를 통해 수행합니다.
 - routing identity는 `orchestrator/free`이며 Noema가 provider/model/group/paid fallback을 선택하지 않습니다.
-- gateway endpoint와 inference capability는 `NOEMA_LLM_API_URL`, 전용 gateway token은 `NOEMA_LLM_API_KEY`로 전달합니다.
+- gateway endpoint와 inference capability는 `NOEMA_LLM_API_URL`, 릴리스된 exact endpoint 집합은 `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, 전용 gateway token은 `NOEMA_LLM_API_KEY`로 전달합니다. 선택된 URL이 그 집합의 canonical exact member가 아니면 credential 또는 network I/O 전에 실패합니다. 집합 순서는 routing/fallback 의미가 없습니다.
 - upstream provider credentials(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)은 Noema model jobs의 credential contract가 아니며 repository가 읽거나 fallback authority로 사용하지 않습니다.
 - Noema는 model wall-clock timeout, retry, provider failover를 별도로 소유하지 않습니다. 사용자 취소, provider 종료, 관리자 정책 timeout은 서로 다른 종료 원인으로 보존합니다.
 - `COPILOT_GITHUB_TOKEN`은 사용하지 않습니다.

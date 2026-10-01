@@ -4,6 +4,18 @@
 
 The Proposed `POST /v1/continuation-dispatches` source replaces the impossible consumer-side “dispatch-only token” design by retaining `Contents: write` authority inside Noema. Tasks 1–6 cover closed request/digest, retry-independent logical-effect identity, SQLite terminal idempotency, replay-before-live-read recovery, pre-effect reservation abort, pre-dispatch signed indeterminate commit, accepted/denied evidence strengthening, live PR ACL, fixed central adapter, RFC 8785/Ed25519 credential-free receipt, exact URL, distributed rate limit, workflow SHA, stalled-body deadline, readiness, OpenAPI, and stable errors. Review repair adds the missing OpenAPI `408`/deadline declaration, Bearer challenge and stable 401 hint, outcome-preserving exact replay, a single canonical dispatch body, App-credential preparation before the pre-dispatch commit, exact GitHub App token-expiry checks before commit/send, best-effort pre-effect abort, and crash-safe reserved-state recovery at the exact retained OIDC `exp`. Reservation creation and commit enforce that expiry inside the serialized transaction even when alarm delivery is late; expired retained reservations are deleted and treated as absent in the same transaction, so only a newly presented still-live OIDC expiry can create a replacement while stale incoming authority remains a conflict. Calendar-relative state tests remove the fixed-2027 expiry time bomb. Existing v1 terminal evidence remains replayable while a legacy reservation without exact expiry fails closed. RED `2a4488c6` and GREEN `350a3665` close the post-commit/pre-request expiry race: only `ContinuationDispatchNotStartedError` may release the exact matching indeterminate receipt under the original capability, while any transport ambiguity after request start remains terminal. Exact-head predecessor `1bd5fce7` makes the overlapping continuation/generic 503 schemas executable with representative signed and generic payloads and replaces invalid `oneOf` exclusivity with `anyOf`. The expiry is authorization evidence, not an invented TTL or retry heuristic. The GitHub live-read/dispatch interval is not an atomic GitHub primitive; exact expected head/base/ref therefore remains in the fixed event and downstream `ContextualWisdomLab/.github#2540` must revalidate it immediately before review execution. Status remains Proposed until exact-head hosted review/gates, protected integration, immutable Noema release with key-id-to-SPKI artifact/digest, deployment/recovery evidence, and downstream consumer pin.
 
+## Proposed released gateway endpoint admission (2026-10-02)
+
+Open PR #737 proposes an exact-membership gate for every token-bearing
+contextual-orchestrator consumer. `NOEMA_LLM_API_URL_ALLOWLIST_JSON` is a
+non-empty unordered JSON set populated from an immutable released CO endpoint
+contract; the selected `NOEMA_LLM_API_URL` must be a canonical HTTPS `/v1`
+member before health I/O or OpenCode/Python client construction. This closes
+the prior denylist/self-asserted-health gap without moving provider/model
+eligibility out of CO. Status: **Proposed / Draft HOLD** pending complete local
+and protected exact-head CI, review, immutable CO endpoint evidence, and normal
+merge.
+
 ## Authority and update rule
 
 이 문서는 protected source, active candidate, transient workflow evidence와 foreign-owner authority를 분리한다. Open PR exact head, protected base, required workflow, review thread, release와 central dependency는 mutation·merge·release 직전에 다시 읽는다. predecessor GREEN, queued/pending/in_progress/skipped/cancelled run, 오래된 PR base snapshot과 scanner/model judgement는 다음 revision의 merge authority로 전용하지 않는다. queued는 GREEN이 아니다.

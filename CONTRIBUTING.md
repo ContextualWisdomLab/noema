@@ -39,7 +39,8 @@ customer/operator facing.
 
 `hourly-product-development.yml` runs a proposal-only coding session through
 the same `contextual-orchestrator` gateway contract as review
-(`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`) when
+(`NOEMA_LLM_API_URL`, exact released `NOEMA_LLM_API_URL_ALLOWLIST_JSON`,
+`NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`) when
 the PR queue is empty. It does not iterate a model-candidate list. It cannot
 review, merge, release, or deploy; the existing hourly commercial-readiness
 loop retains exact-head governance and SHA-bound merge authority.

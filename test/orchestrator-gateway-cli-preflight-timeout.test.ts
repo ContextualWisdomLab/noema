@@ -17,6 +17,7 @@ describe("contextual-orchestrator CLI health preflight", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: '["https://orchestrator.example/v1"]',
         NOEMA_LLM_MODEL: "contextual-orchestrator",
       },
       fetchImpl,
@@ -40,6 +41,7 @@ describe("contextual-orchestrator CLI health preflight", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: '["https://orchestrator.example/v1"]',
         NOEMA_LLM_MODEL: "orchestrator/free",
       },
       fetchImpl: ((_: unknown, init?: RequestInit) => {

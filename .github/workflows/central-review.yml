@@ -491,6 +491,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/reviewer:${{ github.workspace }}/packages/noema-core/src
           NOEMA_REVIEW_TOKEN_SOURCE: noema-github-app
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
+          NOEMA_LLM_API_URL_ALLOWLIST_JSON: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON }}
           NOEMA_LLM_MODEL: orchestrator/free
           # Dedicated inference token for contextual-orchestrator. Upstream
           # provider credentials stay inside the orchestrator credential KV.

@@ -92,6 +92,11 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   `NOEMA_LLM_MODEL` is the canonical routing alias `orchestrator/free`
   (fail-closed zero-cost pool, ZDR-first), and `NOEMA_LLM_API_KEY` is a
   dedicated gateway inference token.
+- `NOEMA_LLM_API_URL_ALLOWLIST_JSON` is a non-empty JSON array of exact
+  released contextual-orchestrator `/v1` endpoints. The selected URL must be
+  an exact member before Noema emits credential-bearing configuration. Array
+  order never selects, retries, or falls back across endpoints; `/healthz`
+  self-identification is liveness evidence, not endpoint authority.
 - The reusable, secret-free copy is `contracts/orchestrator-gateway.json`
   (`node scripts/verify-orchestrator-gateway.mjs --print-contract`). Narrative:
   `docs/orchestrator-gateway-consumer-contract.md`. Validation helpers live in

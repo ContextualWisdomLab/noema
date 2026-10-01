@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from noema_reviewer.config import resolve_config
@@ -12,6 +14,7 @@ def _config(base_url: str) -> dict[str, str]:
     return {
         "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": base_url,
+        "NOEMA_LLM_API_URL_ALLOWLIST_JSON": json.dumps([base_url]),
         "NOEMA_LLM_API_KEY": "gateway-token",
     }
 

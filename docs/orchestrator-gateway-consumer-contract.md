@@ -25,13 +25,19 @@ same module is Noema-only. Do not clone an OpenCode sidecar into naruon.
 
 | Name | Meaning |
 | --- | --- |
-| `NOEMA_LLM_API_URL` | HTTPS OpenAI-compatible base ending in `/v1`. No userinfo, query, or fragment. |
+| `NOEMA_LLM_API_URL` | Canonically serialized, non-loopback HTTPS OpenAI-compatible base ending in `/v1`. No userinfo, query, or fragment. |
+| `NOEMA_LLM_API_URL_ALLOWLIST_JSON` | Non-empty JSON array of exact released contextual-orchestrator `/v1` endpoints. The selected URL must be an exact member; list order has no routing meaning. |
 | `NOEMA_LLM_MODEL` | One routing alias. Canonical value is `orchestrator/free` (fail-closed zero-cost pool, ZDR-first). |
 | `NOEMA_LLM_API_KEY` | Dedicated gateway inference token. Never an upstream provider key. |
 
 `GET <gateway-root>/healthz` is unauthenticated, must respond with
 `Content-Type: application/json`, and must return
 `{"status":"ok","service":"contextual-orchestrator"}`.
+This is bounded liveness and response-shape evidence, not endpoint identity.
+Only exact membership in `NOEMA_LLM_API_URL_ALLOWLIST_JSON` authorizes an
+endpoint to receive the dedicated gateway token. Operators derive that list
+from an immutable contextual-orchestrator release contract or asset and record
+its tag and digest; Noema does not discover endpoints or inspect CO source.
 
 At request time, secrets come from a KV / credential registry (the Worker
 `Env` binding in Noema; naruon must use its own KV-equivalent). Process

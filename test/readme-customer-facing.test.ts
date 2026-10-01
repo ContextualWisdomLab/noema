@@ -23,6 +23,7 @@ describe("README stays customer/operator facing", () => {
       "wrangler secret put",
       "GITHUB_APP_ID",
       "NOEMA_LLM_API_URL",
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
       "NOEMA_LLM_API_KEY",
       "contextual-orchestrator",
       "GitHub App permissions",
