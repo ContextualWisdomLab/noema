@@ -31,6 +31,9 @@ import {
   writeVerifyOrchestratorGatewayStdout,
 } from "../scripts/verify-orchestrator-gateway.mjs";
 
+const GATEWAY_ALLOWLIST_JSON = '["https://orchestrator.example/v1"]';
+const GATEWAY_ALLOWLIST = ["https://orchestrator.example/v1"];
+
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -136,6 +139,7 @@ describe("contextual-orchestrator gateway contract", () => {
   it("writes a single-provider OpenCode config that never embeds the API key", () => {
     const config = buildOpenCodeOrchestratorConfig({
       apiUrl: "https://orchestrator.example/v1",
+      allowedApiUrls: GATEWAY_ALLOWLIST,
       model: defaultOrchestratorModel(),
     });
     const serialized = JSON.stringify(config);
@@ -157,6 +161,7 @@ describe("contextual-orchestrator gateway contract", () => {
     const output = join(tempDir(), "opencode.json");
     writeOpenCodeOrchestratorConfig(output, {
       apiUrl: "https://orchestrator.example/v1",
+      allowedApiUrls: GATEWAY_ALLOWLIST,
       model: defaultOrchestratorModel(),
     });
     expect(readFileSync(output, "utf8")).toContain("orchestrator/free");
@@ -166,6 +171,7 @@ describe("contextual-orchestrator gateway contract", () => {
     const healthy = await verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
         NOEMA_LLM_MODEL: "orchestrator/free",
       },
       fetchImpl: async () => jsonResponse(
@@ -178,6 +184,7 @@ describe("contextual-orchestrator gateway contract", () => {
     await expect(verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
       },
       fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "openai" }),
@@ -188,16 +195,29 @@ describe("contextual-orchestrator gateway contract", () => {
     await expect(verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://api.openai.com/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: '["https://api.openai.com/v1"]',
       },
       fetchImpl: async () => {
         throw new Error("fetch must not run for a direct provider");
       },
     })).rejects.toThrow(/not a direct model provider/);
 
+    await expect(verifyOrchestratorGatewayContract({
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1/",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
+      },
+      fetchImpl: async () => jsonResponse(
+        JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+        { status: 200 },
+      ),
+    })).rejects.toThrow(/canonical endpoint URL/);
+
     const written = join(tempDir(), "from-verify.json");
     const verifiedWrite = await verifyOrchestratorGatewayContract({
       env: {
-        NOEMA_LLM_API_URL: "https://orchestrator.example/v1/",
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
       },
       fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -285,12 +305,14 @@ describe("contextual-orchestrator gateway contract", () => {
       },
     });
     expect(missingUrl).toBe(1);
-    expect(stderr.join("")).toMatch(/absolute HTTPS URL/);
+    expect(stderr.join("")).toMatch(/NOEMA_LLM_API_URL_ALLOWLIST_JSON/);
 
     const directProvider = await runVerifyOrchestratorGatewayCli({
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://integrate.api.nvidia.com/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON:
+          '["https://integrate.api.nvidia.com/v1"]',
       },
       writeStdout: (message) => {
         stdout.push(message);
@@ -370,6 +392,7 @@ describe("contextual-orchestrator gateway contract", () => {
       env: {
         GITHUB_EVENT_PATH: publicRepositoryEventFile(),
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
         NOEMA_LLM_MODEL: "orchestrator/free",
       },
       fetchImpl: async () => jsonResponse(
@@ -390,6 +413,7 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
       },
       fetchImpl: async () => {
         throw "boom";
@@ -403,6 +427,7 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
       },
       fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -435,6 +460,7 @@ describe("contextual-orchestrator gateway contract", () => {
         env: {
           PATH: process.env.PATH,
           NOEMA_LLM_API_URL: "https://api.openai.com/v1",
+          NOEMA_LLM_API_URL_ALLOWLIST_JSON: '["https://api.openai.com/v1"]',
         },
       },
     );
@@ -454,6 +480,7 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [process.execPath, "scripts/verify-orchestrator-gateway.mjs"],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
       },
       fetchImpl: async () => jsonResponse(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),

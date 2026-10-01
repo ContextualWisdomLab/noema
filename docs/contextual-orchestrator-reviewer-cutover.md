@@ -15,6 +15,9 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
 ## Target contract
 
 - `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base URL ending in `/v1`.
+- `NOEMA_LLM_API_URL_ALLOWLIST_JSON` is a non-empty JSON array of exact,
+  released HTTPS `/v1` endpoints. The selected URL must be a canonical member;
+  array order has no routing, retry, or fallback meaning.
 - `GET <gateway-root>/healthz` returns
   `{"status":"ok","service":"contextual-orchestrator",...}`.
 - `NOEMA_LLM_MODEL` is the canonical routing alias
@@ -25,11 +28,12 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
   failover, allowlists, budgets, circuit breakers, and audit stay in the
   gateway.
 
-Every Noema LLM workflow rejects known direct OpenAI, GitHub Models,
-OpenRouter, NVIDIA NIM, and Bytez hosts even if they implement an
-OpenAI-compatible API. Noema does not sequentially try the next model or
-agent; routing is pinned to `orchestrator/free`, the fail-closed zero-cost
-pool, ZDR-first.
+Every Noema LLM workflow rejects endpoints outside the released exact set and
+known direct OpenAI, GitHub Models, OpenRouter, NVIDIA NIM, and Bytez hosts even
+if they implement an OpenAI-compatible API. A self-asserted `/healthz`
+`service` value is liveness evidence after admission, never identity authority.
+Noema does not sequentially try the next model or agent; routing is pinned to
+`orchestrator/free`, the fail-closed zero-cost pool, ZDR-first.
 
 ## Approval-bound activation
 
@@ -45,7 +49,9 @@ workflow logs, or this repository.
    `contextual-orchestrator`. Verify with the inference token that a bounded
    `/v1/chat/completions` request succeeds and an admin endpoint is denied.
 4. After explicit approval, create the organization Actions secret
-   `NOEMA_LLM_API_KEY` and set `NOEMA_LLM_API_URL` and `NOEMA_LLM_MODEL`.
+   `NOEMA_LLM_API_KEY`; set `NOEMA_LLM_API_URL`,
+   `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, and `NOEMA_LLM_MODEL`. Derive the
+   allowlist only from immutable contextual-orchestrator release evidence.
 5. Dispatch a canary review against a draft pull request at an exact current
    head SHA. Confirm the Noema App review, gateway audit event, chosen upstream,
    and cost/budget record all refer to the same request.

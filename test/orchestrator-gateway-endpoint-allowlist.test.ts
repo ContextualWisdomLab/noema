@@ -47,6 +47,24 @@ describe("contextual-orchestrator released endpoint admission", () => {
     expect(result.apiUrl).toBe(fixture.allowed[1]);
   });
 
+  it("does not fall back across allowlist members after selected health failure", async () => {
+    const requestedUrls: string[] = [];
+    await expect(verifyOrchestratorGatewayContract({
+      env: {
+        NOEMA_LLM_API_URL: fixture.allowed[1],
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: allowlistJson,
+      },
+      fetchImpl: async (input) => {
+        requestedUrls.push(String(input));
+        return new Response("unavailable", { status: 503 });
+      },
+    })).rejects.toThrow(/status is 503/);
+
+    expect(requestedUrls).toEqual([
+      "https://orchestrator-b.example/inference/healthz",
+    ]);
+  });
+
   it.each([
     "",
     "{}",

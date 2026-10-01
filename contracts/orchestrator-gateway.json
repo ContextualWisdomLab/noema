@@ -1,6 +1,6 @@
 {
   "id": "contextual-orchestrator-gateway",
-  "version": 1,
+  "version": 2,
   "service": "contextual-orchestrator",
   "routing_alias": "orchestrator/free",
   "api_url": {
@@ -8,7 +8,11 @@
     "pathname_suffix": "/v1",
     "allow_userinfo": false,
     "allow_query": false,
-    "allow_fragment": false
+    "allow_fragment": false,
+    "require_canonical_serialization": true,
+    "allow_loopback": false,
+    "exact_released_endpoint_membership": true,
+    "allowlist_order_has_routing_meaning": false
   },
   "healthz": {
     "unauthenticated": true,
@@ -20,6 +24,7 @@
   },
   "transport_names": {
     "api_url": "NOEMA_LLM_API_URL",
+    "api_url_allowlist": "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
     "model": "NOEMA_LLM_MODEL",
     "api_key": "NOEMA_LLM_API_KEY"
   },

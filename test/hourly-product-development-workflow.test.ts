@@ -140,6 +140,9 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).toContain(
       "ORCHESTRATOR_URL_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL != '' }}",
     );
+    expect(workflow).toContain(
+      "ORCHESTRATOR_ALLOWLIST_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON != '' }}",
+    );
     expect(workflow).toContain("dispatch=false");
     expect(workflow).toContain("dispatch=true");
     expect(workflow).not.toContain("nim_api_key_unavailable");
@@ -155,6 +158,9 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     );
     expect(workflow).toContain(
       "NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}",
+    );
+    expect(workflow).toContain(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON }}",
     );
     expect(workflow).toContain("NOEMA_LLM_MODEL: orchestrator/free");
     expect(workflow).not.toContain("NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}");

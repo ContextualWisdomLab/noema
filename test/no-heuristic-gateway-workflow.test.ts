@@ -12,6 +12,9 @@ describe("Noema gateway workflows have no local provider-routing authority", () 
     const reviewer = "python -m noema_reviewer";
 
     expect(publication).toContain(`NOEMA_LLM_MODEL: ${FREE_POOL}`);
+    expect(publication).toContain(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON }}",
+    );
     expect(publication).not.toContain("NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}");
     expect(publication).not.toContain("NOEMA_LLM_REQUEST_TIMEOUT_SECONDS");
     expect(publication).not.toContain("NOEMA_LLM_MAX_RETRIES");
@@ -42,6 +45,9 @@ describe("Noema gateway workflows have no local provider-routing authority", () 
     );
 
     expect(proposer).toContain(`NOEMA_LLM_MODEL: ${FREE_POOL}`);
+    expect(proposer).toContain(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON }}",
+    );
     expect(proposer).not.toContain("vars.NOEMA_LLM_MODEL");
     expect(proposer).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
     expect(proposer).not.toContain("OPENCODE_KILL_GRACE_SECONDS");

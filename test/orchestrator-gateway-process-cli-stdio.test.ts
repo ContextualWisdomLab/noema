@@ -24,7 +24,7 @@ describe("contextual-orchestrator process CLI stdio boundary", () => {
     expect(await cli()).toBe(1);
     expect(stdout).toEqual([]);
     expect(stderr.join("")).toMatch(
-      /Noema contextual-orchestrator preflight failed: NOEMA_LLM_API_URL/,
+      /Noema contextual-orchestrator preflight failed: NOEMA_LLM_API_URL_ALLOWLIST_JSON/,
     );
   });
 });

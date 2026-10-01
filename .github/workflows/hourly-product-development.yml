@@ -54,6 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ORCHESTRATOR_KEY_CONFIGURED: ${{ secrets.NOEMA_LLM_API_KEY != '' }}
           ORCHESTRATOR_URL_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL != '' }}
+          ORCHESTRATOR_ALLOWLIST_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON != '' }}
           MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}
           MAINTAINER_APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY != '' }}
         run: |
@@ -82,7 +83,8 @@ jobs:
           fi
 
           if { [ "$ORCHESTRATOR_KEY_CONFIGURED" != "true" ] \
-            || [ "$ORCHESTRATOR_URL_CONFIGURED" != "true" ]; } \
+            || [ "$ORCHESTRATOR_URL_CONFIGURED" != "true" ] \
+            || [ "$ORCHESTRATOR_ALLOWLIST_CONFIGURED" != "true" ]; } \
             && [ "$DRY_RUN" != "true" ]; then
             {
               echo "dispatch=false"
@@ -245,6 +247,7 @@ jobs:
         shell: bash
         env:
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
+          NOEMA_LLM_API_URL_ALLOWLIST_JSON: ${{ vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON }}
           NOEMA_LLM_MODEL: orchestrator/free
         run: |
           set -euo pipefail

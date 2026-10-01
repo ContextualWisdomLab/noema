@@ -230,6 +230,7 @@ KV-first, with the CI secret environment as bootstrap transport only
 
 - `NOEMA_LLM_MODEL`
 - `NOEMA_LLM_API_URL`
+- `NOEMA_LLM_API_URL_ALLOWLIST_JSON` (non-empty unordered set of exact released `/v1` endpoints)
 - `NOEMA_LLM_API_KEY`
 - `NOEMA_LLM_ZDR_ONLY` (`true` or `false`; request-level privacy policy)
 

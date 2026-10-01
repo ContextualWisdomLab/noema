@@ -8,7 +8,7 @@ This doctoring note uses APA 7 reference form. It separates source-supported fac
 
 The centrally dispatched development path has two independent credential prerequisites:
 
-1. `NOEMA_LLM_API_URL` and `NOEMA_LLM_API_KEY` permit the read-only OpenCode proposal job to reach the `contextual-orchestrator` gateway.
+1. `NOEMA_LLM_API_URL`, immutable-release-derived `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, and `NOEMA_LLM_API_KEY` permit the read-only OpenCode proposal job to reach an exact released `contextual-orchestrator` gateway endpoint.
 2. `NOEMA_MAINTAINER_APP_CLIENT_ID` and `NOEMA_MAINTAINER_APP_PRIVATE_KEY` permit the later non-executing publisher to create one repository-scoped branch and pull request.
 
 Checking only the inference token can spend model compute on a proposal that the workflow is structurally unable to publish. That is a deterministic configuration failure rather than a model-quality failure and should be rejected before checkout or inference.
@@ -29,6 +29,7 @@ Before OpenCode starts, the proposal gate evaluates only presence booleans:
 
 - `NOEMA_LLM_API_KEY != ''`
 - `NOEMA_LLM_API_URL != ''`
+- `NOEMA_LLM_API_URL_ALLOWLIST_JSON != ''`
 - `NOEMA_MAINTAINER_APP_CLIENT_ID != ''`
 - `NOEMA_MAINTAINER_APP_PRIVATE_KEY != ''`
 
@@ -42,7 +43,7 @@ Manual `dry_run` deliberately bypasses credential-presence requirements because 
 
 ## Gateway contract, not provider keys
 
-The gate uses the same dedicated gateway names as production review: `NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, and `NOEMA_LLM_API_KEY`. It does not read `NVIDIA_NIM_API_KEY`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, or `OPENAI_API_KEY`. Development proposal authority, publication authority, and independent review App identity remain separate even though both LLM jobs share the orchestrator contract.
+The gate uses the same dedicated gateway names as production review: `NOEMA_LLM_API_URL`, `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, `NOEMA_LLM_MODEL`, and `NOEMA_LLM_API_KEY`. The allowlist is a non-empty unordered admission set of canonical released HTTPS `/v1` endpoints; its order has no routing, retry, or fallback meaning, and a self-asserted `/healthz` response cannot create endpoint authority. It does not read `NVIDIA_NIM_API_KEY`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, or `OPENAI_API_KEY`. Development proposal authority, publication authority, and independent review App identity remain separate even though both LLM jobs share the orchestrator contract.
 
 ## Verification contract
 
@@ -50,7 +51,7 @@ Executable tests must prove that:
 
 - both Maintainer App presence booleans are evaluated in the pre-inference gate;
 - either missing value produces `dispatch=false` and `reason=maintainer_app_unavailable`;
-- missing gateway URL or key produces `orchestrator_gateway_unavailable`;
+- missing gateway URL, endpoint allowlist, or key produces `orchestrator_gateway_unavailable`;
 - unreadable open-PR inventory fails closed while the existence of a readable open PR does not globally suppress a healthy development pass;
 - a proposal whose exact path intersects any other open PR fails closed before remote creation;
 - after PR creation, path isolation is re-evaluated with the newly created PR excluded, so a raced overlapping PR causes cleanup rather than acceptance;

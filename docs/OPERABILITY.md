@@ -57,6 +57,7 @@ GitHub automation category:
 - exact reviewer App bot login;
 - maintenance activation flag;
 - contextual-orchestrator gateway endpoint `NOEMA_LLM_API_URL`;
+- released exact endpoint set `NOEMA_LLM_API_URL_ALLOWLIST_JSON` (non-secret; order has no routing meaning);
 - dedicated gateway inference token `NOEMA_LLM_API_KEY`;
 - routing alias `orchestrator/free`;
 - reviewer model gateway credential contract, kept separate from repository publication authority.
@@ -126,7 +127,8 @@ The proposal flow must preserve three trust domains.
 
 - no repository write credential;
 - OpenCode uses only contextual-orchestrator's released gateway contract with routing alias `orchestrator/free`;
-- receives `NOEMA_LLM_API_URL` and the dedicated `NOEMA_LLM_API_KEY`, never an upstream provider credential;
+- receives `NOEMA_LLM_API_URL`, the released exact endpoint set `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, and the dedicated `NOEMA_LLM_API_KEY`, never an upstream provider credential;
+- refuses any selected URL outside that set before health probing or credential-bearing configuration; `/healthz` is liveness evidence, not identity authority;
 - does not define provider/model/group/paid fallback, retry, or model wall-clock timeout policy locally;
 - bounded file/diff output;
 - no symlink/gitlink authority;
