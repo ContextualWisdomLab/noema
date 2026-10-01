@@ -412,13 +412,13 @@ def test_resolve_model_reads_live_config_when_none_is_passed(monkeypatch) -> Non
 
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
-def test_resolve_config_rejects_loopback_http_model_endpoint(host: str) -> None:
-    """A development endpoint cannot weaken production credential transport."""
+def test_resolve_config_rejects_loopback_model_endpoint(host: str) -> None:
+    """A loopback endpoint cannot enter the released gateway allowlist."""
     expected_url = f"http://{host}:8080/v1"
     values = {
         "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": expected_url,
         "NOEMA_LLM_API_KEY": "local-only-key",
     }
-    with pytest.raises(RuntimeError, match="HTTPS"):
+    with pytest.raises(RuntimeError, match="loopback endpoint"):
         resolve_config(_kv(values))
