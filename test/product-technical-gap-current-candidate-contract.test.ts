@@ -12,6 +12,16 @@ describe("product-technical gap current authority", () => {
     expect(baseline).toContain("queued is not GREEN");
   });
 
+  it("records the continuation merge-forward without retaining superseded proposal language", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(baseline).toContain("CI oracle repair가 exact-head hosted GREEN");
+    expect(baseline).toContain("ordinary two-parent merge로 통합");
+    expect(baseline).toContain("prerequisite #737 final exact head");
+    expect(baseline).not.toContain("source repair and exact final-verifier assertion proposed");
+    expect(baseline).not.toContain("publish ordinary child");
+  });
+
   it("records integrated external-extension admission and the durable lifecycle successor without overclaiming completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
