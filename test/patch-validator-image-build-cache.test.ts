@@ -61,9 +61,9 @@ describe("patch-validator image build cache", () => {
 
   it("retries transient scanner release download failures before failing closed", () => {
     expect(workflow).toContain("download_scanner_asset() {");
-    expect(workflow).toContain("--retry 3");
+    expect(workflow).toContain("--retry 7");
     expect(workflow).toContain("--retry-all-errors");
-    expect(workflow).toContain("--retry-delay 2");
-    expect(workflow).toContain("--retry-max-time 90");
+    expect(workflow).toContain("--retry-delay 0");
+    expect(workflow).toContain("--retry-max-time 240");
   });
 });

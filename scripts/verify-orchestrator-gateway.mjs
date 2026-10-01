@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   defaultOrchestratorModel,
-  parseOrchestratorGatewayUrl,
+  parseOrchestratorGatewayApiUrlAllowlist,
+  requireAllowedOrchestratorGatewayUrl,
   resolveOrchestratorModel,
   serializeOrchestratorGatewayConsumerContract,
   verifyOrchestratorHealthz,
@@ -126,8 +127,12 @@ export async function runVerifyOrchestratorGatewayCli(input) {
 
     const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
     const model = resolveOrchestratorModel(configuredModel || defaultOrchestratorModel());
-    const gateway = parseOrchestratorGatewayUrl(
-      String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
+    const allowedApiUrls = parseOrchestratorGatewayApiUrlAllowlist(
+      String(input.env?.NOEMA_LLM_API_URL_ALLOWLIST_JSON ?? ""),
+    );
+    const gateway = requireAllowedOrchestratorGatewayUrl(
+      String(input.env?.NOEMA_LLM_API_URL ?? ""),
+      allowedApiUrls,
     );
     await verifyOrchestratorHealthz(gateway.healthzUrl, {
       fetchImpl: input.fetchImpl,
@@ -136,6 +141,7 @@ export async function runVerifyOrchestratorGatewayCli(input) {
     if (options.openCodeConfigPath) {
       writeOpenCodeOrchestratorConfig(options.openCodeConfigPath, {
         apiUrl: gateway.href,
+        allowedApiUrls,
         model,
       });
     }
@@ -198,6 +204,8 @@ export function createVerifyOrchestratorGatewayProcessCli(processLike = process)
   const processEnv = processLike.env ?? {};
   const preflightEnv = {
     NOEMA_LLM_API_URL: processEnv.NOEMA_LLM_API_URL,
+    NOEMA_LLM_API_URL_ALLOWLIST_JSON:
+      processEnv.NOEMA_LLM_API_URL_ALLOWLIST_JSON,
     NOEMA_LLM_MODEL: processEnv.NOEMA_LLM_MODEL,
     GITHUB_EVENT_PATH: processEnv.GITHUB_EVENT_PATH,
   };

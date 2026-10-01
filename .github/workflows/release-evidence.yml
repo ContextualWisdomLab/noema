@@ -65,15 +65,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24.19.0"
+          node-version: "24.21.0"
           cache: npm
 
       - name: Verify package-manager toolchain
         shell: bash
         run: |
           set -euo pipefail
-          test "$(node --version)" = "v24.19.0"
-          test "$(npm --version)" = "11.17.0"
+          test "$(node --version)" = "v24.21.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Verify tag, commit, and package version binding
         id: identity
@@ -154,15 +154,15 @@ jobs:
       - name: Set up Node.js for sterile materialization
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24.19.0"
+          node-version: "24.21.0"
           cache: npm
 
       - name: Verify sterile materialization toolchain and source identity
         shell: bash
         run: |
           set -euo pipefail
-          test "$(node --version)" = "v24.19.0"
-          test "$(npm --version)" = "11.17.0"
+          test "$(node --version)" = "v24.21.0"
+          test "$(npm --version)" = "11.19.0"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT_SHA"
           test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT_SHA"
           package_version="$(node --input-type=module -e "import packageJson from './package.json' with { type: 'json' }; process.stdout.write(packageJson.version)")"

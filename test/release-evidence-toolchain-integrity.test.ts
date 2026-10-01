@@ -8,11 +8,11 @@ describe("release evidence toolchain integrity", () => {
     expect(workflow).toContain(
       "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0",
     );
-    expect(workflow).toContain('node-version: "24.19.0"');
-    expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
-    expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(workflow).toContain('node-version: "24.21.0"');
+    expect(workflow).toContain('test "$(node --version)" = "v24.21.0"');
+    expect(workflow).toContain('test "$(npm --version)" = "11.19.0"');
 
-    const toolchainIndex = workflow.indexOf('test "$(npm --version)" = "11.17.0"');
+    const toolchainIndex = workflow.indexOf('test "$(npm --version)" = "11.19.0"');
     const installIndex = workflow.indexOf(
       "npm ci --legacy-peer-deps=false --install-links=false",
     );

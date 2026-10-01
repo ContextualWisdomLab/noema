@@ -8,7 +8,7 @@ describe("contextual-orchestrator direct-provider hostname canonicalization", ()
   it("rejects DNS-root-dot aliases of every forbidden direct provider host", () => {
     for (const host of directProviderHosts()) {
       expect(() => parseOrchestratorGatewayUrl(`https://${host}./v1`)).toThrow(
-        /contextual-orchestrator, not a direct model provider/,
+        /canonical endpoint URL/,
       );
     }
   });
@@ -17,7 +17,7 @@ describe("contextual-orchestrator direct-provider hostname canonicalization", ()
     "rejects a root-dot-only hostname before any health request: %s",
     (url) => {
       expect(() => parseOrchestratorGatewayUrl(url)).toThrow(
-        /absolute HTTPS URL/,
+        /canonical endpoint URL/,
       );
     },
   );

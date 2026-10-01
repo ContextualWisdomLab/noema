@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { BlockList, isIP } from "node:net";
 import { dirname } from "node:path";
 
 import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
@@ -14,9 +15,13 @@ const DIRECT_PROVIDER_HOSTS = Object.freeze([
   "api.nvidia.com",
   "api.bytez.com",
 ]);
+const LOOPBACK_ENDPOINTS = new BlockList();
+LOOPBACK_ENDPOINTS.addSubnet("127.0.0.0", 8, "ipv4");
+LOOPBACK_ENDPOINTS.addAddress("::1", "ipv6");
 const OPENCODE_PROVIDER_ID = "contextual-orchestrator";
 const NON_SECRET_TRANSPORT_NAMES = new Set([
   "NOEMA_LLM_API_URL",
+  "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
   "NOEMA_LLM_MODEL",
 ]);
 const FORBIDDEN_PROVIDER_KEYS = Object.freeze([
@@ -103,7 +108,7 @@ export function orchestratorGatewayConsumers() {
 export function orchestratorGatewayConsumerContract() {
   return Object.freeze({
     id: "contextual-orchestrator-gateway",
-    version: 1,
+    version: 2,
     service: "contextual-orchestrator",
     routing_alias: DEFAULT_ROUTING_ALIAS,
     api_url: Object.freeze({
@@ -112,6 +117,10 @@ export function orchestratorGatewayConsumerContract() {
       allow_userinfo: false,
       allow_query: false,
       allow_fragment: false,
+      require_canonical_serialization: true,
+      allow_loopback: false,
+      exact_released_endpoint_membership: true,
+      allowlist_order_has_routing_meaning: false,
     }),
     healthz: Object.freeze({
       unauthenticated: true,
@@ -123,6 +132,7 @@ export function orchestratorGatewayConsumerContract() {
     }),
     transport_names: Object.freeze({
       api_url: "NOEMA_LLM_API_URL",
+      api_url_allowlist: "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
       model: "NOEMA_LLM_MODEL",
       api_key: "NOEMA_LLM_API_KEY",
     }),
@@ -154,7 +164,7 @@ export function serializeOrchestratorGatewayConsumerContract() {
  *
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} source Transport map.
  * @param {string} name Setting name.
- * @returns {string} Trimmed value, or an empty string when absent.
+ * @returns {string} Exact endpoint/allowlist value, trimmed model, or empty when absent.
  * @throws {Error} When `name` is not an approved non-secret gateway setting.
  */
 export function readGatewayTransportValue(source, name) {
@@ -162,7 +172,8 @@ export function readGatewayTransportValue(source, name) {
     throw new Error("gateway preflight may read only non-secret gateway settings");
   }
   const raw = source?.[name];
-  return typeof raw === "string" ? raw.trim() : "";
+  if (typeof raw !== "string") return "";
+  return name === "NOEMA_LLM_MODEL" ? raw.trim() : raw;
 }
 
 /**
@@ -182,38 +193,61 @@ export function boundedGatewayError(error) {
 /**
  * Parse and accept only an HTTPS OpenAI-compatible gateway base URL ending in /v1.
  *
- * @param {string} rawUrl Candidate `NOEMA_LLM_API_URL`.
+ * @param {string} rawUrl Candidate endpoint URL.
+ * @param {string} [name] Configuration name used in bounded diagnostics.
  * @returns {{ href: string, healthzUrl: string, hostname: string }} Canonical URL parts.
  * @throws {Error} When the URL is not the production gateway contract.
  */
-export function parseOrchestratorGatewayUrl(rawUrl) {
-  const apiUrl = String(rawUrl ?? "").trim();
+export function parseOrchestratorGatewayUrl(rawUrl, name = "NOEMA_LLM_API_URL") {
+  const apiUrl = String(rawUrl ?? "");
   let parsed;
   try {
     parsed = new URL(apiUrl);
   } catch {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+    throw new Error(`${name} must be an absolute HTTPS URL`);
   }
   if (parsed.protocol !== "https:") {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+    throw new Error(`${name} must be an absolute HTTPS URL`);
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error(
-      "NOEMA_LLM_API_URL must not contain credentials, query, or fragment",
+      `${name} must not contain credentials, query, or fragment`,
     );
   }
-  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/u, "");
-  if (!hostname) {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
+  const rawHostname = parsed.hostname.toLowerCase();
+  if (rawHostname.endsWith(".")) {
+    throw new Error(`${name} must be a canonical endpoint URL`);
+  }
+  const hostname = rawHostname.replace(/\.+$/u, "");
+  if (!hostname.startsWith("[")) {
+    const hostnameLabels = hostname.split(".");
+    if (hostnameLabels.some((label) => !label || label.length > 63)) {
+      throw new Error(`${name} must be a canonical endpoint URL`);
+    }
   }
   if (DIRECT_PROVIDER_HOSTS.includes(hostname)) {
     throw new Error(
-      "Noema production jobs must use contextual-orchestrator, not a direct model provider",
+      `${name} must use contextual-orchestrator, not a direct model provider`,
     );
+  }
+  const ipHostname = hostname.replace(/^\[|\]$/gu, "");
+  const ipVersion = isIP(ipHostname);
+  if (ipVersion === 6 && ipHostname.startsWith("::ffff:")) {
+    throw new Error(`${name} must not use an IPv4-mapped IPv6 endpoint`);
+  }
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    (ipVersion !== 0 && LOOPBACK_ENDPOINTS.check(
+      ipHostname,
+      ipVersion === 4 ? "ipv4" : "ipv6",
+    ))
+  ) {
+    throw new Error(`${name} must not target a loopback endpoint`);
   }
   const path = parsed.pathname.replace(/\/+$/u, "") || "";
   if (!path.endsWith("/v1")) {
-    throw new Error("NOEMA_LLM_API_URL must end in /v1");
+    throw new Error(`${name} must end in /v1`);
   }
   const healthPath = `${path.slice(0, -3)}/healthz`;
   parsed.pathname = path;
@@ -221,11 +255,77 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
   parsed.hash = "";
   const healthUrl = new URL(parsed.href);
   healthUrl.pathname = healthPath;
+  if (apiUrl !== parsed.href) {
+    throw new Error(`${name} must be a canonical endpoint URL`);
+  }
   return {
     href: parsed.href,
     healthzUrl: healthUrl.href,
     hostname,
   };
+}
+
+/**
+ * Parse the released contextual-orchestrator endpoint allowlist.
+ *
+ * The array is an admission set only: order never selects an endpoint and
+ * Noema never retries or falls back across members.
+ *
+ * @param {string} rawJson JSON array from `NOEMA_LLM_API_URL_ALLOWLIST_JSON`.
+ * @returns {readonly string[]} Canonical exact `/v1` endpoint URLs.
+ * @throws {Error} When the allowlist is absent, malformed, ambiguous, or unsafe.
+ */
+export function parseOrchestratorGatewayApiUrlAllowlist(rawJson) {
+  let decoded;
+  try {
+    decoded = JSON.parse(String(rawJson ?? ""));
+  } catch {
+    throw new Error(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON must be a non-empty JSON array of exact released endpoints",
+    );
+  }
+  if (!Array.isArray(decoded) || decoded.length === 0) {
+    throw new Error(
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON must be a non-empty JSON array of exact released endpoints",
+    );
+  }
+  const canonical = [];
+  for (const value of decoded) {
+    if (typeof value !== "string" || !value || value.includes("*")) {
+      throw new Error(
+        "NOEMA_LLM_API_URL_ALLOWLIST_JSON members must be exact released endpoint URLs",
+      );
+    }
+    const parsed = parseOrchestratorGatewayUrl(
+      value,
+      "NOEMA_LLM_API_URL_ALLOWLIST_JSON",
+    );
+    if (canonical.includes(parsed.href)) {
+      throw new Error(
+        "NOEMA_LLM_API_URL_ALLOWLIST_JSON must not contain duplicate endpoints",
+      );
+    }
+    canonical.push(parsed.href);
+  }
+  return Object.freeze(canonical);
+}
+
+/**
+ * Require the selected gateway URL to be an exact released endpoint member.
+ *
+ * @param {string} rawUrl Selected `NOEMA_LLM_API_URL`.
+ * @param {readonly string[]} allowedApiUrls Parsed released endpoint set.
+ * @returns {{ href: string, healthzUrl: string, hostname: string }} Canonical URL parts.
+ * @throws {Error} When the selected URL is not an exact member.
+ */
+export function requireAllowedOrchestratorGatewayUrl(rawUrl, allowedApiUrls) {
+  const gateway = parseOrchestratorGatewayUrl(rawUrl);
+  if (!Array.isArray(allowedApiUrls) || !allowedApiUrls.includes(gateway.href)) {
+    throw new Error(
+      "NOEMA_LLM_API_URL is not an allowed released contextual-orchestrator endpoint",
+    );
+  }
+  return gateway;
 }
 
 /**
@@ -462,11 +562,14 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
  * not silently acquire authority; every additional capability must be reviewed
  * and allowlisted explicitly at this boundary.
  *
- * @param {{ apiUrl: string, model: string }} settings Validated gateway settings.
+ * @param {{ apiUrl: string, allowedApiUrls: readonly string[], model: string }} settings Validated gateway settings.
  * @returns {object} OpenCode configuration object.
  */
 export function buildOpenCodeOrchestratorConfig(settings) {
-  const gateway = parseOrchestratorGatewayUrl(settings.apiUrl);
+  const gateway = requireAllowedOrchestratorGatewayUrl(
+    settings.apiUrl,
+    settings.allowedApiUrls,
+  );
   const model = resolveOrchestratorModel(settings.model);
   const providerModel = `${OPENCODE_PROVIDER_ID}/${model}`;
   return {
@@ -519,7 +622,7 @@ export function buildOpenCodeOrchestratorConfig(settings) {
  * Write the owner-only OpenCode config after the gateway URL is validated.
  *
  * @param {string} outputPath Destination file.
- * @param {{ apiUrl: string, model: string }} settings Validated gateway settings.
+ * @param {{ apiUrl: string, allowedApiUrls: readonly string[], model: string }} settings Validated gateway settings.
  * @returns {object} Written configuration.
  */
 export function writeOpenCodeOrchestratorConfig(outputPath, settings) {
@@ -548,16 +651,20 @@ export function writeOpenCodeOrchestratorConfig(outputPath, settings) {
 export async function verifyOrchestratorGatewayContract(input) {
   const env = input.env ?? {};
   const apiUrl = readGatewayTransportValue(env, "NOEMA_LLM_API_URL");
+  const allowedApiUrls = parseOrchestratorGatewayApiUrlAllowlist(
+    readGatewayTransportValue(env, "NOEMA_LLM_API_URL_ALLOWLIST_JSON"),
+  );
   const model = resolveOrchestratorModel(
     readGatewayTransportValue(env, "NOEMA_LLM_MODEL"),
   );
-  const gateway = parseOrchestratorGatewayUrl(apiUrl);
+  const gateway = requireAllowedOrchestratorGatewayUrl(apiUrl, allowedApiUrls);
   await verifyOrchestratorHealthz(gateway.healthzUrl, {
     fetchImpl: input.fetchImpl,
   });
   if (input.openCodeConfigPath) {
     writeOpenCodeOrchestratorConfig(input.openCodeConfigPath, {
       apiUrl: gateway.href,
+      allowedApiUrls,
       model,
     });
   }

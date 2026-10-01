@@ -4,8 +4,9 @@ import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validato
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const providerDigest = `sha256:${"a".repeat(64)}`;
-const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function scannerOutput(matches: unknown[]) {
   return {
@@ -41,7 +42,7 @@ function inputFor(matches: unknown[]) {
       artifacts: [
         {
           name: "node",
-          version: "24.19.0",
+          version: "24.21.0",
           locations: [{ path: "/nodejs/bin/node" }],
           cpes: [nodeCpe],
         },
@@ -56,8 +57,12 @@ function inputFor(matches: unknown[]) {
     embeddedRuntimeInventory: {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
-      node_version: "24.19.0",
-      process_versions: { node: "24.19.0", openssl: "3.5.2" },
+      node_version: "24.21.0",
+      process_versions: {
+        node: "24.21.0",
+        openssl: "3.5.2",
+        undici: "7.29.1",
+      },
       components: [
         {
           key: "openssl",
@@ -65,6 +70,13 @@ function inputFor(matches: unknown[]) {
           version: "3.5.2",
           classification: "bundled_dependency",
           cpe: opensslCpe,
+        },
+        {
+          key: "undici",
+          name: "undici",
+          version: "7.29.1",
+          classification: "bundled_dependency",
+          purl: undiciPurl,
         },
       ],
     },
@@ -78,6 +90,14 @@ function inputFor(matches: unknown[]) {
           key: "openssl",
           identity: opensslCpe,
           scanner_output: scannerOutput(matches),
+        },
+        {
+          key: "undici",
+          identity: undiciPurl,
+          scanner_output: {
+            ...scannerOutput([]),
+            source: { type: "purl", target: undiciPurl },
+          },
         },
       ],
     },

@@ -2,6 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("product-technical gap current authority", () => {
+  it("records the current patch-validator candidate without promoting transient scanner evidence", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(baseline).toContain("scanner acquisition reliability");
+    expect(baseline).toContain("bounded exponential retry");
+    expect(baseline).toContain("HTTP 500");
+    expect(baseline).toContain("Ready / Proposed / merge HOLD");
+    expect(baseline).toContain("queued is not GREEN");
+  });
+
   it("records integrated external-extension admission and the durable lifecycle successor without overclaiming completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 

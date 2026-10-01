@@ -84,6 +84,10 @@ describe("patch-validator pull-request image verification", () => {
     );
     expect(workflow).toContain("version: v0.74.0");
     expect(workflow).not.toContain("version: v0.73.0");
+    expect(workflow).toContain("--retry 7");
+    expect(workflow).toContain("--retry-delay 0");
+    expect(workflow).toContain("--retry-max-time 240");
+    expect(workflow).not.toContain("--retry-delay 2");
     expect(workflow).toContain(
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     );
@@ -94,7 +98,7 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
     expect(workflow).toContain("Verify static Node runtime identity");
     expect(workflow).toContain(
-      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
+      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.21.0"',
     );
     expect(workflow).toContain("readelf -l \"$node_binary\"");
     expect(workflow).toContain("readelf -d \"$node_binary\"");

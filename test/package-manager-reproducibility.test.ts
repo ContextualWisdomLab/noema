@@ -52,15 +52,15 @@ function runFixtureNpm(
 
 describe("package-manager reproducibility contract", () => {
   it("pins the reviewed Node and npm identities in repository metadata", () => {
-    expect(packageJson.packageManager).toBe("npm@11.17.0");
+    expect(packageJson.packageManager).toBe("npm@11.19.0");
     expect(packageJson.devEngines?.runtime).toEqual({
       name: "node",
-      version: "24.19.0",
+      version: "24.21.0",
       onFail: "error",
     });
     expect(packageJson.devEngines?.packageManager).toEqual({
       name: "npm",
-      version: "11.17.0",
+      version: "11.19.0",
       onFail: "error",
     });
   });
@@ -144,13 +144,13 @@ describe("package-manager reproducibility contract", () => {
   });
 
   it("pins CI to the same Node distribution and verifies toolchain identity before install", () => {
-    expect(ciWorkflow).toContain('node-version: "24.19.0"');
+    expect(ciWorkflow).toContain('node-version: "24.21.0"');
     const toolchainGate = ciWorkflow.indexOf("name: verify package-manager toolchain");
     const install = ciWorkflow.indexOf("name: install");
     expect(toolchainGate).toBeGreaterThan(-1);
     expect(install).toBeGreaterThan(toolchainGate);
-    expect(ciWorkflow).toContain('test "$(node --version)" = "v24.19.0"');
-    expect(ciWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(ciWorkflow).toContain('test "$(node --version)" = "v24.21.0"');
+    expect(ciWorkflow).toContain('test "$(npm --version)" = "11.19.0"');
   });
 
   it("checks out and verifies the exact pull-request head instead of GitHub's synthetic merge ref", () => {

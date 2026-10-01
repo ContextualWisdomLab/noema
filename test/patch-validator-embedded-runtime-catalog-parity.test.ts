@@ -39,7 +39,7 @@ describe("patch-validator embedded-runtime reviewed identity catalog parity", ()
   });
 
   it("binds Node's patched V8 runtime to the reviewed upstream V8 CPE version", () => {
-    const processVersion = "13.6.233.17-node.51";
+    const processVersion = "13.6.233.17-node.53";
     const expected = "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
     const identity = reviewedIdentityFor("v8", processVersion);
 

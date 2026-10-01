@@ -10,7 +10,7 @@ The current slice verifies a locally built Linux/amd64 image from the exact pull
 
 - checks and re-checks the live exact PR head with read-only GitHub authority;
 - builds with an immutable Dockerfile frontend and digest-pinned builders;
-- compiles Node.js 24.19.0 from the official source tarball after fixed SHA-256 authentication;
+- compiles Node.js 24.21.0 from the official source tarball after fixed SHA-256 authentication;
 - links Node fully statically and copies it into a `scratch` final image;
 - retains the exact Node.js source-distribution `LICENSE` inside the final image, bounds and verifies that notice from the exported runtime, and preserves it with the verification evidence;
 - excludes a shell, package manager, native addon, shared library, dynamic interpreter, and dynamic `NEEDED` dependency from the final runtime;
@@ -75,7 +75,7 @@ The following authorities remain separate: source authentication, image build, u
 
 ## Image identity and runtime contents
 
-`Dockerfile.patch-validator` pins its Dockerfile frontend and non-final builders by SHA-256 digest. The Node builder downloads the official Node.js 24.19.0 source tarball with a fixed SHA-256 and compiles it with the fully-static configuration. The final stage is `scratch`; it does not inherit a distribution runtime or package database.
+`Dockerfile.patch-validator` pins its Dockerfile frontend and non-final builders by SHA-256 digest. The Node builder downloads the official Node.js 24.21.0 source tarball with a fixed SHA-256 and compiles it with the fully-static configuration. The final stage is `scratch`; it does not inherit a distribution runtime or package database.
 
 The static Node package note carries the reviewed Node.js application CPE and metadata. It deliberately does not claim a `pkg:generic` identity. Generic package URLs are not accepted as evidence that the configured vulnerability matcher can identify a component.
 
@@ -107,13 +107,13 @@ Container stdout, stderr, and private result contents are not trusted as identit
 
 ## Static-runtime vulnerability boundary
 
-Trivy covers the ordinary image/package and JavaScript dependency surface. Syft separately proves that the self-compiled executable is catalogued as Node 24.19.0 at `/nodejs/bin/node` with the reviewed Node.js CPE. Grype separately scans that exact local image. The trusted verifier binds scanner descriptors, source targets, image identity, match structure, ignored-match policy, and severity policy.
+Trivy covers the ordinary image/package and JavaScript dependency surface. Syft separately proves that the self-compiled executable is catalogued as Node 24.21.0 at `/nodejs/bin/node` with the reviewed Node.js CPE. Grype separately scans that exact local image. The trusted verifier binds scanner descriptors, source targets, image identity, match structure, ignored-match policy, and severity policy.
 
 A zero match count is not independently interpreted as proof that every static dependency was evaluated. The embedded-runtime boundary below exists specifically to avoid that inference.
 
 ## Embedded-runtime component evidence
 
-The workflow runs the exact built Node executable and records `process.versions`. The trusted verifier requires `node` to equal `24.19.0`. It accepts `modules` and `napi` only as reviewed runtime metadata with explicit reasons; every other key must be represented by the reviewed component-identity catalog.
+The workflow runs the exact built Node executable and records `process.versions`. The trusted verifier requires `node` to equal `24.21.0` and `undici` to equal the reviewed fixed version `7.29.1`. The Docker build checks that Undici identity both before and after binary stripping/package-note insertion. It accepts `modules` and `napi` only as reviewed runtime metadata with explicit reasons; every other key must be represented by the reviewed component-identity catalog.
 
 For each reviewed embedded dependency, the catalog binds the exact `process.versions` key, inventory name, version, and either a supported npm PURL package identity or a reviewed application CPE vendor/product identity. Wildcards, placeholders, partial identities, arbitrary aliases, version substitution, package substitution, and unknown components fail closed.
 
