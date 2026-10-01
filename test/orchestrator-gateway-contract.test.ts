@@ -273,7 +273,7 @@ describe("contextual-orchestrator gateway contract", () => {
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
-    })).rejects.toThrow(/absolute HTTPS URL/);
+    })).rejects.toThrow(/NOEMA_LLM_API_URL_ALLOWLIST_JSON/);
   });
 
   it("keeps the CLI fail-closed without requiring secret access", async () => {
@@ -497,7 +497,9 @@ describe("contextual-orchestrator gateway contract", () => {
       },
     });
     expect(await emptyProcessCli()).toBe(1);
-    expect(emptyProcessStderr.join("")).toMatch(/absolute HTTPS URL/);
+    expect(emptyProcessStderr.join("")).toMatch(
+      /NOEMA_LLM_API_URL_ALLOWLIST_JSON/,
+    );
     process.exitCode = previousProcessExit;
   });
 });

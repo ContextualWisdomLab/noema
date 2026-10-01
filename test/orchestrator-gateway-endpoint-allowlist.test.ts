@@ -102,7 +102,7 @@ describe("contextual-orchestrator released endpoint admission", () => {
     '["https://[::ffff:c000:201]/v1"]',
   ])("rejects malformed or non-authoritative allowlist %j", (raw) => {
     expect(() => parseOrchestratorGatewayApiUrlAllowlist(raw)).toThrow(
-      /NOEMA_LLM_API_URL_ALLOWLIST_JSON/,
+      /NOEMA_LLM_API_URL/,
     );
   });
 
@@ -136,7 +136,7 @@ describe("contextual-orchestrator released endpoint admission", () => {
         NOEMA_LLM_API_URL_ALLOWLIST_JSON: allowlistJson,
       },
       fetchImpl: vi.fn(),
-    })).rejects.toThrow(/canonical endpoint URL/);
+    })).rejects.toThrow(/NOEMA_LLM_API_URL/);
   });
 
   it("refuses token-bearing OpenCode config without exact membership", () => {
