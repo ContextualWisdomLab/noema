@@ -8,9 +8,15 @@ non-empty unordered JSON set populated from an immutable released CO endpoint
 contract; the selected `NOEMA_LLM_API_URL` must be a canonical HTTPS `/v1`
 member before health I/O or OpenCode/Python client construction. This closes
 the prior denylist/self-asserted-health gap without moving provider/model
-eligibility out of CO. Status: **Proposed / Draft HOLD** pending complete local
-and protected exact-head CI, review, immutable CO endpoint evidence, and normal
-merge.
+eligibility out of CO. Completion evidence remains non-terminal.
+
+The active #737 candidate also repairs scanner acquisition reliability after
+an exact-head patch-validator-image run received repeated GitHub release-asset
+HTTP 500 responses. The checksum-authenticated HTTPS downloader now uses a
+bounded exponential retry within its existing outer timeout. Status:
+**Ready / Proposed / merge HOLD** pending fresh exact-head CI, reviewer,
+Security Scan, image/SBOM receipts, immutable CO endpoint evidence, qualifying
+independent approval, and ordinary merge; queued is not GREEN.
 
 ## Authority and update rule
 
@@ -145,7 +151,7 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 | P0 | Durable workflow/state production evidence | source Durable Object logic·object-size observation이 deployed recovery/SLO로 오인될 위험 | protected #542 + #605 / ADR 0013 / issue #541 | source + exact-object observation integrated; ADR 0013 Proposed | immutable release/deployment + exact-object transaction/restart/recovery + representative storage-growth denominator + p95 + PITR/rollback | approved deployment owner에서 exact protected release 대상으로 runtime/recovery receipt 확보 |
 | P0 | Protected-main governance closure | Security workflow 하나로 PR/review/history/deletion/bypass 통제를 과대 주장할 위험 | issue #27 | external control evidence open | live ruleset + PR/review/conversation/history/deletion + bypass evidence | admin/owner control을 독립 검증 |
 | P0 | Patch-validator operational publication | PR image CI가 immutable runtime publication으로 오인될 위험 | issue #66 | source/image integrated; publication open | protected-main execution + immutable image/signature/SBOM/provenance/rollback | operational receipt 뒤 publication/signing 검증 |
-| P0 | Patch-validator bundled Undici vulnerability | protected Node 24.19.0 static image의 bundled Undici 7.29.0/GHSA-3wwx-pv8p-q78v가 exact-image scanner gate를 차단 | issue #734; dependent Draft PR #733 | PR #737 predecessor `f9eb3878b0a1d350d774c7c165453aa2a56d2f6b`의 네 hosted workflow는 GREEN이지만, final receipt verifier가 internally consistent한 non-reviewed Undici version을 거부하지 않는 독립 Major finding이 남아 exact-match RED→GREEN repair와 fresh exact-head evidence가 진행 중 | exact PR-head build/smoke + Node/Undici inventory + final verifier exact Undici assertion + raw scanner receipt with no blocking finding + full CI/typecheck/coverage + independent approval + ordinary merge + immutable release evidence | verifier repair를 PR #737에 통합하고 fresh exact-head review/check를 통과시킨 뒤 ordinary merge; #733은 release 전 Draft 유지 |
+| P0 | Patch-validator bundled Undici vulnerability | protected Node 24.19.0 static image의 bundled Undici 7.29.0/GHSA-3wwx-pv8p-q78v가 exact-image scanner gate를 차단 | issue #734; active PR #737; dependent Draft PRs #733/#736 | PR #737 active candidate에 final receipt exact Undici assertion, released gateway endpoint admission, review-contract repair와 bounded scanner acquisition reliability repair가 통합됐지만 fresh exact-head evidence와 qualifying independent approval은 non-terminal | exact PR-head build/smoke + Node/Undici inventory + final verifier exact Undici assertion + raw scanner receipt with no blocking finding + full CI/typecheck/coverage + independent approval + ordinary merge + immutable release evidence | PR #737 fresh exact-head review/check를 통과시킨 뒤 ordinary merge; #733/#736은 prerequisite integration과 release 전 Draft 유지 |
 | P0 | Authentic production KPI evidence | synthetic/source KPI가 실제 운영 성능으로 오인될 위험 | issue #3 | >=30-day production window absent | authenticated production bytes + provenance + strict KPI gate | 실제 production evidence만 수집 |
 | P0 | Acquisition coordination | source/docs completion이 buyer/legal/transfer readiness로 오인될 위험 | issue #5 | evidence families incomplete | exact release/deployment/operational/legal evidence | owner별 evidence family 수렴 |
 | P0 | External Maintainer/Reviewer App identity | source preflight가 실제 App installation/reviewer authority로 오인될 위험 | issues #29 / #227 | live identity evidence absent | installation/key custody/permission/reviewer eligibility | external control-plane에서 독립 검증 |
