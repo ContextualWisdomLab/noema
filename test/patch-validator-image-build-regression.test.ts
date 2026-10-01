@@ -88,7 +88,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(scannerStep).toContain("--proto-redir '=https'");
     expect(scannerStep).toContain("--connect-timeout 20");
     expect(scannerStep).toContain("--max-time 180");
-    expect(scannerStep).toContain("--retry-max-time 90");
+    expect(scannerStep).toContain("--retry-max-time 240");
     expect(scannerStep).toContain("sha256sum --check --strict");
   });
 
