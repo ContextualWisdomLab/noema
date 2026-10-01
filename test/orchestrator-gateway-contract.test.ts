@@ -379,6 +379,11 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(narrative).toContain("naruon is a first-class consumer");
     expect(narrative).toContain("separate repository pull request");
     expect(narrative).toContain("Do not clone an OpenCode sidecar");
+    expect(narrative).toContain("parseOrchestratorGatewayApiUrlAllowlist");
+    expect(narrative).toContain("requireAllowedOrchestratorGatewayUrl");
+    expect(narrative).toMatch(
+      /parseOrchestratorGatewayUrl`\s+alone is not sufficient/,
+    );
   });
 
   it("prints the consumer contract without reading secrets", async () => {

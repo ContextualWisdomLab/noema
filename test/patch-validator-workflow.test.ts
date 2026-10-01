@@ -84,6 +84,10 @@ describe("patch-validator pull-request image verification", () => {
     );
     expect(workflow).toContain("version: v0.74.0");
     expect(workflow).not.toContain("version: v0.73.0");
+    expect(workflow).toContain("--retry 7");
+    expect(workflow).toContain("--retry-delay 0");
+    expect(workflow).toContain("--retry-max-time 240");
+    expect(workflow).not.toContain("--retry-delay 2");
     expect(workflow).toContain(
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     );

@@ -12,9 +12,15 @@ non-empty unordered JSON set populated from an immutable released CO endpoint
 contract; the selected `NOEMA_LLM_API_URL` must be a canonical HTTPS `/v1`
 member before health I/O or OpenCode/Python client construction. This closes
 the prior denylist/self-asserted-health gap without moving provider/model
-eligibility out of CO. Status: **Proposed / Draft HOLD** pending complete local
-and protected exact-head CI, review, immutable CO endpoint evidence, and normal
-merge.
+eligibility out of CO. Completion evidence remains non-terminal.
+
+The active #737 candidate also repairs scanner acquisition reliability after
+an exact-head patch-validator-image run received repeated GitHub release-asset
+HTTP 500 responses. The checksum-authenticated HTTPS downloader now uses a
+bounded exponential retry within its existing outer timeout. Status:
+**Ready / Proposed / merge HOLD** pending fresh exact-head CI, reviewer,
+Security Scan, image/SBOM receipts, immutable CO endpoint evidence, qualifying
+independent approval, and ordinary merge; queued is not GREEN.
 
 ## Authority and update rule
 
