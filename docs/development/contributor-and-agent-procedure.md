@@ -61,7 +61,9 @@ Sandbox and evidence-collection isolation:
 
 `.github/workflows/hourly-product-development.yml` runs a proposal-only
 OpenCode session through the same `contextual-orchestrator` gateway contract as
-review (`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`).
+review (`NOEMA_LLM_API_URL`, exact released
+`NOEMA_LLM_API_URL_ALLOWLIST_JSON`, `NOEMA_LLM_MODEL`, dedicated
+`NOEMA_LLM_API_KEY`).
 Admission is work-conserving: existing open pull requests are not a global stop
 condition, but publication fails closed unless the proposal changed path set is
 disjoint from every open PR and the default-branch base is unchanged. It does

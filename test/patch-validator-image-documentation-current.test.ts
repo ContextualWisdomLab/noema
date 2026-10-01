@@ -20,7 +20,7 @@ describe("patch-validator image documentation", () => {
       .find((line) => line.startsWith("- repository-owned patch-validator image"));
 
     expect(imageEntry).toBeDefined();
-    expect(imageEntry).toContain("Node.js 24.19.0");
+    expect(imageEntry).toContain("Node.js 24.21.0");
     expect(imageEntry).toContain("`scratch`");
     expect(imageEntry).toContain("`process.versions`");
     expect(imageEntry).not.toContain("Distroless runtime digest");

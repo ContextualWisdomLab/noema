@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 
 import pytest
 
@@ -14,7 +15,15 @@ FREE_POOL = "orchestrator/free"
 
 def _kv(values: dict[str, str]):
     """Build a credential getter backed by a dict."""
-    return lambda name: values.get(name)
+    transport = dict(values)
+    if (
+        "NOEMA_LLM_API_URL" in transport
+        and "NOEMA_LLM_API_URL_ALLOWLIST_JSON" not in transport
+    ):
+        transport["NOEMA_LLM_API_URL_ALLOWLIST_JSON"] = json.dumps(
+            [transport["NOEMA_LLM_API_URL"]]
+        )
+    return lambda name: transport.get(name)
 
 
 def test_reviewer_accepts_only_the_canonical_free_pool() -> None:

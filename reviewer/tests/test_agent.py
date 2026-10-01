@@ -57,6 +57,7 @@ def _config(*, zdr_only: bool = False) -> ReviewerConfig:
         model_name="orchestrator/free",
         base_url="https://orchestrator.example/v1",
         api_key="gateway-token",
+        allowed_base_urls=("https://orchestrator.example/v1",),
         zdr_only=zdr_only,
     )
 

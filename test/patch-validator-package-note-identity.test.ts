@@ -14,7 +14,7 @@ describe("patch-validator package note identity", () => {
 
     expect(dockerfile).not.toContain("pkg:generic/");
     expect(dockerfile).toContain(
-      '"cpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*"',
+      '"cpe":"cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*"',
     );
   });
 

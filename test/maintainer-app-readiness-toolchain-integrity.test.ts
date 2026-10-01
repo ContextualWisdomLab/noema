@@ -46,9 +46,9 @@ describe("maintainer App readiness runtime integrity", () => {
     expect(setup.block).toContain(
       "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0",
     );
-    expect(setup.block).toContain('node-version: "24.19.0"');
+    expect(setup.block).toContain('node-version: "24.21.0"');
     expect(setup.block).not.toContain('node-version: "24"');
-    expect(verify.block).toContain('test "$(node --version)" = "v24.19.0"');
+    expect(verify.block).toContain('test "$(node --version)" = "v24.21.0"');
 
     expect(setup.index).toBeLessThan(verify.index);
     expect(verify.index).toBeLessThan(governance.index);

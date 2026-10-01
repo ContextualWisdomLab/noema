@@ -2,12 +2,13 @@
 
 FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder
 
-ARG NODE_VERSION=24.19.0
-ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f
+ARG NODE_VERSION=24.21.0
+ARG NODE_SOURCE_SHA256=a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc
 ARG OPENSSL_VERSION=3.5.8
 ARG OPENSSL_SOURCE_SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
 ARG CARES_VERSION=1.34.8
 ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78
+ARG UNDICI_VERSION=7.29.1
 
 RUN apk add --no-cache \
       binutils-gold \
@@ -108,24 +109,26 @@ RUN ./configure \
     && make -j"$(getconf _NPROCESSORS_ONLN)" V= \
     && make install \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
-    && test "$(/opt/node/bin/npm --version)" = "11.17.0" \
+    && test "$(/opt/node/bin/npm --version)" = "11.19.0" \
     && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
+    && UNDICI_VERSION="${UNDICI_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error(`unexpected Undici ${process.versions.undici}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
     && strip /opt/node/bin/node \
     && printf '%s\n' \
-      '{"name":"node","version":"24.19.0","cpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","license":"MIT","type":"binary","architecture":"x86_64","appCpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","system":"nodejs","vendor":"nodejs","sourceRepo":"https://github.com/nodejs/node"}' \
+      '{"name":"node","version":"24.21.0","cpe":"cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*","license":"MIT","type":"binary","architecture":"x86_64","appCpe":"cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*","system":"nodejs","vendor":"nodejs","sourceRepo":"https://github.com/nodejs/node"}' \
       >/tmp/node-package-note.json \
     && objcopy \
       --add-section .note.package=/tmp/node-package-note.json \
       --set-section-flags .note.package=noload,readonly \
       /opt/node/bin/node \
     && readelf -p .note.package /opt/node/bin/node \
-      | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
+      | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
+    && UNDICI_VERSION="${UNDICI_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.undici !== process.env.UNDICI_VERSION) throw new Error(`unexpected Undici ${process.versions.undici}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \

@@ -7,7 +7,7 @@ describe("patch-validator embedded scanner artifact version binding", () => {
     expect(
       expectedScannerArtifactVersion(
         "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*",
-        "13.6.233.17-node.51",
+        "13.6.233.17-node.53",
       ),
     ).toBe("13.6.233.17");
   });
@@ -26,7 +26,7 @@ describe("patch-validator embedded scanner artifact version binding", () => {
 
   it("fails closed instead of accepting an unreviewable CPE shape", () => {
     expect(() =>
-      expectedScannerArtifactVersion("cpe:2.3:a:google:v8", "13.6.233.17-node.51"),
+      expectedScannerArtifactVersion("cpe:2.3:a:google:v8", "13.6.233.17-node.53"),
     ).toThrow(/reviewed CPE identity is invalid/i);
   });
 });

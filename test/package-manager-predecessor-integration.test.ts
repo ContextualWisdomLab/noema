@@ -22,15 +22,15 @@ describe("deterministic package-manager work integrated after the nanoid predece
       integrity:
         "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==",
     });
-    expect(packageJson.packageManager).toBe("npm@11.17.0");
+    expect(packageJson.packageManager).toBe("npm@11.19.0");
     expect(packageJson.devEngines?.runtime).toEqual({
       name: "node",
-      version: "24.19.0",
+      version: "24.21.0",
       onFail: "error",
     });
     expect(packageJson.devEngines?.packageManager).toEqual({
       name: "npm",
-      version: "11.17.0",
+      version: "11.19.0",
       onFail: "error",
     });
   });

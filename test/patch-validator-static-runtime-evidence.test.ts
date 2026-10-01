@@ -4,9 +4,9 @@ import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validato
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const providerDigest = `sha256:${"a".repeat(64)}`;
-const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
-const undiciPurl = "pkg:npm/undici@7.13.0";
+const undiciPurl = "pkg:npm/undici@7.29.1";
 
 function rawScannerOutput(
   identity: string,
@@ -77,7 +77,7 @@ function validInput(): any {
       artifacts: [
         {
           name: "node",
-          version: "24.19.0",
+          version: "24.21.0",
           locations: [{ path: "/nodejs/bin/node" }],
           cpes: [{ cpe: nodeCpe, source: "syft-generated" }],
         },
@@ -107,11 +107,11 @@ function validInput(): any {
     embeddedRuntimeInventory: {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
-      node_version: "24.19.0",
+      node_version: "24.21.0",
       process_versions: {
-        node: "24.19.0",
+        node: "24.21.0",
         openssl: "3.5.2",
-        undici: "7.13.0",
+        undici: "7.29.1",
       },
       components: [
         {
@@ -124,7 +124,7 @@ function validInput(): any {
         {
           key: "undici",
           name: "undici",
-          version: "7.13.0",
+          version: "7.29.1",
           classification: "bundled_dependency",
           purl: undiciPurl,
         },
@@ -145,7 +145,7 @@ function validInput(): any {
               {
                 artifact: {
                   name: "undici",
-                  version: "7.13.0",
+                  version: "7.29.1",
                   purl: undiciPurl,
                 },
                 vulnerability: { id: "GHSA-2099-0001", severity: "Low" },
@@ -165,7 +165,7 @@ describe("static runtime binary evidence verifier", () => {
     expect(verifyStaticRuntimeBinaryEvidence(validInput())).toEqual({
       binary_cataloger: "syft@1.50.0",
       binary_vulnerability_scanner: "grype@0.116.1",
-      node_runtime_version: "24.19.0",
+      node_runtime_version: "24.21.0",
       binary_package_count: 2,
       binary_vulnerability_match_count: 2,
       blocked_binary_vulnerability_count: 0,
@@ -176,12 +176,29 @@ describe("static runtime binary evidence verifier", () => {
     });
   });
 
+  it("rejects internally consistent evidence for a non-reviewed Undici version", () => {
+    const input = validInput();
+    const stalePurl = "pkg:npm/undici@7.29.0";
+    input.embeddedRuntimeInventory.process_versions.undici = "7.29.0";
+    input.embeddedRuntimeInventory.components[1].version = "7.29.0";
+    input.embeddedRuntimeInventory.components[1].purl = stalePurl;
+    input.embeddedVulnerabilityScan.components[1] = {
+      key: "undici",
+      identity: stalePurl,
+      scanner_output: rawScannerOutput(stalePurl),
+    };
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /undici.*reviewed fixed version 7\.29\.1/i,
+    );
+  });
+
   it("accepts Syft imageId spelling, accessPath, and string CPE serialization", () => {
     const input = validInput();
     input.binarySbom.source.metadata = { imageId: imageDigest };
     input.binarySbom.artifacts[0].locations = [{ accessPath: "/nodejs/bin/node" }];
     input.binarySbom.artifacts[0].cpes = [nodeCpe];
-    expect(verifyStaticRuntimeBinaryEvidence(input).node_runtime_version).toBe("24.19.0");
+    expect(verifyStaticRuntimeBinaryEvidence(input).node_runtime_version).toBe("24.21.0");
   });
 
   it("rejects a blocking advisory on an embedded runtime dependency even when the Node CPE lane is clean", () => {
@@ -189,7 +206,7 @@ describe("static runtime binary evidence verifier", () => {
     input.embeddedRuntimeInventory = {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
-      node_version: "24.19.0",
+      node_version: "24.21.0",
       components: [
         {
           key: "openssl",
@@ -237,8 +254,8 @@ describe("static runtime binary evidence verifier", () => {
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].locations = [{ path: "/other" }]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = null; }],
     ["Syft package CPE", (x) => { x.binarySbom.artifacts[0].cpes = [42]; }],
-    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = [{ cpe: "cpe:2.3:a:other:node:24.19.0:*:*:*:*:*:*:*" }]; }],
-    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = ["cpe:2.3:a:other:node:24.19.0:*:*:*:*:*:*:*"]; }],
+    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = [{ cpe: "cpe:2.3:a:other:node:24.21.0:*:*:*:*:*:*:*" }]; }],
+    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = ["cpe:2.3:a:other:node:24.21.0:*:*:*:*:*:*:*"]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts.push({ ...x.binarySbom.artifacts[0] }); }],
     ["Grype vulnerability record", (x) => { x.binaryVulnerabilityScan = null; }],
     ["Grype descriptor", (x) => { x.binaryVulnerabilityScan.descriptor = null; }],
@@ -274,9 +291,9 @@ describe("static runtime binary evidence verifier", () => {
     ["ignored embedded runtime vulnerability", (x) => { x.embeddedVulnerabilityScan.ignoredMatches = [{}]; }],
     ["process.versions", (x) => { x.embeddedRuntimeInventory.process_versions = null; }],
     ["process.versions Node version", (x) => { x.embeddedRuntimeInventory.process_versions.node = "24.18.0"; }],
-    ["dependencies must be", (x) => { x.embeddedRuntimeInventory.process_versions = { node: "24.19.0" }; }],
+    ["dependencies must be", (x) => { x.embeddedRuntimeInventory.process_versions = { node: "24.21.0" }; }],
     ["dependencies must be", (x) => {
-      x.embeddedRuntimeInventory.process_versions = { node: "24.19.0" };
+      x.embeddedRuntimeInventory.process_versions = { node: "24.21.0" };
       for (let index = 0; index < 129; index += 1) x.embeddedRuntimeInventory.process_versions[`dep${index}`] = "1";
     }],
     ["embedded runtime component", (x) => { x.embeddedRuntimeInventory.components[0] = null; }],

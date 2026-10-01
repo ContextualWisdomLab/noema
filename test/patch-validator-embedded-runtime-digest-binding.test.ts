@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { generateEmbeddedRuntimeInventory } from "../scripts/lib/patch-validator-embedded-runtime-inventory.mjs";
 
 const versions = {
-  node: "24.19.0",
+  node: "24.21.0",
   acorn: "8.15.0",
+  undici: "7.29.1",
 };
 
 const validDigest = `sha256:${"4".repeat(64)}`;

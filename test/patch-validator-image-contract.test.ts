@@ -42,9 +42,9 @@ describe("patch-validator image contract", () => {
     expect(fromLines[0]).toMatch(/@sha256:[0-9a-f]{64}(?:\s|$)/);
     expect(dockerfile).not.toContain("FROM validator_deps");
 
-    expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
     expect(dockerfile).toContain(
-      "ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f",
+      "ARG NODE_SOURCE_SHA256=a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc",
     );
     expect(dockerfile).toContain("--fully-static");
     expect(dockerfile).not.toContain("--without-npm");
@@ -52,15 +52,17 @@ describe("patch-validator image contract", () => {
     expect(dockerfile).toContain("WORKDIR /usr/src/node");
     expect(dockerfile).not.toContain("&& cd /usr/src/node");
     expect(dockerfile).toContain(
-      'test "$(/opt/node/bin/npm --version)" = "11.17.0"',
+      'test "$(/opt/node/bin/npm --version)" = "11.19.0"',
     );
+    expect(dockerfile).toContain("ARG UNDICI_VERSION=7.29.1");
+    expect(dockerfile).toContain("process.versions.undici");
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
 
     expect(dockerfile).not.toContain("npm ci");
     expect(dockerfile).not.toContain("npm prune");
-    expect(imageWorkflow).toContain('node-version: "24.19.0"');
-    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(imageWorkflow).toContain('node-version: "24.21.0"');
+    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.19.0"');
     expect(imageWorkflow).toContain(
       "npm ci --include=optional --ignore-scripts --no-audit --no-fund",
     );

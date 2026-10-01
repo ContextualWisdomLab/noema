@@ -10,6 +10,7 @@ const routingDoctoring = readFileSync(
   fileURLToPath(new URL("../docs/doctoring/orchestrator-free-routing-alias.md", import.meta.url)),
   "utf8",
 );
+const GATEWAY_ALLOWLIST_JSON = '["https://orchestrator.example/v1"]';
 
 describe("contextual-orchestrator routing alias authority", () => {
   it("rejects a configurable model override before network access", async () => {
@@ -21,6 +22,7 @@ describe("contextual-orchestrator routing alias authority", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
         NOEMA_LLM_API_KEY: "gateway-token",
         NOEMA_LLM_MODEL: "gpt-5",
       },
@@ -58,6 +60,7 @@ describe("contextual-orchestrator routing alias authority", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
         NOEMA_LLM_MODEL: "contextual-orchestrator",
       },
       fetchImpl: async () => {

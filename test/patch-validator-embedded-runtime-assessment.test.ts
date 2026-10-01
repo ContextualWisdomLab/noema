@@ -3,8 +3,34 @@ import { describe, expect, it } from "vitest";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"7".repeat(64)}`;
-const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.21.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
+const undiciPurl = "pkg:npm/undici@7.29.1";
+
+function cleanUndiciScannerOutput(): any {
+  return {
+    descriptor: {
+      name: "grype",
+      version: "0.116.1",
+      db: {
+        status: {
+          schemaVersion: "v6.0.2",
+          built: "2026-08-07T00:00:00Z",
+          valid: true,
+        },
+        providers: {
+          nvd: {
+            captured: "2026-08-06T00:00:00Z",
+            input: `sha256:${"a".repeat(64)}`,
+          },
+        },
+      },
+    },
+    source: { type: "purl", target: undiciPurl },
+    matches: [],
+    ignoredMatches: [],
+  };
+}
 
 function inputWithUnassessedZeroMatchComponent(): any {
   return {
@@ -15,7 +41,7 @@ function inputWithUnassessedZeroMatchComponent(): any {
       artifacts: [
         {
           name: "node",
-          version: "24.19.0",
+          version: "24.21.0",
           locations: [{ path: "/nodejs/bin/node" }],
           cpes: [nodeCpe],
         },
@@ -30,10 +56,11 @@ function inputWithUnassessedZeroMatchComponent(): any {
     embeddedRuntimeInventory: {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
-      node_version: "24.19.0",
+      node_version: "24.21.0",
       process_versions: {
-        node: "24.19.0",
+        node: "24.21.0",
         openssl: "3.5.2",
+        undici: "7.29.1",
       },
       components: [
         {
@@ -42,6 +69,13 @@ function inputWithUnassessedZeroMatchComponent(): any {
           version: "3.5.2",
           classification: "bundled_dependency",
           cpe: opensslCpe,
+        },
+        {
+          key: "undici",
+          name: "undici",
+          version: "7.29.1",
+          classification: "bundled_dependency",
+          purl: undiciPurl,
         },
       ],
     },
@@ -55,6 +89,11 @@ function inputWithUnassessedZeroMatchComponent(): any {
           identity: opensslCpe,
           matches: [],
           ignoredMatches: [],
+        },
+        {
+          key: "undici",
+          identity: undiciPurl,
+          scanner_output: cleanUndiciScannerOutput(),
         },
       ],
       ignoredMatches: [],

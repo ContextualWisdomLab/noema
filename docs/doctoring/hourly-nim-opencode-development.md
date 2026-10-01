@@ -88,7 +88,7 @@ GitHub provides no atomic “create a PR only if none exists” transaction. The
 
 ### Dedicated development and publication credentials
 
-The workflow maps `secrets.NOEMA_LLM_API_KEY` and `vars.NOEMA_LLM_API_URL` through the same gateway contract as production review. It does not use GitHub Copilot, GitHub Models, NVIDIA NIM, Bytez, OpenRouter, or OpenAI provider keys. The reviewer App private key and `/exchange` OIDC broker remain unchanged. Sequential model-candidate failover is forbidden; the orchestrator selects min-cost / max-performance.
+The workflow maps `secrets.NOEMA_LLM_API_KEY`, `vars.NOEMA_LLM_API_URL`, and immutable-release-derived `vars.NOEMA_LLM_API_URL_ALLOWLIST_JSON` through the same gateway contract as production review. The selected canonical HTTPS `/v1` URL must be an exact member before health I/O or token-bearing configuration; the non-empty array is an unordered admission set, never a routing/retry/fallback list. It does not use GitHub Copilot, GitHub Models, NVIDIA NIM, Bytez, OpenRouter, or OpenAI provider keys. The reviewer App private key and `/exchange` OIDC broker remain unchanged. Sequential model-candidate failover is forbidden; provider/model selection remains contextual-orchestrator authority.
 
 Publication reuses the repository's existing dedicated Maintainer App variables and private-key secret. It does not repurpose the reviewer App identity or key contract. The separation preserves independent review evidence and gives generated PRs a normal event path into `ci`, `reviewer-ci`, and Security Scan.
 
