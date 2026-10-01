@@ -42,6 +42,7 @@ def test_resolve_config_rejects_self_identified_endpoint_outside_allowlist() -> 
     "allowlist_json",
     (
         "",
+        "{",
         "{}",
         "[]",
         '["https://orchestrator.example/v1", 1]',
@@ -130,6 +131,20 @@ def test_resolve_config_rejects_noncanonical_selected_endpoint(base_url: str) ->
     with pytest.raises(RuntimeError, match="NOEMA_LLM_API_URL") as excinfo:
         resolve_config(_kv(values))
     assert "must-not-appear" not in str(excinfo.value)
+
+
+def test_resolve_config_accepts_exact_nondefault_https_port() -> None:
+    """A released endpoint may use an explicitly allowlisted canonical HTTPS port."""
+    endpoint = "https://orchestrator.example:8443/v1"
+    values = {
+        "NOEMA_LLM_MODEL": "orchestrator/free",
+        "NOEMA_LLM_API_URL": endpoint,
+        "NOEMA_LLM_API_URL_ALLOWLIST_JSON": json.dumps([endpoint]),
+        "NOEMA_LLM_API_KEY": "gateway-token",
+    }
+    config = resolve_config(_kv(values))
+    assert config.base_url == endpoint
+    assert config.allowed_base_urls == (endpoint,)
 
 
 def test_resolve_model_rechecks_manually_constructed_endpoint_membership() -> None:
