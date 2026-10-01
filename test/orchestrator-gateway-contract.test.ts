@@ -307,6 +307,27 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(missingUrl).toBe(1);
     expect(stderr.join("")).toMatch(/NOEMA_LLM_API_URL_ALLOWLIST_JSON/);
 
+    const missingSelectedUrlStderr: string[] = [];
+    const missingSelectedUrl = await runVerifyOrchestratorGatewayCli({
+      argv: [],
+      env: {
+        NOEMA_LLM_API_URL_ALLOWLIST_JSON: GATEWAY_ALLOWLIST_JSON,
+      },
+      fetchImpl: async () => {
+        throw new Error("fetch must not run without a selected endpoint");
+      },
+      writeStdout: (message) => {
+        stdout.push(message);
+      },
+      writeStderr: (message) => {
+        missingSelectedUrlStderr.push(message);
+      },
+    });
+    expect(missingSelectedUrl).toBe(1);
+    expect(missingSelectedUrlStderr.join("")).toMatch(
+      /NOEMA_LLM_API_URL must be an absolute HTTPS URL/,
+    );
+
     const directProvider = await runVerifyOrchestratorGatewayCli({
       argv: [],
       env: {

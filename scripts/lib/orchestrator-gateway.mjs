@@ -219,9 +219,6 @@ export function parseOrchestratorGatewayUrl(rawUrl, name = "NOEMA_LLM_API_URL") 
     throw new Error(`${name} must be a canonical endpoint URL`);
   }
   const hostname = rawHostname.replace(/\.+$/u, "");
-  if (!hostname) {
-    throw new Error(`${name} must be an absolute HTTPS URL`);
-  }
   if (!hostname.startsWith("[")) {
     const hostnameLabels = hostname.split(".");
     if (hostnameLabels.some((label) => !label || label.length > 63)) {

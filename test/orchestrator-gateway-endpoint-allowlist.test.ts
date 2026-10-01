@@ -66,6 +66,8 @@ describe("contextual-orchestrator released endpoint admission", () => {
   });
 
   it.each([
+    undefined,
+    null,
     "",
     "{}",
     "[]",
