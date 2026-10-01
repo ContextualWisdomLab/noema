@@ -517,12 +517,13 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
 
 function recordConfigurationFailure(
   request: Request,
+  route: string,
   failure: EgressFailure,
 ): void {
   try {
     console.log(JSON.stringify({
       event: "github_api_egress",
-      route: "/exchange",
+      route,
       method: request.method,
       status_code: 503,
       error_code: "ERR_GITHUB_API" satisfies ErrorCode,
@@ -534,11 +535,11 @@ function recordConfigurationFailure(
   }
 }
 
-function recordOidcEnvelopeFailure(request: Request): void {
+function recordOidcEnvelopeFailure(request: Request, route: string): void {
   try {
     console.log(JSON.stringify({
       event: "oidc_token_envelope",
-      route: "/exchange",
+      route,
       method: request.method,
       status_code: 400,
       error_code: "ERR_TOKEN_MALFORMED" satisfies ErrorCode,
@@ -616,7 +617,7 @@ export default {
           : dispatchBoundaryResponse(request, 405, "Method not allowed");
       }
       if (!isBoundedOidcBearer(request.headers.get("authorization"))) {
-        recordOidcEnvelopeFailure(request);
+        recordOidcEnvelopeFailure(request, url.pathname);
         return isExchange
           ? oidcEnvelopeResponse(request)
           : dispatchBoundaryResponse(request, 401, "Continuation identity is malformed");
@@ -637,7 +638,7 @@ export default {
         policy: "github-app-id-canonical",
       };
       if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
-        recordConfigurationFailure(request, appIdFailure);
+        recordConfigurationFailure(request, url.pathname, appIdFailure);
         return githubApiConfigurationResponse(request, appIdFailure);
       }
 
@@ -648,7 +649,7 @@ export default {
           outcome: "misconfigured",
           policy: "github-app-installation-id-canonical",
         };
-        recordConfigurationFailure(request, installationIdFailure);
+        recordConfigurationFailure(request, url.pathname, installationIdFailure);
         return githubApiConfigurationResponse(request, installationIdFailure);
       }
 
@@ -659,7 +660,7 @@ export default {
           policy: "continuation-dispatch-app-id-canonical",
         };
         if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_ID ?? "")) {
-          recordConfigurationFailure(request, centralAppIdFailure);
+          recordConfigurationFailure(request, url.pathname, centralAppIdFailure);
           return githubApiConfigurationResponse(request, centralAppIdFailure);
         }
         const centralInstallationFailure: EgressFailure = {
@@ -668,7 +669,7 @@ export default {
           policy: "continuation-dispatch-installation-id-canonical",
         };
         if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID ?? "")) {
-          recordConfigurationFailure(request, centralInstallationFailure);
+          recordConfigurationFailure(request, url.pathname, centralInstallationFailure);
           return githubApiConfigurationResponse(request, centralInstallationFailure);
         }
       }
@@ -679,7 +680,7 @@ export default {
         policy: "github-cloud-exact-origin",
       };
       if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
-        recordConfigurationFailure(request, originFailure);
+        recordConfigurationFailure(request, url.pathname, originFailure);
         return githubApiConfigurationResponse(request, originFailure);
       }
 
@@ -689,7 +690,7 @@ export default {
         policy: "credential-fetch-no-redirect",
       };
       if (!ensureGlobalOutboundFetchPolicy()) {
-        recordConfigurationFailure(request, redirectFailure);
+        recordConfigurationFailure(request, url.pathname, redirectFailure);
         return githubApiConfigurationResponse(request, redirectFailure);
       }
 

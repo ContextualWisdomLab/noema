@@ -85,7 +85,7 @@ describe("current protected trust authority documentation", () => {
     expect(prd).not.toContain("graph/evaluation slice is intentionally non-durable");
     expect(prd).not.toContain("authenticated evaluation evidence, Policy / Approval, durable graph/rejection history");
 
-    expect(trd).toContain("### 2.4 Protected procedural graph advisory runtime");
+    expect(trd).toContain("### 2.5 Protected procedural graph advisory runtime");
     expect(trd).not.toContain("Active PR #585 adds");
     expect(trd).not.toContain("## Candidate implementation — PR #585");
     expect(trd).toContain("bounded durable evaluation/rejection history");

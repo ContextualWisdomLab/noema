@@ -69,6 +69,29 @@ afterEach(() => {
 });
 
 describe("continuation dispatch production entrypoint", () => {
+  it("attributes boundary failures to the continuation dispatch route", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await entrypoint.fetch(
+      new Request("https://noema.example/v1/continuation-dispatches", {
+        method: "POST",
+        headers: { authorization: "Bearer malformed" },
+        body: dispatchBody(),
+      }),
+      {} as Env,
+    );
+    await entrypoint.fetch(continuationRequest("a.b.c"), {} as Env);
+
+    const records = logSpy.mock.calls.map(([record]) => JSON.parse(String(record)) as {
+      route?: string;
+    });
+    expect(records).toHaveLength(2);
+    expect(records.map(({ route }) => route)).toEqual([
+      "/v1/continuation-dispatches",
+      "/v1/continuation-dispatches",
+    ]);
+  });
+
   it("returns the versioned method boundary and validates both central GitHub App identifiers", async () => {
     const wrongMethod = await entrypoint.fetch(
       new Request("https://noema.example/v1/continuation-dispatches"),

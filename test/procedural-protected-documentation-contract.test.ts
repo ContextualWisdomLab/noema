@@ -119,7 +119,7 @@ describe("protected procedural documentation authority", () => {
     );
     const trdSection = section(
       document("docs/TRD.md"),
-      "### 2.4 Protected procedural graph advisory runtime",
+      "### 2.5 Protected procedural graph advisory runtime",
     );
     const baselineSection = section(
       document("docs/product-technical-gap-baseline.md"),
@@ -172,7 +172,7 @@ describe("protected procedural documentation authority", () => {
     );
     const trdSection = section(
       document("docs/TRD.md"),
-      "### 2.4 Protected procedural graph advisory runtime",
+      "### 2.5 Protected procedural graph advisory runtime",
     );
     const baselineSection = section(
       document("docs/product-technical-gap-baseline.md"),

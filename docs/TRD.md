@@ -45,11 +45,11 @@ Required bindings: `CONTINUATION_DISPATCH_GITHUB_APP_ID`, `CONTINUATION_DISPATCH
 
 배포 acceptance는 기존 unauthenticated 401 contract와 별도로 `scripts/smoke-readiness.sh`의 stalled-body deployment smoke가 실제 408/JSON error response를 관찰해야 합니다. Executable proof는 `test/exchange-body-read-deadline.test.ts`, `test/smoke-readiness.test.ts`, `test/smoke-readiness-endpoint-safety.test.ts`, OpenAPI contract와 `docs/api-spec.md`를 함께 사용합니다.
 
-### 2.2 External Claude plugin admission
+### 2.3 External Claude plugin admission
 
 Tool / Capability Boundary의 로컬 포트 `src/tool-capability/external-extension-admission.ts`는 Claude community plugin 서술자를 exact repository/commit/path/digest와 독립적으로 pin된 AppGuardrail·격리 영수증에 결합한다. 가변 브랜치/태그, 로컬 경로, 마켓플레이스/카탈로그 불일치, 공급자 키, 광역 GitHub 권한, 미선언 셸/파일/네트워크/비밀/MCP, 다른 제품 승인, 만료·롤백, 카탈로그 drift, 관측 내용의 정책 승격, 제품 런타임 플러그인 래퍼는 실패-폐쇄한다. 이 포트는 HTTP API가 아니며 `/exchange` 권한을 바꾸지 않는다. `context-graph-contracts` 불변 계약이 나오기 전에는 로컬 ACL/테스트 더블이다.
 
-### 2.3 Durable external-extension lifecycle evidence
+### 2.4 Durable external-extension lifecycle evidence
 
 Protected source includes `DurableExternalExtensionLifecycleRepository` under the Tool Capability / State / Checkpoint boundary. A lifecycle stream is keyed by the canonical `external_extension_id` plus exact upstream repository/commit/path, artifact SHA-256, and marketplace-entry SHA-256. The implementation stores an append-only versioned event chain, a transition-ID idempotency index, and a compact current `head` projection in Durable Object storage; it does not reuse the bounded Workflow / Task observability ledger as canonical lifecycle history.
 
@@ -59,7 +59,7 @@ Exact duplicate transition replay is returned only after immutable request/event
 
 Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` while real-backend performance/recovery, immutable owner-issued activation evidence, release and deployment acceptance remain incomplete.
 
-### 2.4 Protected procedural graph advisory runtime
+### 2.5 Protected procedural graph advisory runtime
 
 Protected source includes four library-only Agent Runtime modules: `procedural-input.ts`, `procedural-graph.ts`, `procedural-evolution.ts`, and `procedural-execution.ts`. The admission path snapshots exact-key plain records and dense bounded arrays through data descriptors, rejects accessors/proxies/extra authority-shaped fields, applies canonical execution identity and bounded procedural identity rules, canonicalizes graph ordering, and computes SHA-256 graph and structure identities under an explicit serialized byte ceiling. These digests are local content identities, not signatures or a released cross-language wire standard.
 
