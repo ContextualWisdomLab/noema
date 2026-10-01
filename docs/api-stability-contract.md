@@ -47,6 +47,15 @@ GitHub installation token 응답의 `token`/`expires_at` 결함은 `ERR_GITHUB_I
 
 ## 에러 코드 표준
 
+`POST /v1/continuation-dispatches`는 credential-free signed receipt만 반환하는 additive v1 surface다. Closed request, fixed action/event mapping, 8,192-byte ceiling, exact replay, and no-GitHub-credential response are compatibility commitments.
+
+- `ERR_DISPATCH_REQUEST_INVALID`
+- `ERR_DISPATCH_IDENTITY_DENIED`
+- `ERR_DISPATCH_LIVE_STATE_STALE`
+- `ERR_DISPATCH_REPLAY_CONFLICT`
+- `ERR_GITHUB_DISPATCH_AUTHORIZATION`
+- `ERR_GITHUB_DISPATCH_UPSTREAM`
+
 - `ERR_VALIDATION_INPUT`
 - `ERR_AUTH_MISSING`
 - `ERR_AUTH_INVALID`

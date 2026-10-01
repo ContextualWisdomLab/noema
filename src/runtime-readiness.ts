@@ -29,7 +29,13 @@ export type RuntimeReadinessFailure =
   | "github_app_private_key"
   | "github_app_installation_id"
   | "noema_rate_limiter"
-  | "noema_oidc_replay_guard";
+  | "noema_oidc_replay_guard"
+  | "continuation_dispatch_github_app_id"
+  | "continuation_dispatch_github_app_private_key"
+  | "continuation_dispatch_github_app_installation_id"
+  | "continuation_receipt_signing_private_key"
+  | "continuation_receipt_signing_key_id"
+  | "noema_continuation_dispatch_state";
 
 /**
  * Environment values required to decide whether Noema can safely accept
@@ -52,6 +58,12 @@ export interface RuntimeReadinessEnv {
   GITHUB_APP_INSTALLATION_ID?: string;
   NOEMA_RATE_LIMITER?: DurableObjectNamespace;
   NOEMA_OIDC_REPLAY_GUARD?: DurableObjectNamespace;
+  CONTINUATION_DISPATCH_GITHUB_APP_ID?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID?: string;
+  CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_RECEIPT_SIGNING_KEY_ID?: string;
+  NOEMA_CONTINUATION_DISPATCH_STATE?: DurableObjectNamespace;
 }
 
 /**
@@ -72,6 +84,14 @@ interface PrivateKeyReadinessCacheEntry {
 }
 
 const privateKeyReadinessCache = new WeakMap<
+  RuntimeReadinessEnv,
+  PrivateKeyReadinessCacheEntry
+>();
+const continuationAppKeyReadinessCache = new WeakMap<
+  RuntimeReadinessEnv,
+  PrivateKeyReadinessCacheEntry
+>();
+const continuationReceiptKeyReadinessCache = new WeakMap<
   RuntimeReadinessEnv,
   PrivateKeyReadinessCacheEntry
 >();
@@ -224,6 +244,19 @@ async function isImportablePrivateKey(value: string | undefined): Promise<boolea
   }
 }
 
+async function isImportableEd25519PrivateKey(value: string | undefined): Promise<boolean> {
+  try {
+    const match = privateKeyPattern.exec(value ?? "");
+    if (!match) return false;
+    const binary = atob(match[1].replace(/\s+/gu, ""));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    await crypto.subtle.importKey("pkcs8", bytes, "Ed25519", false, ["sign"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Reuse only an unchanged private-key import while other bindings stay live. */
 function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolean> {
   const privateKeyPem = env.GITHUB_APP_PRIVATE_KEY_PEM;
@@ -232,6 +265,19 @@ function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolea
 
   const importability = isImportablePrivateKey(privateKeyPem);
   privateKeyReadinessCache.set(env, { privateKeyPem, importability });
+  return importability;
+}
+
+function cachedConfiguredKeyImportability(
+  cache: WeakMap<RuntimeReadinessEnv, PrivateKeyReadinessCacheEntry>,
+  env: RuntimeReadinessEnv,
+  privateKeyPem: string | undefined,
+  importer: (value: string | undefined) => Promise<boolean>,
+): Promise<boolean> {
+  const cached = cache.get(env);
+  if (cached && cached.privateKeyPem === privateKeyPem) return cached.importability;
+  const importability = importer(privateKeyPem);
+  cache.set(env, { privateKeyPem, importability });
   return importability;
 }
 
@@ -301,6 +347,34 @@ export async function evaluateRuntimeReadiness(
   }
   if (!isDurableObjectNamespace(env.NOEMA_OIDC_REPLAY_GUARD)) {
     failedChecks.push("noema_oidc_replay_guard");
+  }
+  if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_ID)) {
+    failedChecks.push("continuation_dispatch_github_app_id");
+  }
+  if (!await cachedConfiguredKeyImportability(
+    continuationAppKeyReadinessCache,
+    env,
+    env.CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM,
+    isImportablePrivateKey,
+  )) {
+    failedChecks.push("continuation_dispatch_github_app_private_key");
+  }
+  if (!isCanonicalPositiveSafeInteger(env.CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID)) {
+    failedChecks.push("continuation_dispatch_github_app_installation_id");
+  }
+  if (!await cachedConfiguredKeyImportability(
+    continuationReceiptKeyReadinessCache,
+    env,
+    env.CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM,
+    isImportableEd25519PrivateKey,
+  )) {
+    failedChecks.push("continuation_receipt_signing_private_key");
+  }
+  if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(env.CONTINUATION_RECEIPT_SIGNING_KEY_ID ?? "")) {
+    failedChecks.push("continuation_receipt_signing_key_id");
+  }
+  if (!isDurableObjectNamespace(env.NOEMA_CONTINUATION_DISPATCH_STATE)) {
+    failedChecks.push("noema_continuation_dispatch_state");
   }
 
   return {

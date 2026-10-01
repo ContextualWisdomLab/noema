@@ -49,6 +49,14 @@
 - 헤더: 공통 no-store/nosniff/trace/latency에 더해 `X-Noema-Readiness: ready|not-ready`
 - 상세: `docs/runtime-readiness.md`
 
+### `POST /v1/continuation-dispatches`
+
+`noema.continuation-dispatch.v1`의 닫힌 JSON 요청만 받으며 UTF-8 wire body는 8,192 bytes 이하이다. OIDC repository와 exact reusable-workflow ref/SHA, live open/non-draft/non-fork PR head/base/ref를 모두 결합하고 `ContextualWisdomLab/.github`의 `noema-review` 또는 `strix-scan` 이벤트만 서버 내부에서 선택한다. 같은 canonical digest는 저장된 terminal receipt를 반환하고 두 번째 dispatch를 만들지 않는다. 다만 pre-dispatch indeterminate commit 뒤 central installation token이 exact expiry에 도달했고 HTTP 요청이 아직 시작되지 않았음이 typed adapter result로 증명되면, Durable Object는 동일 reservation capability와 동일 receipt 전체가 일치할 때만 그 record를 제거한다. 이 503 응답에는 terminal receipt가 없으며 새 OIDC 호출은 재시도할 수 있다. 요청 시작 뒤 transport 결과가 불명확하면 indeterminate receipt는 terminal로 유지되어 blind retry를 차단한다.
+
+성공 응답은 `{ ok: true, data: { receipt }, trace_id }`이다. Receipt contains no token and no GitHub credential. `receipt_version`은 `noema.continuation-dispatch-receipt.v1`이다. Detached Ed25519 signature의 offline verification은 immutable release가 `key_id`에 대응하는 SPKI public-key artifact와 digest를 게시한 뒤에만 소비자 acceptance evidence가 된다. 이 Draft source에는 공개키나 retrieval URL이 아직 없으므로 현재 revision은 offline verification 가능성을 주장하지 않는다. 안정 오류 코드는 `ERR_DISPATCH_REQUEST_INVALID`, `ERR_DISPATCH_IDENTITY_DENIED`, `ERR_DISPATCH_LIVE_STATE_STALE`, `ERR_DISPATCH_REPLAY_CONFLICT`, `ERR_GITHUB_DISPATCH_AUTHORIZATION`, `ERR_GITHUB_DISPATCH_UPSTREAM`이다.
+
+Primary references: GitHub. (2026). *OpenID Connect reference*; GitHub. (2026). *Create a repository dispatch event*; Rundgren, A., Jordan, B., & Erdtman, S. (2020). *JSON Canonicalization Scheme (JCS)* (RFC 8785). RFC Editor. https://doi.org/10.17487/RFC8785; Cloudflare. (2026). *Web Crypto*.
+
 ### `POST /exchange`
 헤더:
 - `authorization: Bearer <github_actions_oidc_jwt>`

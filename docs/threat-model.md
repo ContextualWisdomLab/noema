@@ -7,6 +7,10 @@
 - 감사 로그(trace_id, 에러 코드, 레이턴시)
 - Cloudflare Worker isolate의 128MB 메모리와 요청 처리 가용성
 
+## Continuation dispatch boundary
+
+`POST /v1/continuation-dispatches`는 mutable alias/TOCTOU, repository/workflow identity confusion, stale PR evidence, replay, caller-selected destination/event, broad GitHub capability exfiltration, duplicate effect와 indeterminate outcome을 위협으로 다룬다. Exact URL, closed JSON, OIDC workflow SHA, fresh PR, fixed event, terminal state와 RFC 8785/Ed25519 receipt를 결합하며 GitHub credential을 반환하지 않는다. Retry 1/2는 하나의 logical-effect owner에서 직렬화되고 complete-digest drift는 conflict다. Central App credential 준비는 durable pre-dispatch commit보다 먼저 끝내며, 준비/commit 실패는 reservation을 해제하고 external effect 없이 실패-폐쇄한다. Commit 뒤 crash/finalization failure는 retained indeterminate evidence 때문에 재dispatch를 허용하지 않는다. Commit 전 crash로 고립된 reservation만 retained OIDC authorization `exp`의 정확한 alarm에서 회수하며 terminal evidence는 보존한다. 임의 timeout·retry 횟수·fallback은 recovery authority가 아니다. GitHub live-read와 repository-dispatch 사이를 원자화할 수 없으므로 event는 exact expected head/base/ref를 보존하며, downstream `.github#2540`은 실행 직전 이를 다시 검증해야 한다. Missing state/signing/App/replay authority와 ambiguous outcome은 실패-폐쇄한다.
+
 ## 위협
 1. 위조된 OIDC 토큰으로 허가되지 않은 토큰 발급 시도
 2. JWT 페이로드 위변조 또는 만료 토큰 재사용

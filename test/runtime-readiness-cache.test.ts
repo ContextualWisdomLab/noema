@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import entrypoint, { type Env } from "../src/runtime-entrypoint";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 function dummyNamespace(): DurableObjectNamespace {
   return {
@@ -42,7 +43,7 @@ async function readyEnvironment(): Promise<Env> {
     ALLOWED_WORKFLOW_SHA: "0123456789abcdef0123456789abcdef01234567",
     GITHUB_API_BASE: "https://api.github.com",
     GITHUB_APP_ID: "123456",
-    GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
+    ...(await continuationReadyBindings(dummyNamespace())),
     GITHUB_APP_INSTALLATION_ID: "987654",
     NOEMA_RATE_LIMITER: dummyNamespace(),
     NOEMA_OIDC_REPLAY_GUARD: dummyNamespace(),
@@ -67,7 +68,7 @@ describe("runtime-readiness private-key import cache", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(importKey).toHaveBeenCalledTimes(1);
+    expect(importKey).toHaveBeenCalledTimes(3);
   });
 
   it("evaluates separate deployment environments independently", async () => {
@@ -80,7 +81,7 @@ describe("runtime-readiness private-key import cache", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(importKey).toHaveBeenCalledTimes(2);
+    expect(importKey).toHaveBeenCalledTimes(6);
   });
 
   it("re-evaluates non-key bindings when Cloudflare updates them in a reused isolate", async () => {
@@ -97,7 +98,7 @@ describe("runtime-readiness private-key import cache", () => {
       error_code: "ERR_SERVICE_NOT_READY",
       details: { failed_checks: "github_app_id" },
     });
-    expect(importKey).toHaveBeenCalledTimes(1);
+    expect(importKey).toHaveBeenCalledTimes(3);
   });
 
   it("imports a rotated private-key binding again in a reused isolate", async () => {
@@ -110,6 +111,6 @@ describe("runtime-readiness private-key import cache", () => {
 
     expect(beforeRotation.status).toBe(200);
     expect(afterRotation.status).toBe(200);
-    expect(importKey).toHaveBeenCalledTimes(2);
+    expect(importKey).toHaveBeenCalledTimes(4);
   });
 });

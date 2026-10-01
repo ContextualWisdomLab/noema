@@ -27,22 +27,29 @@ src/runtime-entrypoint.ts
             ├─ replay protection → NoemaOidcReplayGuard
             └─ src/index.ts
                  ├─ /health
-                 └─ /exchange core OIDC + GitHub App protocol
+                 ├─ /exchange core OIDC + GitHub App protocol
+                 └─ /v1/continuation-dispatches → live PR ACL → SQLite idempotency → fixed dispatch → Ed25519 receipt
 ```
 
 자세한 구현과 route ownership은 `ARCHITECTURE.md`, `docs/api-spec.md`를 따릅니다.
 
-### 2.1 `/exchange` inbound body deadline
+### 2.1 Continuation dispatch broker
+
+`POST /v1/continuation-dispatches`는 exact-URL, bearer envelope, distributed rate limit, workflow trust, OIDC verification/replay 계층을 재사용한다. Transport retry metadata를 제외한 logical-effect identity로 `NOEMA_CONTINUATION_DISPATCH_STATE`의 SQLite owner를 고르되 complete request digest는 retry attempt를 포함한다. Exact replay는 live PR 재조회보다 먼저 retained receipt를 반환하며, fresh reservation만 live PR을 검증한다. denied/indeterminate replay는 최초 결과와 동일한 `502`/`503` 상태를 유지하고 exact-replay header를 반환한다. Central App credential은 외부 effect가 없는 준비 단계에서 먼저 발급하고 opaque capability 내부에 GitHub `expires_at`을 보존한다. Capability는 durable commit 직전과 fixed event 전송 직전에 정확한 만료를 검사하며, exact dispatch body digest에 결속된 signed `indeterminate` evidence만 durable commit한다. 준비 또는 commit 실패는 best-effort reservation abort 뒤 실패-폐쇄하며 dispatch를 수행하지 않는다. Commit 이후에는 준비된 sender만 fixed event를 전송하고, 204/denial 뒤 같은 receipt authority를 accepted/denied로만 강화한다. 준비/commit 사이 crash로 남은 `reserved` record는 임의 TTL이 아니라 retained OIDC `exp`의 정확한 시각에 Durable Object alarm으로만 회수한다. Alarm 지연을 권위 연장으로 바꾸지 않도록 reservation 생성과 commit transaction 모두 `exp`를 재검사한다. 기존 v1 terminal record는 그대로 replay하고 exact expiry가 없는 legacy reserved record는 fail closed한다. Terminal record는 alarm이 삭제하지 않는다. 따라서 post-effect finalization failure나 crash는 두 번째 dispatch authority를 만들지 않는다. 별도 central App은 fixed `ContextualWisdomLab/.github` event만 호출하고 응답에는 GitHub credential이 없다.
+
+Required bindings: `CONTINUATION_DISPATCH_GITHUB_APP_ID`, `CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM`, `CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID`, `CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM`, `CONTINUATION_RECEIPT_SIGNING_KEY_ID`, `NOEMA_CONTINUATION_DISPATCH_STATE`.
+
+### 2.2 `/exchange` inbound body deadline
 
 `POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
 
 배포 acceptance는 기존 unauthenticated 401 contract와 별도로 `scripts/smoke-readiness.sh`의 stalled-body deployment smoke가 실제 408/JSON error response를 관찰해야 합니다. Executable proof는 `test/exchange-body-read-deadline.test.ts`, `test/smoke-readiness.test.ts`, `test/smoke-readiness-endpoint-safety.test.ts`, OpenAPI contract와 `docs/api-spec.md`를 함께 사용합니다.
 
-### 2.2 External Claude plugin admission
+### 2.3 External Claude plugin admission
 
 Tool / Capability Boundary의 로컬 포트 `src/tool-capability/external-extension-admission.ts`는 Claude community plugin 서술자를 exact repository/commit/path/digest와 독립적으로 pin된 AppGuardrail·격리 영수증에 결합한다. 가변 브랜치/태그, 로컬 경로, 마켓플레이스/카탈로그 불일치, 공급자 키, 광역 GitHub 권한, 미선언 셸/파일/네트워크/비밀/MCP, 다른 제품 승인, 만료·롤백, 카탈로그 drift, 관측 내용의 정책 승격, 제품 런타임 플러그인 래퍼는 실패-폐쇄한다. 이 포트는 HTTP API가 아니며 `/exchange` 권한을 바꾸지 않는다. `context-graph-contracts` 불변 계약이 나오기 전에는 로컬 ACL/테스트 더블이다.
 
-### 2.3 Durable external-extension lifecycle evidence
+### 2.4 Durable external-extension lifecycle evidence
 
 Protected source includes `DurableExternalExtensionLifecycleRepository` under the Tool Capability / State / Checkpoint boundary. A lifecycle stream is keyed by the canonical `external_extension_id` plus exact upstream repository/commit/path, artifact SHA-256, and marketplace-entry SHA-256. The implementation stores an append-only versioned event chain, a transition-ID idempotency index, and a compact current `head` projection in Durable Object storage; it does not reuse the bounded Workflow / Task observability ledger as canonical lifecycle history.
 
@@ -52,7 +59,7 @@ Exact duplicate transition replay is returned only after immutable request/event
 
 Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` while real-backend performance/recovery, immutable owner-issued activation evidence, release and deployment acceptance remain incomplete.
 
-### 2.4 Protected procedural graph advisory runtime
+### 2.5 Protected procedural graph advisory runtime
 
 Protected source includes four library-only Agent Runtime modules: `procedural-input.ts`, `procedural-graph.ts`, `procedural-evolution.ts`, and `procedural-execution.ts`. The admission path snapshots exact-key plain records and dense bounded arrays through data descriptors, rejects accessors/proxies/extra authority-shaped fields, applies canonical execution identity and bounded procedural identity rules, canonicalizes graph ordering, and computes SHA-256 graph and structure identities under an explicit serialized byte ceiling. These digests are local content identities, not signatures or a released cross-language wire standard.
 

@@ -3,8 +3,21 @@ import { describe, expect, it } from "vitest";
 
 const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
 const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml", "utf8");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+  devEngines: { runtime: { version: string } };
+  overrides: { undici: string };
+};
 
 describe("patch-validator exact-toolchain image build regression", () => {
+  it("pins the Node release that embeds the patched undici runtime", () => {
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
+    expect(dockerfile).toContain(
+      "ARG NODE_SOURCE_SHA256=a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc",
+    );
+    expect(packageJson.devEngines.runtime.version).toBe("24.21.0");
+    expect(packageJson.overrides.undici).toBe("7.29.1");
+  });
+
   it("builds the static runtime with the exact Node/npm toolchain and patched c-ares source", () => {
     expect(dockerfile).toContain("ARG NODE_VERSION=24.21.0");
     expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.19.0"');

@@ -3,6 +3,7 @@ import {
   evaluateRuntimeReadiness,
   type RuntimeReadinessEnv,
 } from "../src/runtime-readiness";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 function dummyNamespace(): DurableObjectNamespace {
   return {
@@ -45,7 +46,7 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
     ALLOWED_WORKFLOW_SHA: "a".repeat(40),
     GITHUB_API_BASE: "https://api.github.com",
     GITHUB_APP_ID: "123456",
-    GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
+    ...(await continuationReadyBindings(dummyNamespace())),
     GITHUB_APP_INSTALLATION_ID: "987654",
     NOEMA_RATE_LIMITER: dummyNamespace(),
     NOEMA_OIDC_REPLAY_GUARD: dummyNamespace(),

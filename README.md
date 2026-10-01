@@ -32,6 +32,7 @@ The Cloudflare Worker exposes three intentionally distinct HTTP surfaces:
 | `GET` | `/health` | Process liveness only |
 | `GET` / `HEAD` | `/ready` | Runtime readiness without reflecting secrets |
 | `POST` | `/exchange` | Exchange an authorized GitHub Actions OIDC bearer for short-lived repository capability |
+| `POST` | `/v1/continuation-dispatches` | Emit one exact Noema/Strix continuation and return a credential-free signed receipt |
 
 The public contract is published as [`openapi.json`](./openapi.json), with narrative details in [`docs/api-spec.md`](./docs/api-spec.md).
 

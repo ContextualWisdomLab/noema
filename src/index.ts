@@ -7,6 +7,11 @@ import {
   OidcReplayUnavailable,
   type OidcReplayProtectionEnv,
 } from "./oidc-replay";
+import {
+  continuationDispatchDependencies,
+  handleContinuationDispatch,
+  type ContinuationDispatchHandlerEnv,
+} from "./continuation-dispatch/handler";
 
 /**
  * Runtime configuration consumed by Noema's base credential-exchange worker. These
@@ -24,12 +29,28 @@ export interface Env extends OidcReplayProtectionEnv {
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY_PEM: string;
   GITHUB_APP_INSTALLATION_ID?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_ID?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_DISPATCH_GITHUB_APP_INSTALLATION_ID?: string;
+  CONTINUATION_RECEIPT_SIGNING_PRIVATE_KEY_PEM?: string;
+  CONTINUATION_RECEIPT_SIGNING_KEY_ID?: string;
+  NOEMA_CONTINUATION_DISPATCH_STATE?: DurableObjectNamespace;
   NOEMA_RATE_LIMIT_PER_MINUTE?: string;
   NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS?: string;
   NOEMA_INSTALLATION_CACHE_TTL_SECONDS?: string;
 }
 
-type JwtPayload = {
+/** Minimal GitHub App configuration shared by bounded repository API adapters. */
+export interface GitHubAppEnv {
+  GITHUB_API_BASE: string;
+  GITHUB_APP_ID: string;
+  GITHUB_APP_PRIVATE_KEY_PEM: string;
+  GITHUB_APP_INSTALLATION_ID?: string;
+  NOEMA_INSTALLATION_CACHE_TTL_SECONDS?: string;
+}
+
+/** Verified GitHub Actions OIDC claims retained for downstream authorization checks. */
+export type JwtPayload = {
   iss?: string;
   aud?: string | string[];
   repository?: string;
@@ -107,7 +128,9 @@ const maxLocalRateLimitBuckets = 10_000;
 let oidcKeysCache: TimedCache<JsonWebKeySet> | undefined;
 const installationIdCache = new Map<string, TimedCache<string>>();
 
-class ApiError extends Error {
+/** Bounded internal API failure carrying only stable response and upstream status metadata. */
+export class ApiError extends Error {
+  /** Creates one sanitized API failure without retaining request or credential values. */
   constructor(
     public code: ErrorCode,
     public status: number,
@@ -763,7 +786,14 @@ async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
 }
 
-async function createGitHubAppJwt(env: Env): Promise<string> {
+/**
+ * Creates a short-lived GitHub App assertion from one typed Worker credential binding.
+ * @param env GitHub App id and PKCS#8 private-key bindings.
+ * @returns A signed compact JWT accepted only by GitHub App endpoints.
+ */
+export async function createGitHubAppJwt(
+  env: Pick<GitHubAppEnv, "GITHUB_APP_ID" | "GITHUB_APP_PRIVATE_KEY_PEM">,
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
   const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ iat: now - 60, exp: now + 540, iss: env.GITHUB_APP_ID })));
@@ -772,18 +802,30 @@ async function createGitHubAppJwt(env: Env): Promise<string> {
   return `${header}.${payload}.${base64UrlEncode(signature)}`;
 }
 
-type GitHubJsonRequestInit = RequestInit & {
+/**
+ * GitHub request options requiring an explicit reviewed header record so shared
+ * fixed-origin egress never inherits ambient or caller-selected authorization.
+ */
+export type GitHubJsonRequestInit = RequestInit & {
   headers: Record<string, string>;
 };
 
-async function githubJson(
+/**
+ * Sends one GitHub REST request through the reviewed fixed-origin header and
+ * redirect policy shared by credential exchange and continuation dispatch.
+ * @param path Reviewed GitHub REST path, never a caller-selected absolute URL.
+ * @param init Explicit request method, body, and authorization headers.
+ * @param env Exact GitHub Cloud API base binding validated by the public edge.
+ * @returns The unconsumed GitHub response for operation-specific status handling.
+ */
+export async function githubApiRequest(
   path: string,
   init: GitHubJsonRequestInit,
-  env: Env,
-  expectedStatus: number,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
+  env: Pick<GitHubAppEnv, "GITHUB_API_BASE">,
+): Promise<Response> {
+  return fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
+    redirect: "error",
     headers: {
       accept: "application/vnd.github+json",
       "user-agent": "noema",
@@ -791,6 +833,24 @@ async function githubJson(
       ...init.headers,
     },
   });
+}
+
+/**
+ * Reads one successful bounded, duplicate-key-free GitHub JSON object response.
+ * @param path Reviewed GitHub REST path.
+ * @param init Explicit request options and authorization header.
+ * @param env Exact GitHub Cloud API base binding.
+ * @param expectedStatus Only successful status accepted by this operation.
+ * @returns The decoded top-level JSON object.
+ * @throws {ApiError} When status, media type, body bounds, UTF-8, or JSON shape fails closed.
+ */
+export async function githubJson(
+  path: string,
+  init: GitHubJsonRequestInit,
+  env: Pick<GitHubAppEnv, "GITHUB_API_BASE">,
+  expectedStatus: number,
+): Promise<Record<string, unknown>> {
+  const response = await githubApiRequest(path, init, env);
   if (!response.ok) {
     if (response.status === 429) {
       throw new ApiError("ERR_RATE_LIMIT", 429, "GitHub API rate limit reached", undefined, response.status);
@@ -830,7 +890,7 @@ async function githubJson(
 async function resolveInstallationId(
   appJwt: string,
   repository: string,
-  env: Env,
+  env: GitHubAppEnv,
 ): Promise<InstallationIdResolution> {
   const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
   if (configuredInstallationId) {
@@ -885,14 +945,26 @@ async function resolveInstallationId(
   };
 }
 
-async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
+/**
+ * Mints one repository-limited GitHub App installation token with explicit permissions.
+ * @param repository Canonical owner/name repository selected by the calling trust boundary.
+ * @param env GitHub App and fixed API configuration.
+ * @param permissions Exact GitHub installation-token permissions for this operation.
+ * @returns The bounded token and canonical GitHub expiry timestamp.
+ * @throws {ApiError} When installation lookup, minting, or token validation fails closed.
+ */
+export async function createGitHubInstallationToken(
+  repository: string,
+  env: GitHubAppEnv,
+  permissions: Readonly<Record<string, "read" | "write">>,
+): Promise<InstallationToken> {
   const appJwt = await createGitHubAppJwt(env);
   let installationResolution = await resolveInstallationId(appJwt, repository, env);
   let installationId = installationResolution.value;
   const mintInstallationToken = (id: string) => githubJson(`/app/installations/${id}/access_tokens`, {
     method: "POST",
     headers: { authorization: `Bearer ${appJwt}` },
-    body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
+    body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions }),
   }, env, 201);
 
   let token: Record<string, unknown>;
@@ -954,6 +1026,14 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     token: token.token,
     expires_at: token.expires_at,
   };
+}
+
+async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
+  return createGitHubInstallationToken(repository, env, {
+    pull_requests: "write",
+    contents: "read",
+    checks: "read",
+  });
 }
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
@@ -1067,6 +1147,14 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   };
 }
 
+const productionContinuationDispatchDependencies = {
+  ...continuationDispatchDependencies,
+  verifyOidc: (token: string, env: ContinuationDispatchHandlerEnv) =>
+    verifyGithubOidcJwt(token, env as unknown as Env),
+  claimOidc: (claims: JwtPayload, env: ContinuationDispatchHandlerEnv) =>
+    claimVerifiedOidcUsage(claims, env as unknown as Env),
+};
+
 /**
  * Base public Worker entrypoint for Noema health and credential exchange. It validates
  * methods, OIDC/GitHub App exchange policy, local rate limits, structured errors, and
@@ -1125,6 +1213,26 @@ export default {
           oidc_sub,
           token_expires_at,
           replay_protected,
+        });
+        return withOperationalHeaders(response, traceId, latency_ms);
+      }
+      if (url.pathname === "/v1/continuation-dispatches") {
+        enforceRateLimit(request, env, route);
+        const response = await handleContinuationDispatch(
+          request,
+          env as Env & ContinuationDispatchHandlerEnv,
+          traceId,
+          productionContinuationDispatchDependencies,
+        );
+        status = response.status;
+        const latency_ms = Math.round(performance.now() - startedAt);
+        logRequest({
+          route,
+          method,
+          status_code: status,
+          latency_ms,
+          trace_id: traceId,
+          ...(status >= 400 ? { error_code: (await response.clone().json() as { error_code?: ErrorCode }).error_code } : {}),
         });
         return withOperationalHeaders(response, traceId, latency_ms);
       }

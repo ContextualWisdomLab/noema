@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import entrypoint, { type Env } from "../src/runtime-entrypoint";
+import { continuationReadyBindings } from "./runtime-readiness-fixture";
 
 function dummyNamespace(): DurableObjectNamespace {
   return {
@@ -42,7 +43,7 @@ async function readyEnv(): Promise<Env> {
     ALLOWED_WORKFLOW_SHA: "0123456789abcdef0123456789abcdef01234567",
     GITHUB_API_BASE: "https://api.github.com",
     GITHUB_APP_ID: "123456",
-    GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
+    ...(await continuationReadyBindings(dummyNamespace())),
     GITHUB_APP_INSTALLATION_ID: "987654",
     NOEMA_RATE_LIMIT_PER_MINUTE: "60",
     NOEMA_RATE_LIMITER: dummyNamespace(),
