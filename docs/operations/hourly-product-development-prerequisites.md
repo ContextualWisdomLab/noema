@@ -44,4 +44,4 @@ reason=maintainer_app_unavailable
 
 ## 운영 복구
 
-`maintainer_app_unavailable`이 나타나면 모델이나 timeout을 조정하지 않습니다. App 설치 범위, client ID variable, private-key secret과 key rotation 상태를 복구한 뒤 다시 실행합니다. `orchestrator_gateway_unavailable`이면 게이트웨이 URL, 전용 추론 토큰, `/healthz` 신원을 복구합니다. 의도적인 중지는 workflow를 비활성화하거나 App credential 또는 게이트웨이 토큰을 회수하여 수행합니다.
+`maintainer_app_unavailable`이 나타나면 모델이나 timeout을 조정하지 않습니다. App 설치 범위, client ID variable, private-key secret과 key rotation 상태를 복구한 뒤 다시 실행합니다. `orchestrator_gateway_unavailable`이면 게이트웨이 URL, `NOEMA_LLM_API_URL_ALLOWLIST_JSON`, 전용 추론 토큰, `/healthz` 신원을 복구합니다. 의도적인 중지는 workflow를 비활성화하거나 App credential 또는 게이트웨이 토큰을 회수하여 수행합니다.
