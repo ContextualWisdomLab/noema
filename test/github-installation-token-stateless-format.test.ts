@@ -163,7 +163,7 @@ describe("GitHub installation-token stateless format", () => {
         });
       }
       if (url === `https://api.github.com/repos/${targetRepository}/installation`) {
-        return Response.json({ id: Number(installationId) });
+        return Response.json({ id: Number(installationId) , account: { id: 295022177, login: "ContextualWisdomLab" } });
       }
       if (url === `https://api.github.com/app/installations/${installationId}/access_tokens`) {
         return Response.json({

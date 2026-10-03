@@ -47,9 +47,9 @@ describe("deterministic package-manager work integrated after the nanoid predece
   });
 
   it("combines live-base lockfile control with the predecessor explicit install flags", () => {
-    expect(ciWorkflow).toContain("name: verify live pull-request base before lockfile control");
+    expect(ciWorkflow).toContain("name: capture live pull-request identity before lockfile control");
     expect(ciWorkflow).toContain("name: verify lockfile change control");
-    expect(ciWorkflow).toContain("name: refuse pull-request base drift after verification");
+    expect(ciWorkflow).toContain("name: refuse pull-request identity drift after verification");
     expect(ciWorkflow).toContain("npm ci --legacy-peer-deps=false --install-links=false");
   });
 });
