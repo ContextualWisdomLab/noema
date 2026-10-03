@@ -166,54 +166,50 @@ describe("package-manager reproducibility contract", () => {
     expect(ciWorkflow).toContain('test "$(git rev-parse HEAD)" = "$NOEMA_EXPECTED_HEAD_SHA"');
   });
 
-  it("validates the fresh live pull-request base as exactly forty lowercase hexadecimal characters", () => {
-    const shaGate = ciWorkflow.indexOf('if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then');
-    const exportLiveBase = ciWorkflow.indexOf(
-      "printf 'NOEMA_LIVE_BASE_SHA=%s\\n' \"$live_base_sha\" >> \"$GITHUB_ENV\"",
+  it("validates the captured live pull-request base before reading its lockfile", () => {
+    const identityGate = ciWorkflow.indexOf(
+      "bash scripts/verify-live-pull-request-identity.sh capture",
     );
     const lockfileGuard = ciWorkflow.indexOf(
-      'if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+      'if [[ ! "$NOEMA_LIVE_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
     );
     const baseRead = ciWorkflow.indexOf(
-      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json"',
+      'git show "${NOEMA_LIVE_PR_BASE_SHA}:package-lock.json"',
     );
 
-    expect(shaGate).toBeGreaterThan(-1);
-    expect(exportLiveBase).toBeGreaterThan(shaGate);
-    expect(lockfileGuard).toBeGreaterThan(exportLiveBase);
+    expect(identityGate).toBeGreaterThan(-1);
+    expect(lockfileGuard).toBeGreaterThan(identityGate);
     expect(baseRead).toBeGreaterThan(lockfileGuard);
-    expect(ciWorkflow).toContain("printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\\n'");
     expect(ciWorkflow).toContain("printf '::error::Invalid live pull-request base SHA.\\n'");
     expect(ciWorkflow).not.toContain(
       "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]",
     );
   });
 
-  it("binds lockfile validation to one fresh live base and refuses base movement during verification", () => {
-    const beforeGate = ciWorkflow.indexOf("name: verify live pull-request base before lockfile control");
+  it("binds lockfile validation to one fresh live PR identity and refuses identity movement", () => {
+    const beforeGate = ciWorkflow.indexOf("name: capture live pull-request identity before lockfile control");
     const lockfileGate = ciWorkflow.indexOf("name: verify lockfile change control");
     const releaseStart = ciWorkflow.indexOf("name: release typecheck");
     const releaseEnd = ciWorkflow.indexOf("name: release acquisition integrity");
-    const afterGate = ciWorkflow.indexOf("name: refuse pull-request base drift after verification");
+    const afterGate = ciWorkflow.indexOf("name: refuse pull-request identity drift after verification");
 
     expect(beforeGate).toBeGreaterThan(-1);
     expect(lockfileGate).toBeGreaterThan(beforeGate);
     expect(releaseStart).toBeGreaterThan(lockfileGate);
     expect(releaseEnd).toBeGreaterThan(releaseStart);
     expect(afterGate).toBeGreaterThan(releaseEnd);
-    expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
+    expect(ciWorkflow).toContain("NOEMA_PR_NUMBER: ${{ github.event.pull_request.number }}");
     expect(ciWorkflow).toContain(
-      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
+      "bash scripts/verify-live-pull-request-identity.sh capture",
     );
     expect(ciWorkflow).toContain(
-      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
+      "bash scripts/verify-live-pull-request-identity.sh check",
     );
-    expect(ciWorkflow.match(/gh api graphql/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(ciWorkflow.match(/ref\(qualifiedName:\$qualifiedName\)\{target\{oid\}\}/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(ciWorkflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
-    expect(ciWorkflow).toContain('test "$live_base_sha" = "$NOEMA_LIVE_BASE_SHA"');
     expect(ciWorkflow).not.toContain(
       "NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+    );
+    expect(ciWorkflow).not.toContain(
+      "NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}",
     );
   });
 });

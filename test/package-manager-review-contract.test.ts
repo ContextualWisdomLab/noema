@@ -110,7 +110,7 @@ describe("package-manager review contracts", () => {
       "install",
     );
     const guard = step.indexOf(
-      'if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+      'if [[ ! "$NOEMA_LIVE_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
     );
     const error = step.indexOf(
       "printf '::error::Invalid live pull-request base SHA.\\n'",
@@ -118,7 +118,7 @@ describe("package-manager review contracts", () => {
     );
     const exit = step.indexOf("exit 1", error);
     const baseRead = step.indexOf(
-      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json"',
+      'git show "${NOEMA_LIVE_PR_BASE_SHA}:package-lock.json"',
       exit,
     );
 
