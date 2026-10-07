@@ -1,5 +1,29 @@
 # Noema Product and Technical Gap Baseline
 
+## Proposed live pull-request base-tip authority (2026-10-07)
+
+PR #733 previously treated the pull-request endpoint's `.base.sha` field as the
+current tip of `.base.ref`. A same-head re-run after the base branch advanced
+could therefore validate the older snapshot. The test doubles were also vacuous:
+they returned fixtures without verifying the GitHub calls or merge-base operands.
+
+The proposed repair reads only live `(head SHA, base ref)` from the
+pull-request endpoint and resolves that ref independently through the Git-ref
+endpoint at the capture and final gates. Its executable doubles validate exact
+API commands, exact ancestry operands, and fail-closed non-ancestry. The original
+script fails the focused RED harness; repaired shell and syntax checks pass
+locally.
+
+This closes stale `.base.sha` admission inside a started or re-run gate. It does
+not self-invalidate a terminal same-head Check after a later base-only push:
+GitHub's PR `synchronize` event is tied to head updates, and the ordinary merge
+API exposes a head-SHA precondition but no exact base-SHA precondition. Status:
+**Draft / Proposed / merge HOLD**. A trusted post-completion base observer or
+merge-queue contract remains a P0 prerequisite, alongside fresh hosted
+exact-head Checks, qualifying independent approval, prerequisite #737 ordinary
+merge, and protected-main revalidation. Local GREEN is not release or merge
+authority.
+
 ## Proposed released gateway endpoint admission (2026-10-02)
 
 Open PR #737 proposes an exact-membership gate for every token-bearing
@@ -132,7 +156,7 @@ Protected #654, #655, #657, #659, #661, #663, #665, #668, #670, #673, #676, #678
 
 These integrations are source/test/documentation authority only. They do not create new provider/model routing, foreign outbound or quarantine authority, release/deployment authority, or production performance evidence. `deployed heap/p95 evidence remains separate`: representative deployed workload, allocation/GC observation and applicable p95 must still be measured against an immutable deployed release before buyer-facing runtime-performance claims are admissible.
 
-PR #733 exact predecessor head `65d3036f18e0b11e281d44245e690a3c550c7461` exposed a review-evidence TOCTOU defect. GitHub changed the PR base to `fix/patch-validator-node-24-21` in event `32296185938` at 2026-10-01 23:15:14Z, but exact-head CI run `36939785675` still admitted the event snapshot `base.ref=main` at 23:15:29Z and again at 23:17:28Z. The executable RED corpus now rejects isolated base-ref/base-SHA changes, base retarget with unchanged head, head movement with unchanged base, malformed live identity, and event-base dependence; the minimum GREEN reads the live PR `(head SHA, base ref, base SHA)` at both gates, requires exact equality, and subscribes to `pull_request.edited` so a post-completion same-head retarget starts fresh verification. This candidate remains Draft / Proposed: predecessor Checks, comments without qualifying approval, and local source/test evidence do not authorize merge. Fresh hosted exact-head Checks on the repaired head, independent approval, prerequisite #737 integration, ordinary merge, and immutable release remain separate requirements.
+PR #733 exact predecessor head `65d3036f18e0b11e281d44245e690a3c550c7461` exposed a review-evidence TOCTOU defect. Event `32296185938` retargeted the PR while run `36939785675` still admitted stale event base data. Exact head `42da900e1fdcd2e436b8865d069771c03f2d2b02` improved this to a PR endpoint lookup but still trusted `.base.sha`, and its fake `gh` ignored all arguments. The new RED corpus requires exact PR and Git-ref API calls, exact merge-base operands, and fail-closed non-ancestry. GREEN resolves current base-tip authority independently for each run. Post-completion base-only push invalidation remains open and is not merge-authority complete; this candidate remains Draft / Proposed pending a trusted observer or merge-queue contract, fresh hosted exact-head Checks, independent approval, prerequisite #737 integration, ordinary merge, and immutable release.
 
 ## Evidence and merge rules
 
@@ -154,7 +178,7 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 | P0 | Protected-main governance closure | Security workflow 하나로 PR/review/history/deletion/bypass 통제를 과대 주장할 위험 | issue #27 | external control evidence open | live ruleset + PR/review/conversation/history/deletion + bypass evidence | admin/owner control을 독립 검증 |
 | P0 | Patch-validator operational publication | PR image CI가 immutable runtime publication으로 오인될 위험 | issue #66 | source/image integrated; publication open | protected-main execution + immutable image/signature/SBOM/provenance/rollback | operational receipt 뒤 publication/signing 검증 |
 | P0 | Patch-validator bundled Undici vulnerability | protected Node 24.19.0 static image의 bundled Undici 7.29.0/GHSA-3wwx-pv8p-q78v가 exact-image scanner gate를 차단 | issue #734; active PR #737; dependent Draft PRs #733/#736 | PR #737 active candidate에 final receipt exact Undici assertion, released gateway endpoint admission, review-contract repair와 bounded scanner acquisition reliability repair가 통합됐지만 fresh exact-head evidence와 qualifying independent approval은 non-terminal | exact PR-head build/smoke + Node/Undici inventory + final verifier exact Undici assertion + raw scanner receipt with no blocking finding + full CI/typecheck/coverage + independent approval + ordinary merge + immutable release evidence | PR #737 fresh exact-head review/check를 통과시킨 뒤 ordinary merge; #733/#736은 prerequisite integration과 release 전 Draft 유지 |
-| P0 | Pull-request review identity TOCTOU | 이벤트 snapshot의 과거 base ref가 현재 PR identity로 오인되어 retarget 뒤에도 stale-base Checks가 성공할 위험 | active Draft PR #733 | executable RED와 live `(head SHA, base ref, base SHA)` 시작/종료 gate source GREEN; fresh hosted exact-head evidence와 approval open | repaired exact head + live triple capture/check + full hosted CI/reviewer/security/image Checks + independent approval + prerequisite ancestry + ordinary merge | repaired head를 non-force publish하고 fresh exact-head Checks/review를 수집; #737 전에는 Draft 유지 |
+| P0 | Pull-request review identity TOCTOU | event snapshot 또는 PR `.base.sha`가 live base-tip으로 오인되고, terminal Check 뒤 base-only push가 자동 무효화되지 않을 위험 | active Draft PR #733 | exact PR head/ref + Git-ref tip gate와 non-vacuous API/ancestry doubles source GREEN; post-completion observer/merge-queue 계약 open | repaired exact head + trusted base-advance observer 또는 merge queue + fresh full hosted CI/reviewer/security/image Checks + independent approval + ordinary merge | atomic non-force publish 후 exact-head Checks 수집; observer/merge authority prerequisite를 별도 owner delta로 계속 수리; #737 전에는 Draft 유지 |
 | P0 | Authentic production KPI evidence | synthetic/source KPI가 실제 운영 성능으로 오인될 위험 | issue #3 | >=30-day production window absent | authenticated production bytes + provenance + strict KPI gate | 실제 production evidence만 수집 |
 | P0 | Acquisition coordination | source/docs completion이 buyer/legal/transfer readiness로 오인될 위험 | issue #5 | evidence families incomplete | exact release/deployment/operational/legal evidence | owner별 evidence family 수렴 |
 | P0 | External Maintainer/Reviewer App identity | source preflight가 실제 App installation/reviewer authority로 오인될 위험 | issues #29 / #227 | live identity evidence absent | installation/key custody/permission/reviewer eligibility | external control-plane에서 독립 검증 |

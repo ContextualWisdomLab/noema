@@ -20,7 +20,10 @@ interface PullRequestIdentity {
   readonly baseSha: string;
 }
 
-function prepareIdentityGate(identities: readonly PullRequestIdentity[]) {
+function prepareIdentityGate(
+  identities: readonly PullRequestIdentity[],
+  options: { readonly isAncestor?: boolean } = {},
+) {
   const directory = mkdtempSync(join(tmpdir(), "noema-live-pr-identity-"));
   temporaryDirectories.push(directory);
   const counterPath = join(directory, "gh-count");
@@ -36,9 +39,34 @@ const identities = ${JSON.stringify(identities)};
 const counterPath = ${JSON.stringify(counterPath)};
 let count = 0;
 try { count = Number(fs.readFileSync(counterPath, "utf8")); } catch {}
-const identity = identities[Math.min(count, identities.length - 1)];
+const identity = identities[Math.min(Math.floor(count / 2), identities.length - 1)];
+const expected = count % 2 === 0
+  ? [
+      "api",
+      "--method",
+      "GET",
+      "repos/ContextualWisdomLab/noema/pulls/733",
+      "--jq",
+      "[.head.sha,.base.ref] | @tsv",
+    ]
+  : [
+      "api",
+      "--method",
+      "GET",
+      `repos/ContextualWisdomLab/noema/git/ref/heads/${identity.baseRef}`,
+      "--jq",
+      ".object.sha",
+    ];
+if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expected)) {
+  process.stderr.write(`unexpected gh invocation: ${JSON.stringify(process.argv.slice(2))}\\n`);
+  process.exit(41);
+}
 fs.writeFileSync(counterPath, String(count + 1));
-process.stdout.write([identity.headSha, identity.baseRef, identity.baseSha].join("\\t") + "\\n");
+process.stdout.write(
+  count % 2 === 0
+    ? [identity.headSha, identity.baseRef].join("\\t") + "\\n"
+    : identity.baseSha + "\\n",
+);
 `,
     { encoding: "utf8", mode: 0o700 },
   );
@@ -49,7 +77,14 @@ const args = process.argv.slice(2);
 if (args[0] === "check-ref-format" && args[1] === "--branch") {
   process.exit(args[2] && !args[2].includes("..") ? 0 : 1);
 }
-if (args[0] === "merge-base" && args[1] === "--is-ancestor") process.exit(0);
+if (
+  args[0] === "merge-base"
+  && args[1] === "--is-ancestor"
+  && args[2] === ${JSON.stringify(identities[0]?.baseSha)}
+  && args[3] === ${JSON.stringify(expectedHeadSha)}
+) {
+  process.exit(${options.isAncestor === false ? 1 : 0});
+}
 process.stderr.write("unexpected git invocation: " + args.join(" "));
 process.exit(2);
 `,
@@ -149,7 +184,7 @@ describe("CI live pull-request identity gate", () => {
     expect(check.stderr).toContain("Pull-request identity changed during verification");
   });
 
-  it("rejects a base-SHA-only change", () => {
+  it("resolves the base branch tip independently of stale pull-request metadata", () => {
     const gate = prepareIdentityGate([
       { headSha: expectedHeadSha, baseRef: "main", baseSha: initialBaseSha },
       { headSha: expectedHeadSha, baseRef: "main", baseSha: "c".repeat(40) },
@@ -193,6 +228,21 @@ describe("CI live pull-request identity gate", () => {
     expect(capture.stderr).toContain("Live pull-request head is invalid");
   });
 
+  it("fails closed when the exact live base is not an ancestor of the reviewed head", () => {
+    const gate = prepareIdentityGate([
+      {
+        headSha: expectedHeadSha,
+        baseRef: "fix/prerequisite",
+        baseSha: initialBaseSha,
+      },
+    ], { isAncestor: false });
+
+    const capture = gate.run("capture");
+
+    expect(capture.status).not.toBe(0);
+    expect(capture.stderr).toContain("does not contain the live base");
+  });
+
   it("binds both workflow gates to the live PR API rather than event base fields", () => {
     const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
 
@@ -210,5 +260,12 @@ describe("CI live pull-request identity gate", () => {
     expect(workflow).not.toContain(
       "NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}",
     );
+    const gate = readFileSync("scripts/verify-live-pull-request-identity.sh", "utf8");
+    expect(gate).toContain("--jq '[.head.sha,.base.ref] | @tsv'");
+    expect(gate).toContain(
+      'gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${base_ref}"',
+    );
+    expect(gate).toContain("--jq '.object.sha'");
+    expect(gate).not.toContain(".base.sha");
   });
 });

@@ -133,12 +133,11 @@ describe("deployment workflow readiness gates", () => {
   it("bounds live-identity GitHub retries to transient availability failures", () => {
     const workflow = readFileSync("scripts/verify-live-pull-request-identity.sh", "utf8");
 
-    expect(workflow.match(/for attempt in 1 2 3; do/g)).toHaveLength(1);
-    expect(workflow.match(/grep -Eq '\\\(HTTP \(502\|503\|504\)\\\)\$'/g)).toHaveLength(1);
-    expect(workflow.match(/sleep "\$attempt"/g)).toHaveLength(1);
-    expect(workflow.match(/Live pull-request identity lookup failed after attempt/g)).toHaveLength(1);
+    expect(workflow.match(/for attempt in 1 2 3; do/g)).toHaveLength(2);
+    expect(workflow.match(/grep -Eq '\\\(HTTP \(502\|503\|504\)\\\)\$'/g)).toHaveLength(2);
+    expect(workflow.match(/sleep "\$attempt"/g)).toHaveLength(2);
+    expect(workflow.match(/Live pull-request (?:base )?lookup failed after attempt/g)).toHaveLength(2);
   });
-
   it("runs the mandatory reviewer gate on every pull request", () => {
     const workflow = readFileSync(".github/workflows/reviewer-ci.yml", "utf8");
 

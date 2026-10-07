@@ -19,12 +19,12 @@ if [[ ! "${NOEMA_EXPECTED_HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
-read_live_identity() {
+read_live_pull_request() {
   local attempt output
   for attempt in 1 2 3; do
     if output="$(
       gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${NOEMA_PR_NUMBER}" \
-        --jq '[.head.sha,.base.ref,.base.sha] | @tsv' \
+        --jq '[.head.sha,.base.ref] | @tsv' \
         2>&1
     )"; then
       printf '%s\n' "$output"
@@ -34,22 +34,43 @@ read_live_identity() {
       sleep "$attempt"
       continue
     fi
-    printf '::error::Live pull-request identity lookup failed after attempt %s.\n' "$attempt" >&2
+    printf '::error::Live pull-request lookup failed after attempt %s.\n' "$attempt" >&2
     return 1
   done
 }
 
-identity="$(read_live_identity)"
-IFS=$'\t' read -r live_head_sha live_base_ref live_base_sha extra <<< "$identity"
+read_live_base_sha() {
+  local base_ref="$1" attempt output
+  for attempt in 1 2 3; do
+    if output="$(
+      gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${base_ref}" \
+        --jq '.object.sha' \
+        2>&1
+    )"; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
+      sleep "$attempt"
+      continue
+    fi
+    printf '::error::Live pull-request base lookup failed after attempt %s.\n' "$attempt" >&2
+    return 1
+  done
+}
+
+pull_request_identity="$(read_live_pull_request)"
+IFS=$'\t' read -r live_head_sha live_base_ref extra <<< "$pull_request_identity"
 if [[ ! "$live_head_sha" =~ ^[0-9a-f]{40}$ ]]; then
   printf '::error::Live pull-request head is invalid.\n' >&2
   exit 1
 fi
-if ! git check-ref-format --branch "$live_base_ref" >/dev/null 2>&1; then
+if ! git check-ref-format --branch "$live_base_ref" >/dev/null 2>&1 || [ -n "${extra:-}" ]; then
   printf '::error::Live pull-request base ref is invalid.\n' >&2
   exit 1
 fi
-if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]] || [ -n "${extra:-}" ]; then
+live_base_sha="$(read_live_base_sha "$live_base_ref")"
+if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
   printf '::error::Live pull-request base SHA is invalid.\n' >&2
   exit 1
 fi
