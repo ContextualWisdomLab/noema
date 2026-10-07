@@ -1,5 +1,25 @@
 # Noema Product and Technical Gap Baseline
 
+## PR #733 fixture parse correction (2026-10-07)
+
+Exact head `539bfe34524ae3a414f58c9a5fbda6e4ad2e5a9a` embedded two
+unescaped JavaScript template literals inside the outer TypeScript fixture
+template in `test/ci-live-pull-request-identity.test.ts`. Node's
+`stripTypeScriptTypes` rejected the file with
+`ERR_INVALID_TYPESCRIPT_SYNTAX` before verifier tests could be collected; the
+earlier direct-syntax GREEN statement was invalid.
+
+The smallest repair constructs the generated fake `gh` Git-ref path and
+unexpected-invocation diagnostic with ordinary string concatenation. This
+preserves the non-vacuous method/endpoint/argument oracle without nested
+delimiter authority. Fresh `stripTypeScriptTypes` and direct Node syntax checks
+pass. Focused/full Vitest GREEN is not claimed locally because the available
+Node 24.19.0 runtime fails the exact Node 24.21.0 `devEngines` admission.
+
+Status remains **Draft / Proposed / merge HOLD** pending executable hosted
+exact-head GREEN, prerequisite #737, the residual post-completion base-only
+observer/merge-authority contract, and qualifying independent approval.
+
 ## Proposed live pull-request base-tip authority (2026-10-07)
 
 PR #733 previously treated the pull-request endpoint's `.base.sha` field as the

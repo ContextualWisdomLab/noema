@@ -53,12 +53,12 @@ const expected = count % 2 === 0
       "api",
       "--method",
       "GET",
-      `repos/ContextualWisdomLab/noema/git/ref/heads/${identity.baseRef}`,
+      "repos/ContextualWisdomLab/noema/git/ref/heads/" + identity.baseRef,
       "--jq",
       ".object.sha",
     ];
 if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expected)) {
-  process.stderr.write(`unexpected gh invocation: ${JSON.stringify(process.argv.slice(2))}\\n`);
+  process.stderr.write("unexpected gh invocation: " + JSON.stringify(process.argv.slice(2)) + "\\n");
   process.exit(41);
 }
 fs.writeFileSync(counterPath, String(count + 1));

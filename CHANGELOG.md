@@ -9,6 +9,14 @@
 - Add a Noema-owned exact-claim evidence receipt contract whose execution and research producers serialize one canonical artifact that binds every receipt semantic field, including command/result/isolation/network or source revision/excerpt/retrieval policy. Admission accepts only a receipt ID from untrusted model output. The owner API first verifies the exact authenticated OpenCode-handoff manifest digest, canonical envelope bytes, reviewed producer-to-kind policy, and repository/head/workflow/run/attempt identity before it can construct an immutable typed index; admission then reconstructs each canonical artifact and verifies time/claim/artifact identity. The version-2 manifest now binds a separate producer-authenticated `ClaimEvidenceRequirement` containing the exact claim, independently required evidence kind, and `context` or `finding` publication authority. Raw current-head source lines are context only: they are withheld from finding-reference prompts and cannot publish a finding or `request_changes`; an explicitly producer-authorized source finding remains usable and retains exact path/line checks. Finding-free model `request_changes` and `blocked` verdicts cannot bypass receipt admission to publish a vacuous blocking review. Requirement/receipt kind mismatch, fixed-artifact semantic substitution, caller-supplied receipt dictionaries, model self-classification, stale identities, cross-kind receipts, marker-only sandbox output, noncanonical artifact bytes, and expired receipts fail closed before the GitHub publisher. This remains the owner prerequisite for ContextualWisdomLab/.github#1641 and issue #555. The reviewed `sandboxed_verify` adapter exists in owner source, but its actual central stdout/stderr/marker-to-manifest wiring and the trusted research producer are not yet integrated; exact-head hosted GREEN, immutable release, and the verified central consumer bump remain required.
 
 ## Unreleased
+- PR #733 follow-up repairs an invalid TypeScript test fixture introduced by
+  the live base-ref verifier tests. The generated fake `gh` program no longer
+  nests unescaped template literals inside its enclosing fixture template;
+  exact API-path and unexpected-invocation checks use ordinary string
+  concatenation instead. `stripTypeScriptTypes` now parses the exact file and
+  the direct Node syntax check is green. The repository Vitest suite remains
+  unclaimed locally because the available Node 24.19.0 runtime is rejected by
+  the repository's exact Node 24.21.0 `devEngines` contract.
 - PR #733 removes stale PR-snapshot authority from each started or re-run
   application CI gate. The gate reads only `(head SHA, base ref)` from the live
   pull-request endpoint and resolves the current base SHA independently through
