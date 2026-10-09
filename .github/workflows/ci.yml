@@ -25,6 +25,7 @@ jobs:
       GIT_CONFIG_COUNT: "1"
       GIT_CONFIG_KEY_0: init.defaultBranch
       GIT_CONFIG_VALUE_0: main
+      NOEMA_LIVE_PR_BASE_SHA: ${{ github.event.merge_group.base_sha || '' }}
     steps:
       - name: checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -79,7 +80,7 @@ jobs:
         run: bash scripts/verify-live-pull-request-identity.sh capture
 
       - name: verify lockfile change control
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         shell: bash
         run: |
           set -euo pipefail

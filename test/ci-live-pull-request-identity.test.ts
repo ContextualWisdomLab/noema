@@ -276,6 +276,12 @@ describe("CI live pull-request identity gate", () => {
     expect(workflow).toContain("github.event.merge_group.head_sha");
     expect(workflow).toContain("github.event.merge_group.base_sha");
     expect(workflow).toContain(
+      "if: github.event_name == 'pull_request' || github.event_name == 'merge_group'",
+    );
+    expect(workflow).toContain(
+      "NOEMA_LIVE_PR_BASE_SHA: ${{ github.event.merge_group.base_sha || '' }}",
+    );
+    expect(workflow).toContain(
       'git merge-base --is-ancestor "$NOEMA_EXPECTED_BASE_SHA" "$NOEMA_EXPECTED_HEAD_SHA"',
     );
   });

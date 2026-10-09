@@ -38,7 +38,8 @@ This closes stale `.base.sha` admission inside a started or re-run gate. The
 candidate now also supplies the missing `merge_group/checks_requested` source
 contract: application CI checks out the merge group's exact synthetic head and
 requires its canonical event base SHA to be an ancestor before running release
-verification. GitHub's merge queue rebuilds this group from the latest base,
+verification; that same base SHA drives lockfile change control. GitHub's merge
+queue rebuilds this group from the latest base,
 covering the post-completion base-only window that a PR `synchronize` event does
 not observe. Status remains **Draft / Proposed / merge HOLD** because source
 support is not external merge authority. The protected-main ruleset must require

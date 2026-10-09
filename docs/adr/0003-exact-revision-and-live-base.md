@@ -36,7 +36,8 @@ A GitHub `refs/pull/*/merge` revision is valid integration evidence. It is not l
 For protected-main merge authority, application CI also subscribes to
 `merge_group/checks_requested`. It checks out the event's exact synthetic
 `head_sha`, validates the event's exact `base_sha`, and requires that base to be
-an ancestor of the tested merge-group commit. GitHub rebuilds the temporary
+an ancestor of the tested merge-group commit. The same exact base SHA feeds the
+existing lockfile change-control comparison. GitHub rebuilds the temporary
 merge group from the latest base before required checks authorize a queued
 merge. Source support is non-authorizing until the protected-main ruleset
 requires the merge queue and the application-CI check; a direct ordinary merge
@@ -86,3 +87,10 @@ Any movement between decision and write causes abort/re-plan rather than blind r
 ## Rationale sources
 
 `docs/doctoring/architecture-trust-boundaries.md` records SLSA Source Track and GitHub OIDC primary-source rationale with APA 7 references.
+
+GitHub. (n.d.). *Events that trigger workflows: merge_group*. Retrieved
+October 9, 2026, from
+https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group
+
+GitHub. (n.d.). *Managing a merge queue*. Retrieved October 9, 2026, from
+https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue

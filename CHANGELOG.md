@@ -12,7 +12,8 @@
 - PR #733 adds the missing `merge_group/checks_requested` application-CI
   contract. Merge-queue runs now checkout the exact event `head_sha`, require
   the exact event `base_sha` to be a canonical commit ancestor, and execute the
-  ordinary release verification on GitHub's latest-base synthetic merge group.
+  existing lockfile change control plus ordinary release verification on
+  GitHub's latest-base synthetic merge group.
   This is source support, not merge authority by itself: the protected-main
   ruleset must require the merge queue and this check before the P0 base-only
   invalidation gap can be closed.
