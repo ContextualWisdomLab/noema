@@ -112,7 +112,7 @@ function installOidcFetch(jwk: JsonWebKey, env: Env, installationToken = false) 
       return Response.json({ keys: [jwk] });
     }
     if (installationToken && url === `${env.GITHUB_API_BASE}/repos/ContextualWisdomLab/noema/installation`) {
-      return Response.json({ id: 12345 });
+      return Response.json({ id: 12345, account: { id: 295022177, login: "ContextualWisdomLab" } });
     }
     if (installationToken && url === `${env.GITHUB_API_BASE}/app/installations/12345/access_tokens`) {
       return Response.json({

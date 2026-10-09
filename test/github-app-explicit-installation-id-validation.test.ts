@@ -177,7 +177,7 @@ async function exchangeWithRepositoryBoundInstallationId(
 
     githubApiCalls.push(url);
     if (url === repositoryInstallationUrl) {
-      return Response.json({ id: discoveredInstallationId }, { status: 200 });
+      return Response.json({ id: discoveredInstallationId , account: { id: 295022177, login: "ContextualWisdomLab" } }, { status: 200 });
     }
     if (url === installationTokenUrl) {
       return Response.json({

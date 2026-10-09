@@ -24,7 +24,7 @@
 - 공개 변수 등록
   - `ALLOWED_ISSUER` (기본: `https://token.actions.githubusercontent.com`)
   - `ALLOWED_AUDIENCE` (예: `cwl-noema-review`)
-  - `ALLOWED_REPOSITORY_OWNER` (예: `ContextualWisdomLab`)
+  - `ALLOWED_REPOSITORY_OWNER` (중앙 워크플로 저장소의 소유자, 예: `ContextualWisdomLab`; 호출 조직을 제한하지 않음, ADR-0019)
   - `ALLOWED_WORKFLOW_REPOSITORY` (예: `ContextualWisdomLab/.github`)
   - `ALLOWED_WORKFLOW_REF_PREFIX` (예: `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main`)
   - `GITHUB_API_BASE` (기본: `https://api.github.com`)

@@ -133,7 +133,7 @@ describe("GitHub installation-token expiry calendar integrity", () => {
         return Response.json({ keys: [jwk] });
       }
       if (url === "https://api.github.com/repos/ContextualWisdomLab/expiry-calendar/installation") {
-        return Response.json({ id: 92345 });
+        return Response.json({ id: 92345, account: { id: 295022177, login: "ContextualWisdomLab" } });
       }
       if (url === "https://api.github.com/app/installations/92345/access_tokens") {
         return Response.json({

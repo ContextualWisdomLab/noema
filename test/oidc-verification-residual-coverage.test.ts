@@ -226,7 +226,7 @@ describe("OIDC verification residual coverage", () => {
     });
   });
 
-  it("rejects a token from a different repository owner", async () => {
+  it("rejects a token whose owner claim does not own its repository claim", async () => {
     const claims = baseClaims();
     claims.repository_owner = "OtherOwner";
     const { response } = await exchange(await signedJwt(claims));

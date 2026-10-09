@@ -10,7 +10,7 @@ Noema owns an evidence-producing credential and maintenance control plane plus a
 
 ### Credential Exchange
 
-Owns GitHub Actions OIDC verification, exact reusable-workflow source identity, replay/rate controls, repository-scoped GitHub App capability minting, and the `/health`, `/ready`, `/exchange` HTTP boundary. Credential evidence is not review, merge, release, deployment, or legal authority.
+Owns GitHub Actions OIDC verification, exact reusable-workflow source identity, replay/rate controls, owner identity bound to the GitHub App installation rather than a fixed owner list (ADR-0019), repository-scoped GitHub App capability minting, and the `/health`, `/ready`, `/exchange` HTTP boundary. Credential evidence is not review, merge, release, deployment, or legal authority.
 
 ### Maintenance Control
 

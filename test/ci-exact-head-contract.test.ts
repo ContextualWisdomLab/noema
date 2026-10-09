@@ -57,24 +57,28 @@ describe("pull-request verification exact-head checkout contract", () => {
     expectPinnedApplicationToolchain(workflow);
   });
 
-  it("binds lockfile verification to one fresh live base instead of the historical PR base snapshot", () => {
+  it("binds lockfile verification to one fresh live PR identity instead of event snapshots", () => {
     const workflow = readWorkflow(workflowPaths[0]);
 
     expect(workflow).toContain(
-      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
+      "bash scripts/verify-live-pull-request-identity.sh capture",
     );
     expect(workflow).toContain(
-      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
+      "bash scripts/verify-live-pull-request-identity.sh check",
     );
     expect(workflow).toContain(
-      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json" >"$base_lock"',
+      'git show "${NOEMA_LIVE_PR_BASE_SHA}:package-lock.json" >"$base_lock"',
     );
-    expect(workflow).toContain('NOEMA_LOCKFILE_BASE_SHA="$NOEMA_LIVE_BASE_SHA"');
-    expect(workflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
+    expect(workflow).toContain('NOEMA_LOCKFILE_BASE_SHA="$NOEMA_LIVE_PR_BASE_SHA"');
+    expect(workflow).toContain(
+      "NOEMA_PR_NUMBER: ${{ github.event.pull_request.number }}",
+    );
     expect(workflow).not.toContain(
       'NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
     );
-    expect(workflow).not.toContain('test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"');
+    expect(workflow).not.toContain(
+      'NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}',
+    );
   });
 
   it("keeps each release verifier visible as its own failing CI boundary with bounded test diagnostics", () => {

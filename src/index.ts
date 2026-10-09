@@ -101,11 +101,24 @@ type InstallationIdResolution = {
   source: "configured" | "cache" | "discovery";
 };
 
+/** Installation id plus the account that consented by installing the App. */
+type InstallationBinding = {
+  id: string;
+  accountId: string;
+  accountLogin: string;
+};
+
+/** OIDC caller owner identity used to bind a same-owner installation. */
+type CallerOwner = {
+  login: string;
+  id: string;
+};
+
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const rateLimitWindowMs = 60_000;
 const maxLocalRateLimitBuckets = 10_000;
 let oidcKeysCache: TimedCache<JsonWebKeySet> | undefined;
-const installationIdCache = new Map<string, TimedCache<string>>();
+const installationIdCache = new Map<string, TimedCache<InstallationBinding>>();
 
 class ApiError extends Error {
   constructor(
@@ -138,6 +151,8 @@ const githubInstallationTokenPattern = /^[\x21-\x7e]{1,4096}$/;
 const githubAppPrivateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
 const oidcJsonMediaTypePattern = /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i;
 const expectedRepositoryOwnerId = "295022177";
+const githubOwnerLoginPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const githubNumericIdPattern = /^[1-9]\d{0,18}$/;
 const expectedRepositoryIds = new Map<string, string>([
   ["ContextualWisdomLab/noema", "1285107801"],
   ["ContextualWisdomLab/.github", "1274066402"],
@@ -637,8 +652,27 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (typeof payload.sub !== "string" || payload.sub.length === 0) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC subject claim is invalid");
     }
-    if (payload.repository_owner !== env.ALLOWED_REPOSITORY_OWNER) throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
-    if (payload.repository_owner_id !== expectedRepositoryOwnerId) {
+    // Caller owners are not a fixed list: the App installation is the owner's consent
+    // and is bound to this identity when the token is minted (ADR 0019).
+    if (typeof payload.repository_owner !== "string" || !githubOwnerLoginPattern.test(payload.repository_owner)) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
+    }
+    // A well-formed repository claim must belong to the owner claim; malformed names
+    // are left to the later target_repository syntax validation.
+    if (
+      typeof payload.repository === "string"
+      && payload.repository.includes("/")
+      && payload.repository.split("/", 1)[0].toLowerCase() !== payload.repository_owner.toLowerCase()
+    ) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
+    }
+    if (typeof payload.repository_owner_id !== "string" || !githubNumericIdPattern.test(payload.repository_owner_id)) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
+    }
+    if (
+      payload.repository_owner === workflowRepositoryOwner(env)
+      && payload.repository_owner_id !== expectedRepositoryOwnerId
+    ) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
     }
     const expectedRepositoryId = payload.repository ? expectedRepositoryIds.get(payload.repository) : undefined;
@@ -739,7 +773,12 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
   }
 }
 
-function validateRepositoryName(repository: string, env: Env): string {
+/** Owner of the central workflow repository; the only owner whose id is pinned. */
+function workflowRepositoryOwner(env: Env): string {
+  return env.ALLOWED_WORKFLOW_REPOSITORY.split("/", 1)[0];
+}
+
+function validateRepositoryName(repository: string): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]{1,100}$/.test(repository)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
@@ -747,7 +786,7 @@ function validateRepositoryName(repository: string, env: Env): string {
   if (/^\.{1,2}$/.test(owner) || /^\.{1,2}$/.test(name)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
-  if (owner !== env.ALLOWED_REPOSITORY_OWNER) {
+  if (!githubOwnerLoginPattern.test(owner)) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "target_repository owner is not allowed");
   }
   return repository;
@@ -827,10 +866,25 @@ async function githubJson(
   return value as Record<string, unknown>;
 }
 
+/**
+ * Require the installation account to be the target owner and, for a same-owner caller,
+ * the OIDC owner identity. Runs on every resolution, including cache hits.
+ */
+function requireInstallationConsent(binding: InstallationBinding, repository: string, caller: CallerOwner): void {
+  const targetOwner = repository.split("/", 1)[0].toLowerCase();
+  if (binding.accountLogin.toLowerCase() !== targetOwner) {
+    throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "GitHub App installation account does not own target_repository");
+  }
+  if (targetOwner === caller.login.toLowerCase() && binding.accountId !== caller.id) {
+    throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "GitHub App installation account does not match the OIDC repository owner");
+  }
+}
+
 async function resolveInstallationId(
   appJwt: string,
   repository: string,
   env: Env,
+  caller: CallerOwner,
 ): Promise<InstallationIdResolution> {
   const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
   if (configuredInstallationId) {
@@ -846,7 +900,8 @@ async function resolveInstallationId(
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
   const cached = configuredInstallationId ? undefined : installationIdCache.get(cacheKey);
   if (cached && cached.expiresAtMs > now) {
-    return { value: cached.value, source: "cache" };
+    requireInstallationConsent(cached.value, repository, caller);
+    return { value: cached.value.id, source: "cache" };
   }
   if (cached) {
     installationIdCache.delete(cacheKey);
@@ -866,6 +921,23 @@ async function resolveInstallationId(
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
   }
   const installationId = String(installation.id);
+  const account = installation.account;
+  if (
+    typeof account !== "object" || account === null
+    || typeof (account as Record<string, unknown>).id !== "number"
+    || !Number.isSafeInteger((account as Record<string, unknown>).id)
+    || ((account as Record<string, unknown>).id as number) <= 0
+    || typeof (account as Record<string, unknown>).login !== "string"
+    || !githubOwnerLoginPattern.test((account as Record<string, unknown>).login as string)
+  ) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
+  }
+  const binding: InstallationBinding = {
+    id: installationId,
+    accountId: String((account as Record<string, unknown>).id),
+    accountLogin: (account as Record<string, unknown>).login as string,
+  };
+  requireInstallationConsent(binding, repository, caller);
   if (configuredInstallationId && installationId !== configuredInstallationId) {
     throw new ApiError(
       "ERR_GITHUB_INSTALLATION",
@@ -875,7 +947,7 @@ async function resolveInstallationId(
   }
   if (!configuredInstallationId) {
     installationIdCache.set(cacheKey, {
-      value: installationId,
+      value: binding,
       expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
     });
   }
@@ -885,9 +957,9 @@ async function resolveInstallationId(
   };
 }
 
-async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
+async function createInstallationToken(repository: string, env: Env, caller: CallerOwner): Promise<InstallationToken> {
   const appJwt = await createGitHubAppJwt(env);
-  let installationResolution = await resolveInstallationId(appJwt, repository, env);
+  let installationResolution = await resolveInstallationId(appJwt, repository, env, caller);
   let installationId = installationResolution.value;
   const mintInstallationToken = (id: string) => githubJson(`/app/installations/${id}/access_tokens`, {
     method: "POST",
@@ -907,7 +979,7 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
       throw error;
     }
     installationIdCache.delete(`${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`);
-    installationResolution = await resolveInstallationId(appJwt, repository, env);
+    installationResolution = await resolveInstallationId(appJwt, repository, env, caller);
     installationId = installationResolution.value;
     token = await mintInstallationToken(installationId);
   }
@@ -1024,12 +1096,15 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
     });
   }
   const requestedRepository = rawTargetRepository ?? claims.repository ?? "";
-  const repository = validateRepositoryName(requestedRepository, env);
+  const repository = validateRepositoryName(requestedRepository);
   if (claims.repository !== repository && claims.repository !== env.ALLOWED_WORKFLOW_REPOSITORY) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository cannot request token for target_repository");
   }
   const replay_protected = await claimVerifiedOidcUsage(claims, env);
-  const token = await createInstallationToken(repository, env);
+  const token = await createInstallationToken(repository, env, {
+    login: String(claims.repository_owner),
+    id: String(claims.repository_owner_id),
+  });
   return {
     repository,
     token: token.token,

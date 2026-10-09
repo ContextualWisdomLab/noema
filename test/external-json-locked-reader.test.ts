@@ -222,7 +222,7 @@ describe("external JSON response reader acquisition", () => {
           return Response.json({ keys: [jwk] });
         }
         if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") {
-          const installation = Response.json({ id: 12345 });
+          const installation = Response.json({ id: 12345, account: { id: 295022177, login: "ContextualWisdomLab" } });
           heldReader = installation.body!.getReader();
           return installation;
         }

@@ -33,6 +33,16 @@ When a decision depends on current integration ancestry, dependency content, loc
 
 A GitHub `refs/pull/*/merge` revision is valid integration evidence. It is not labelled immutable-head evidence unless the specific scanner/test separately proves the PR head it consumed.
 
+For protected-main merge authority, application CI also subscribes to
+`merge_group/checks_requested`. It checks out the event's exact synthetic
+`head_sha`, validates the event's exact `base_sha`, and requires that base to be
+an ancestor of the tested merge-group commit. The same exact base SHA feeds the
+existing lockfile change-control comparison. GitHub rebuilds the temporary
+merge group from the latest base before required checks authorize a queued
+merge. Source support is non-authorizing until the protected-main ruleset
+requires the merge queue and the application-CI check; a direct ordinary merge
+must not be represented as carrying this base-binding guarantee.
+
 ### Stacked PRs
 
 The immediate stack predecessor's live tip is an explicit dependency. A stacked PR is not early-retargeted merely to create a required check if doing so duplicates predecessor changes or corrupts dependency order.
@@ -68,6 +78,7 @@ Any movement between decision and write causes abort/re-plan rather than blind r
 ## Verification
 
 - `test/ci-exact-head-contract.test.ts`.
+- `test/ci-live-pull-request-identity.test.ts` merge-group head/base binding.
 - live-base preflight/post-verification and package/lockfile contracts.
 - stack/base, publisher and Security Scan trigger semantics.
 - `ARCHITECTURE.md` exact-head/workflow-source invariants.
@@ -76,3 +87,10 @@ Any movement between decision and write causes abort/re-plan rather than blind r
 ## Rationale sources
 
 `docs/doctoring/architecture-trust-boundaries.md` records SLSA Source Track and GitHub OIDC primary-source rationale with APA 7 references.
+
+GitHub. (n.d.). *Events that trigger workflows: merge_group*. Retrieved
+October 9, 2026, from
+https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group
+
+GitHub. (n.d.). *Managing a merge queue*. Retrieved October 9, 2026, from
+https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue

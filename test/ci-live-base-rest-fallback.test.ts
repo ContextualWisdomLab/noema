@@ -1,17 +1,24 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("CI live-base resolver availability", () => {
-  it("falls back to the live Git ref REST endpoint after bounded GraphQL availability exhaustion", () => {
-    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+describe("CI live pull-request identity availability", () => {
+  it("reads live PR head/ref and resolves the current base branch tip", () => {
+    const gate = readFileSync(
+      "scripts/verify-live-pull-request-identity.sh",
+      "utf8",
+    );
 
-    expect(
-      workflow.match(
-        /gh api --method GET "repos\/\$\{GITHUB_REPOSITORY\}\/git\/ref\/heads\/\$\{NOEMA_PR_BASE_REF\}"/g,
-      ),
-    ).toHaveLength(2);
-    expect(workflow.match(/--jq '\.object\.sha'/g)).toHaveLength(2);
-    expect(workflow.match(/Live pull-request base REST fallback failed\./g)).toHaveLength(2);
-    expect(workflow).not.toContain("github.event.pull_request.base.sha");
+    expect(gate).toContain(
+      'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${NOEMA_PR_NUMBER}"',
+    );
+    expect(gate).toContain("--jq '[.head.sha,.base.ref] | @tsv'");
+    expect(gate).toContain(
+      'gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${base_ref}"',
+    );
+    expect(gate).toContain("--jq '.object.sha'");
+    expect(gate).not.toContain(".base.sha");
+    expect(gate).toContain("for attempt in 1 2 3; do");
+    expect(gate).toContain("\\(HTTP (502|503|504)\\)$");
+    expect(gate).not.toContain("gh api graphql");
   });
 });
