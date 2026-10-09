@@ -34,15 +34,18 @@ API commands, exact ancestry operands, and fail-closed non-ancestry. The origina
 script fails the focused RED harness; repaired shell and syntax checks pass
 locally.
 
-This closes stale `.base.sha` admission inside a started or re-run gate. It does
-not self-invalidate a terminal same-head Check after a later base-only push:
-GitHub's PR `synchronize` event is tied to head updates, and the ordinary merge
-API exposes a head-SHA precondition but no exact base-SHA precondition. Status:
-**Draft / Proposed / merge HOLD**. A trusted post-completion base observer or
-merge-queue contract remains a P0 prerequisite, alongside fresh hosted
-exact-head Checks, qualifying independent approval, prerequisite #737 ordinary
-merge, and protected-main revalidation. Local GREEN is not release or merge
-authority.
+This closes stale `.base.sha` admission inside a started or re-run gate. The
+candidate now also supplies the missing `merge_group/checks_requested` source
+contract: application CI checks out the merge group's exact synthetic head and
+requires its canonical event base SHA to be an ancestor before running release
+verification. GitHub's merge queue rebuilds this group from the latest base,
+covering the post-completion base-only window that a PR `synchronize` event does
+not observe. Status remains **Draft / Proposed / merge HOLD** because source
+support is not external merge authority. The protected-main ruleset must require
+the merge queue and this check; fresh hosted merge-group/exact-head Checks,
+qualifying independent approval, prerequisite #737 ordinary merge, and
+protected-main revalidation remain required. Local GREEN is not release or
+merge authority.
 
 ## Proposed released gateway endpoint admission (2026-10-02)
 
@@ -198,7 +201,7 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 | P0 | Protected-main governance closure | Security workflow 하나로 PR/review/history/deletion/bypass 통제를 과대 주장할 위험 | issue #27 | external control evidence open | live ruleset + PR/review/conversation/history/deletion + bypass evidence | admin/owner control을 독립 검증 |
 | P0 | Patch-validator operational publication | PR image CI가 immutable runtime publication으로 오인될 위험 | issue #66 | source/image integrated; publication open | protected-main execution + immutable image/signature/SBOM/provenance/rollback | operational receipt 뒤 publication/signing 검증 |
 | P0 | Patch-validator bundled Undici vulnerability | protected Node 24.19.0 static image의 bundled Undici 7.29.0/GHSA-3wwx-pv8p-q78v가 exact-image scanner gate를 차단 | issue #734; active PR #737; dependent Draft PRs #733/#736 | PR #737 active candidate에 final receipt exact Undici assertion, released gateway endpoint admission, review-contract repair와 bounded scanner acquisition reliability repair가 통합됐지만 fresh exact-head evidence와 qualifying independent approval은 non-terminal | exact PR-head build/smoke + Node/Undici inventory + final verifier exact Undici assertion + raw scanner receipt with no blocking finding + full CI/typecheck/coverage + independent approval + ordinary merge + immutable release evidence | PR #737 fresh exact-head review/check를 통과시킨 뒤 ordinary merge; #733/#736은 prerequisite integration과 release 전 Draft 유지 |
-| P0 | Pull-request review identity TOCTOU | event snapshot 또는 PR `.base.sha`가 live base-tip으로 오인되고, terminal Check 뒤 base-only push가 자동 무효화되지 않을 위험 | active Draft PR #733 | exact PR head/ref + Git-ref tip gate와 non-vacuous API/ancestry doubles source GREEN; post-completion observer/merge-queue 계약 open | repaired exact head + trusted base-advance observer 또는 merge queue + fresh full hosted CI/reviewer/security/image Checks + independent approval + ordinary merge | atomic non-force publish 후 exact-head Checks 수집; observer/merge authority prerequisite를 별도 owner delta로 계속 수리; #737 전에는 Draft 유지 |
+| P0 | Pull-request review identity TOCTOU | event snapshot 또는 PR `.base.sha`가 live base-tip으로 오인되고, terminal Check 뒤 base-only push가 자동 무효화되지 않을 위험 | active Draft PR #733 | exact PR head/ref + Git-ref tip gate, non-vacuous API/ancestry doubles, `merge_group/checks_requested` exact synthetic-head/base-ancestry source contract integrated; protected-main merge-queue/ruleset evidence open | repaired exact head + required merge queue/check + fresh full hosted CI/reviewer/security/image Checks + independent approval + ordinary merge | atomic non-force publish 후 exact-head/merge-group Checks 수집; protected-main ruleset에서 merge queue와 application CI를 required로 설정·검증; #737 전에는 Draft 유지 |
 | P0 | Authentic production KPI evidence | synthetic/source KPI가 실제 운영 성능으로 오인될 위험 | issue #3 | >=30-day production window absent | authenticated production bytes + provenance + strict KPI gate | 실제 production evidence만 수집 |
 | P0 | Acquisition coordination | source/docs completion이 buyer/legal/transfer readiness로 오인될 위험 | issue #5 | evidence families incomplete | exact release/deployment/operational/legal evidence | owner별 evidence family 수렴 |
 | P0 | External Maintainer/Reviewer App identity | source preflight가 실제 App installation/reviewer authority로 오인될 위험 | issues #29 / #227 | live identity evidence absent | installation/key custody/permission/reviewer eligibility | external control-plane에서 독립 검증 |

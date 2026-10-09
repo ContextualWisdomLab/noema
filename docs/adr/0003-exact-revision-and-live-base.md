@@ -33,6 +33,15 @@ When a decision depends on current integration ancestry, dependency content, loc
 
 A GitHub `refs/pull/*/merge` revision is valid integration evidence. It is not labelled immutable-head evidence unless the specific scanner/test separately proves the PR head it consumed.
 
+For protected-main merge authority, application CI also subscribes to
+`merge_group/checks_requested`. It checks out the event's exact synthetic
+`head_sha`, validates the event's exact `base_sha`, and requires that base to be
+an ancestor of the tested merge-group commit. GitHub rebuilds the temporary
+merge group from the latest base before required checks authorize a queued
+merge. Source support is non-authorizing until the protected-main ruleset
+requires the merge queue and the application-CI check; a direct ordinary merge
+must not be represented as carrying this base-binding guarantee.
+
 ### Stacked PRs
 
 The immediate stack predecessor's live tip is an explicit dependency. A stacked PR is not early-retargeted merely to create a required check if doing so duplicates predecessor changes or corrupts dependency order.
@@ -68,6 +77,7 @@ Any movement between decision and write causes abort/re-plan rather than blind r
 ## Verification
 
 - `test/ci-exact-head-contract.test.ts`.
+- `test/ci-live-pull-request-identity.test.ts` merge-group head/base binding.
 - live-base preflight/post-verification and package/lockfile contracts.
 - stack/base, publisher and Security Scan trigger semantics.
 - `ARCHITECTURE.md` exact-head/workflow-source invariants.

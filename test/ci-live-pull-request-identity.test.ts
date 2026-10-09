@@ -268,4 +268,15 @@ describe("CI live pull-request identity gate", () => {
     expect(gate).toContain("--jq '.object.sha'");
     expect(gate).not.toContain(".base.sha");
   });
+
+  it("runs required CI for merge-queue groups and binds the exact synthetic head to its base", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+
+    expect(workflow).toMatch(/merge_group:\n\s+types: \[checks_requested\]/);
+    expect(workflow).toContain("github.event.merge_group.head_sha");
+    expect(workflow).toContain("github.event.merge_group.base_sha");
+    expect(workflow).toContain(
+      'git merge-base --is-ancestor "$NOEMA_EXPECTED_BASE_SHA" "$NOEMA_EXPECTED_HEAD_SHA"',
+    );
+  });
 });
